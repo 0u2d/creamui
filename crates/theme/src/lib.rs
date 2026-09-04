@@ -142,6 +142,47 @@ impl Default for Theme {
     }
 }
 
+/// Holds the current [`Theme`] as a reactive value, so an app can swap
+/// themes at runtime and have every widget that reads from it re-render.
+///
+/// This works with no special support from widgets: call
+/// [`ThemeProvider::get`] once per re-render (typically at the top of the
+/// closure passed to `creamui_render::run`) to get the current `Theme`, and
+/// build widgets from it as usual. Since `get` subscribes the enclosing
+/// `creamui_reactive` effect, calling [`ThemeProvider::set`] anywhere —
+/// including from a click handler — triggers a full reactive re-render with
+/// the new theme, the same way changing any other `Signal` would.
+#[derive(Clone)]
+pub struct ThemeProvider {
+    theme: creamui_reactive::Signal<Theme>,
+}
+
+impl ThemeProvider {
+    pub fn new(theme: Theme) -> Self {
+        ThemeProvider {
+            theme: creamui_reactive::Signal::new(theme),
+        }
+    }
+
+    /// Returns the current theme, subscribing the running reactive effect
+    /// (if any) to future [`ThemeProvider::set`] calls.
+    pub fn get(&self) -> Theme {
+        self.theme.get()
+    }
+
+    /// Replaces the current theme, triggering a reactive re-render in
+    /// anything that previously called [`ThemeProvider::get`].
+    pub fn set(&self, theme: Theme) {
+        self.theme.set(theme);
+    }
+}
+
+impl Default for ThemeProvider {
+    fn default() -> Self {
+        ThemeProvider::new(Theme::default())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -154,6 +195,32 @@ mod tests {
     #[test]
     fn dark_and_light_themes_differ() {
         assert_ne!(Theme::dark(), Theme::light());
+    }
+
+    #[test]
+    fn theme_provider_set_updates_get() {
+        let provider = ThemeProvider::new(Theme::dark());
+        assert_eq!(provider.get(), Theme::dark());
+        provider.set(Theme::light());
+        assert_eq!(provider.get(), Theme::light());
+    }
+
+    #[test]
+    fn theme_provider_set_triggers_subscribed_effects() {
+        use std::cell::Cell;
+        use std::rc::Rc;
+
+        let provider = ThemeProvider::new(Theme::dark());
+        let seen = Rc::new(Cell::new(Theme::dark()));
+        let seen_clone = seen.clone();
+        let provider_clone = provider.clone();
+        let _effect = creamui_reactive::create_effect(move || {
+            seen_clone.set(provider_clone.get());
+        });
+
+        assert_eq!(seen.get(), Theme::dark());
+        provider.set(Theme::light());
+        assert_eq!(seen.get(), Theme::light(), "effect should re-run and observe the new theme");
     }
 
     #[test]

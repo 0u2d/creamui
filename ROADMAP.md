@@ -48,10 +48,19 @@ fine for anything with a non-trivial tree. Retained-tree diffing below is
 the prerequisite — building `jsx!` on top of a full-rebuild engine would
 just bake the perf ceiling into every app that uses it.
 
-- [ ] Retained-tree diffing instead of full rebuild-per-render (perf) —
-      **do this before Iteration 3**
-- [ ] Runtime `ThemeProvider` (swap/override themes at runtime instead of
-      passing a `Theme` value into every constructor)
+- [x] Retained-tree diffing instead of full rebuild-per-render (perf):
+      `creamui_core::Renderer` keeps a persistent `taffy` tree across
+      frames and reconciles structurally (by position, not by widget
+      identity/keys — see the doc comment on `scene::reconcile`), reusing
+      node ids and only touching styles/children that actually changed
+      instead of rebuilding the whole tree every render
+      (`creamui-core`, 3 reconciliation unit tests)
+- [x] Runtime `ThemeProvider` (swap/override themes at runtime instead of
+      passing a fixed `Theme` value into every constructor): wraps a
+      `Signal<Theme>`, so `.set()` triggers the same reactive re-render
+      path as any other signal — no special-casing needed in widgets
+      (`creamui-theme`, 2 unit tests; demoed by a theme-toggle button in
+      `examples/hello_world`)
 - [ ] Proper text shaping/measurement via `taffy`'s measure/context API
       instead of the current heuristic width estimate in
       `creamui-widgets::text_metrics`
@@ -59,9 +68,21 @@ just bake the perf ceiling into every app that uses it.
 - [ ] More headless/themed widgets: checkbox, text input, slider, scroll view
 - [ ] Keyboard input and focus handling
 - [ ] DPI/scale-factor awareness (currently assumes scale factor 1.0)
-- [ ] Expand the C ABI: full layout style control, more widget kinds,
-      window-level operations (resize, move, always-on-top) for desktop
-      shell use cases
+- [x] Expose reactive state across the C ABI (`creamui_signal_i32_*`): a
+      dynamically-linked app has no Rust-side `Signal`, so without this a
+      C click handler had no way to trigger a re-render at all — verified
+      by `examples/hello_world_dynamic`, a working counter driven entirely
+      through the ABI
+- [x] `examples/hello_world_dynamic`: the same counter as `hello_world`,
+      but linked dynamically — zero CreamUI crate dependencies, resolves
+      every function via `libloading` at runtime, proving static vs.
+      dynamic linking is the app's choice, not baked into the engine
+- [ ] Expand the C ABI further: theme-token access (currently
+      `creamui_button_new`/`creamui_themed_text_new` hardcode
+      `Theme::dark()`, so `hello_world_dynamic` can't demo the theme
+      toggle the static example does), full layout style control, more
+      widget kinds, window-level operations (resize, move, always-on-top)
+      for desktop shell use cases
 
 ## Iteration 3 — declarative layer: `jsx!`
 

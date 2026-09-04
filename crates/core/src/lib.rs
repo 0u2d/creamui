@@ -10,7 +10,7 @@ mod scene;
 mod widget;
 
 pub use geometry::{Point, Rect, Size};
-pub use scene::{render_frame, Scene};
+pub use scene::{render_frame, Renderer, Scene};
 pub use widget::{BoxedWidget, Painter, TextAlign, Widget};
 
 /// Re-exported so downstream crates can build `taffy::style::Style` values

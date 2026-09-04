@@ -91,3 +91,25 @@ fn button_click_callback_crosses_the_abi_boundary() {
         assert_eq!(CLICKED.load(Ordering::SeqCst), 0);
     }
 }
+
+#[test]
+fn signal_i32_get_reflects_set() {
+    let path = cdylib_path();
+    let lib = unsafe { Library::new(&path) }.unwrap();
+
+    unsafe {
+        let new: Symbol<unsafe extern "C" fn(i32) -> *mut c_void> = lib.get(b"creamui_signal_i32_new").unwrap();
+        let get: Symbol<unsafe extern "C" fn(*const c_void) -> i32> = lib.get(b"creamui_signal_i32_get").unwrap();
+        let set: Symbol<unsafe extern "C" fn(*const c_void, i32)> = lib.get(b"creamui_signal_i32_set").unwrap();
+        let free: Symbol<unsafe extern "C" fn(*mut c_void)> = lib.get(b"creamui_signal_i32_free").unwrap();
+
+        let signal = new(41);
+        assert!(!signal.is_null());
+        assert_eq!(get(signal), 41);
+
+        set(signal, 42);
+        assert_eq!(get(signal), 42, "a dynamically-linked app needs this to build a working counter, since it has no Rust-side Signal of its own");
+
+        free(signal);
+    }
+}

@@ -16,11 +16,62 @@
 
 use creamui_core::layout::{AlignItems, FlexDirection, JustifyContent, Style};
 use creamui_core::{BoxedWidget, Size};
+use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
 use creamui_widgets::raw::{RawText, RawView};
 use creamui_widgets::themed::{Button as ThemedButton, Text as ThemedText};
 use std::ffi::{c_char, c_void, CStr};
 use std::os::raw::c_int;
+
+/// Opaque handle to a reactive `i32` value.
+///
+/// Reading it (via [`creamui_signal_i32_get`]) while building a widget tree
+/// inside a [`creamui_run`] `build` callback subscribes that render to
+/// future writes, exactly like a native Rust `creamui_reactive::Signal` —
+/// this is what lets a C click handler trigger a re-render.
+pub struct CSignalI32(Signal<i32>);
+
+/// Creates a reactive `i32` signal with an initial value.
+#[no_mangle]
+pub extern "C" fn creamui_signal_i32_new(initial: i32) -> *mut CSignalI32 {
+    Box::into_raw(Box::new(CSignalI32(Signal::new(initial))))
+}
+
+/// Reads the current value, subscribing the enclosing render (if any) to
+/// future [`creamui_signal_i32_set`] calls.
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from [`creamui_signal_i32_new`]
+/// that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_i32_get(signal: *const CSignalI32) -> i32 {
+    (*signal).0.get()
+}
+
+/// Writes a new value, triggering a reactive re-render in anything that
+/// previously read this signal via [`creamui_signal_i32_get`].
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from [`creamui_signal_i32_new`]
+/// that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_i32_set(signal: *const CSignalI32, value: i32) {
+    (*signal).0.set(value);
+}
+
+/// Frees a signal created with [`creamui_signal_i32_new`].
+///
+/// # Safety
+/// `signal` must be a valid, non-null, not-yet-freed pointer from
+/// [`creamui_signal_i32_new`], and must outlive every [`creamui_run`] call
+/// that might still read or write it (typically: free it only after
+/// `creamui_run` returns).
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_i32_free(signal: *mut CSignalI32) {
+    if !signal.is_null() {
+        drop(Box::from_raw(signal));
+    }
+}
 
 /// A color in the C ABI: identical layout to `creamui_theme::Color`.
 #[repr(C)]

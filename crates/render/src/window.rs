@@ -9,7 +9,7 @@
 
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
-use creamui_core::{render_frame, BoxedWidget, Point, Scene, Size};
+use creamui_core::{BoxedWidget, Point, Renderer, Scene, Size};
 use creamui_reactive::{create_effect, Effect, Signal};
 use creamui_theme::Color;
 use std::cell::RefCell;
@@ -59,6 +59,7 @@ fn init_logging() {
 
 struct FrameState {
     painter: SkiaPainter,
+    renderer: Renderer,
     scene: Option<Scene>,
 }
 
@@ -161,6 +162,7 @@ pub fn run(options: WindowOptions, clear_color: Color, build_ui: impl Fn(Size) -
     });
     let frame = Rc::new(RefCell::new(FrameState {
         painter: SkiaPainter::new(options.width, options.height),
+        renderer: Renderer::new(),
         scene: None,
     }));
     let shared_window: SharedWindow = Rc::new(RefCell::new(None));
@@ -175,9 +177,10 @@ pub fn run(options: WindowOptions, clear_color: Color, build_ui: impl Fn(Size) -
         let root = build_ui(size);
 
         let mut frame = effect_frame.borrow_mut();
-        frame.painter.resize(size.width as u32, size.height as u32);
-        frame.painter.clear(clear_color);
-        let scene = render_frame(root, size, &mut frame.painter);
+        let FrameState { painter, renderer, .. } = &mut *frame;
+        painter.resize(size.width as u32, size.height as u32);
+        painter.clear(clear_color);
+        let scene = renderer.render(root, size, painter);
         frame.scene = Some(scene);
 
         // Debug aid: dump each painted frame to a PNG on disk, e.g. for

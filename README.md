@@ -42,11 +42,19 @@ done and what's next.
 | `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu` presentation |
 | `creamui-ffi` | `#[no_mangle] extern "C"` ABI, built as a `cdylib`, for dynamic linking |
 
-## Running the example
+## Running the examples
 
 ```sh
-cargo run -p hello_world
+cargo run -p hello_world           # static: links the Rust crates directly
+cargo run -p hello_world_dynamic   # dynamic: dlopens the built cdylib, zero CreamUI crate deps
 ```
+
+Both are the same themed counter with a runtime theme-toggle button (the
+static one only — the dynamic ABI doesn't expose theme tokens yet, see
+`ROADMAP.md`). Compare `target/release/hello_world` against
+`target/release/hello_world_dynamic` to see the difference linking mode
+makes to binary size: the dynamic build carries none of `wgpu`/`winit`/
+`taffy` itself — that all lives in `libcreamui.so`.
 
 Set `CREAMUI_DEBUG=1` for verbose logging, or `CREAMUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
