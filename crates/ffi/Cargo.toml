@@ -1,0 +1,20 @@
+[package]
+name = "creamui-ffi"
+description = "ABI-stable C interface for consuming CreamUI as a shared library"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "creamui"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-widgets = { workspace = true }
+creamui-render = { workspace = true }
+
+[dev-dependencies]
+libloading = "0.8"

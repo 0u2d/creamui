@@ -1,0 +1,11 @@
+[package]
+name = "creamui-core"
+description = "CreamUI's widget tree, layout, and painting abstractions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-theme = { workspace = true }
+taffy = { workspace = true }

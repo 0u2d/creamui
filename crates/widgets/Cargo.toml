@@ -1,0 +1,13 @@
+[package]
+name = "creamui-widgets"
+description = "Headless and themed widgets built on creamui-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-reactive = { workspace = true }
+fontdue = "0.9"

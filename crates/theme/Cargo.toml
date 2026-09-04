@@ -1,0 +1,9 @@
+[package]
+name = "creamui-theme"
+description = "Semantic design tokens and theming for CreamUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

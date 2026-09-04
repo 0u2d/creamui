@@ -1,0 +1,20 @@
+[package]
+name = "creamui-render"
+description = "wgpu + winit windowing and rendering backend for CreamUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-reactive = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+tiny-skia = { workspace = true }
+pollster = { workspace = true }
+fontdue = "0.9"
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"

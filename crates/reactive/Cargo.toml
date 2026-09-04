@@ -1,0 +1,9 @@
+[package]
+name = "creamui-reactive"
+description = "Minimal reactive primitives (signals, effects) powering CreamUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

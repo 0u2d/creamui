@@ -1,0 +1,12 @@
+[package]
+name = "hello_world"
+publish = false
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-widgets = { workspace = true }
+creamui-render = { workspace = true }
+creamui-reactive = { workspace = true }
