@@ -56,11 +56,14 @@ pub struct GpuState {
 
 impl GpuState {
     pub fn new(window: Arc<Window>) -> Self {
+        let t0 = std::time::Instant::now();
         let size = window.inner_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::default());
+        log::debug!("creamui-render: instance created: {:?}", t0.elapsed());
         let surface = instance
             .create_surface(window.clone())
             .expect("failed to create GPU surface for window");
+        log::debug!("creamui-render: surface created: {:?}", t0.elapsed());
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::LowPower,
@@ -68,6 +71,7 @@ impl GpuState {
             force_fallback_adapter: false,
         }))
         .expect("failed to find a compatible GPU adapter");
+        log::debug!("creamui-render: adapter requested: {:?}", t0.elapsed());
         log::debug!("creamui-render: using GPU adapter {:?}", adapter.get_info());
 
         let (device, queue) = pollster::block_on(adapter.request_device(
@@ -80,6 +84,7 @@ impl GpuState {
             None,
         ))
         .expect("failed to acquire GPU device");
+        log::debug!("creamui-render: device requested: {:?}", t0.elapsed());
 
         let surface_caps = surface.get_capabilities(&adapter);
         let surface_format = surface_caps
@@ -169,6 +174,7 @@ impl GpuState {
 
         let (texture, bind_group) =
             create_texture_and_bind_group(&device, &bind_group_layout, &sampler, size.width.max(1), size.height.max(1));
+        log::debug!("creamui-render: pipeline+texture created: {:?}", t0.elapsed());
 
         GpuState {
             surface,

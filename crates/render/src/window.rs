@@ -170,6 +170,8 @@ struct AppHandler {
     /// Called once, the first time the window is created (see `resumed`).
     on_window_ready: Rc<dyn Fn(WindowHandle)>,
     window_ready_notified: bool,
+    t_run: Instant,
+    first_present_logged: bool,
 }
 
 impl AppHandler {
@@ -187,18 +189,24 @@ impl AppHandler {
 
 impl ApplicationHandler for AppHandler {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        let t0 = std::time::Instant::now();
         let attrs = WindowAttributes::default()
             .with_title(self.options.title.clone())
             .with_inner_size(winit::dpi::LogicalSize::new(self.options.width, self.options.height))
             .with_resizable(self.options.resizable)
             .with_decorations(self.options.decorations)
-            .with_transparent(self.options.transparent);
+            .with_transparent(self.options.transparent)
+            // Stay hidden until the first frame is painted and presented
+            // below, so the OS never shows an empty/default-colored
+            // surface before CreamUI's own content is on screen.
+            .with_visible(false);
 
         let window = Arc::new(
             event_loop
                 .create_window(attrs)
                 .expect("failed to create window"),
         );
+        log::debug!("creamui-render: window created: {:?}", t0.elapsed());
         log::debug!(
             "creamui-render: window created ({}x{} logical, scale factor {})",
             self.options.width,
@@ -209,10 +217,24 @@ impl ApplicationHandler for AppHandler {
         self.scale_factor.set(window.scale_factor());
         self.sync_viewport_from_window(&window);
 
-        self.gpu = Some(GpuState::new(window.clone()));
+        let mut gpu = GpuState::new(window.clone());
+        log::debug!("creamui-render: gpu state ready: {:?}", t0.elapsed());
+
+        // Present the already-painted first frame (built by the initial
+        // `create_effect` run in `run`, before this window existed) while
+        // still hidden, then reveal — so the window never shows a blank
+        // frame before its real content.
+        {
+            let frame = self.frame.borrow();
+            let pixmap = &frame.painter.pixmap;
+            gpu.present(pixmap.data(), pixmap.width(), pixmap.height());
+        }
+        window.set_visible(true);
+        log::debug!("creamui-render: window shown: {:?}", t0.elapsed());
+        self.gpu = Some(gpu);
+
         *self.shared_window.borrow_mut() = Some(window.clone());
         self.window = Some(window.clone());
-        window.request_redraw();
 
         if !self.window_ready_notified {
             self.window_ready_notified = true;
@@ -379,6 +401,10 @@ impl ApplicationHandler for AppHandler {
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
                 gpu.present(pixmap.data(), pixmap.width(), pixmap.height());
+                if !self.first_present_logged {
+                    self.first_present_logged = true;
+                    log::debug!("creamui-render: first present done: {:?}", self.t_run.elapsed());
+                }
             }
             _ => {}
         }
@@ -416,6 +442,8 @@ pub fn run(
     build_ui: impl Fn(Size) -> BoxedWidget + 'static,
 ) {
     init_logging();
+    let t_run = std::time::Instant::now();
+    log::debug!("creamui-render: run() start");
 
     let viewport = Signal::new(Size {
         width: options.width as f32,
@@ -484,7 +512,9 @@ pub fn run(
     let effect_repaint = repaint.clone();
     let effect = create_effect(move || effect_repaint());
 
+    log::debug!("creamui-render: before EventLoop::new: {:?}", t_run.elapsed());
     let event_loop = EventLoop::new().expect("failed to create event loop");
+    log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let mut handler = AppHandler {
@@ -505,6 +535,8 @@ pub fn run(
         _effect: effect,
         on_window_ready: Rc::new(on_window_ready),
         window_ready_notified: false,
+        t_run,
+        first_present_logged: false,
     };
     event_loop.run_app(&mut handler).expect("event loop exited with an error");
 }
