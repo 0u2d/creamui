@@ -33,7 +33,7 @@ fn main() {
 
     let initial_clear_color = Theme::dark().surface;
 
-    run(options, initial_clear_color, move |viewport: Size| -> BoxedWidget {
+    run(options, initial_clear_color, |_handle| {}, move |viewport: Size| -> BoxedWidget {
         let theme = theme_provider.get();
         let count_for_click = count.clone();
         let theme_provider_for_click = theme_provider.clone();

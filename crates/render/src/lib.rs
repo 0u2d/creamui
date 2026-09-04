@@ -10,4 +10,4 @@ mod painter;
 mod window;
 
 pub use painter::SkiaPainter;
-pub use window::{run, WindowOptions};
+pub use window::{run, WindowHandle, WindowOptions};

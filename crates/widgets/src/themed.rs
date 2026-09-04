@@ -105,14 +105,25 @@ pub struct TextInput {
 }
 
 impl TextInput {
-    pub fn new(theme: &Theme, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
-        let style = Style {
+    /// The style used when none is given explicitly: a fixed 200x36 box,
+    /// matching this widget's original hardcoded layout.
+    pub fn default_style() -> Style {
+        Style {
             size: creamui_core::layout::Size {
                 width: creamui_core::layout::Dimension::Length(200.0),
                 height: creamui_core::layout::Dimension::Length(36.0),
             },
             ..Default::default()
-        };
+        }
+    }
+
+    pub fn new(theme: &Theme, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+        Self::with_style(theme, Self::default_style(), value, on_change)
+    }
+
+    /// Same as [`TextInput::new`], but with full control over layout
+    /// instead of the fixed 200x36 default.
+    pub fn with_style(theme: &Theme, style: Style, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
         let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
             .background(theme.surface_elevated)
             .border(theme.border, 1.0)
@@ -159,14 +170,25 @@ pub struct Slider {
 }
 
 impl Slider {
-    pub fn new(theme: &Theme, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
-        let style = Style {
+    /// The style used when none is given explicitly: a fixed 160x20 box,
+    /// matching this widget's original hardcoded layout.
+    pub fn default_style() -> Style {
+        Style {
             size: creamui_core::layout::Size {
                 width: creamui_core::layout::Dimension::Length(160.0),
                 height: creamui_core::layout::Dimension::Length(20.0),
             },
             ..Default::default()
-        };
+        }
+    }
+
+    pub fn new(theme: &Theme, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
+        Self::with_style(theme, Self::default_style(), value, on_change)
+    }
+
+    /// Same as [`Slider::new`], but with full control over layout instead
+    /// of the fixed 160x20 default.
+    pub fn with_style(theme: &Theme, style: Style, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
         let inner = RawSlider::new(style, value, theme.border_strong, theme.accent, theme.accent, on_change);
         Slider { inner }
     }

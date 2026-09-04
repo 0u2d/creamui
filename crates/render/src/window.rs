@@ -20,7 +20,7 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, NamedKey};
-use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId};
+use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId, WindowLevel};
 
 /// How long the text-input caret stays in each visibility phase while
 /// blinking (on, then off, then on again).
@@ -99,6 +99,43 @@ struct FrameState {
 
 type SharedWindow = Rc<RefCell<Option<Arc<Window>>>>;
 
+/// A handle to the live window, for desktop-shell operations (resize, move,
+/// always-on-top) issued from outside the render loop — e.g. a click
+/// handler. Cheap to clone; every clone shares the same underlying window.
+///
+/// Handed to the `on_window_ready` callback passed to [`run`] once the
+/// window has actually been created (winit windows don't exist until the
+/// event loop resumes, so this can't be available any earlier). All methods
+/// are no-ops if called after the window has closed.
+#[derive(Clone)]
+pub struct WindowHandle(SharedWindow);
+
+impl WindowHandle {
+    /// Requests a new logical-pixel window size. The actual resize (and any
+    /// resulting `Resized` event) happens asynchronously, same as a user
+    /// dragging the window border.
+    pub fn resize(&self, width: u32, height: u32) {
+        if let Some(window) = self.0.borrow().as_ref() {
+            let _ = window.request_inner_size(winit::dpi::LogicalSize::new(width, height));
+        }
+    }
+
+    /// Moves the window's top-left corner to a logical-pixel screen position.
+    pub fn set_position(&self, x: i32, y: i32) {
+        if let Some(window) = self.0.borrow().as_ref() {
+            window.set_outer_position(winit::dpi::LogicalPosition::new(x, y));
+        }
+    }
+
+    /// Pins (or unpins) the window above all others — the standard
+    /// desktop-shell/widget-overlay behavior.
+    pub fn set_always_on_top(&self, enabled: bool) {
+        if let Some(window) = self.0.borrow().as_ref() {
+            window.set_window_level(if enabled { WindowLevel::AlwaysOnTop } else { WindowLevel::Normal });
+        }
+    }
+}
+
 struct AppHandler {
     options: WindowOptions,
     viewport: Signal<Size>,
@@ -130,6 +167,9 @@ struct AppHandler {
     /// focus changes (which don't touch any `Signal`) can also trigger it.
     repaint: Rc<dyn Fn()>,
     _effect: Effect,
+    /// Called once, the first time the window is created (see `resumed`).
+    on_window_ready: Rc<dyn Fn(WindowHandle)>,
+    window_ready_notified: bool,
 }
 
 impl AppHandler {
@@ -173,6 +213,11 @@ impl ApplicationHandler for AppHandler {
         *self.shared_window.borrow_mut() = Some(window.clone());
         self.window = Some(window.clone());
         window.request_redraw();
+
+        if !self.window_ready_notified {
+            self.window_ready_notified = true;
+            (self.on_window_ready)(WindowHandle(self.shared_window.clone()));
+        }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
@@ -360,8 +405,16 @@ impl ApplicationHandler for AppHandler {
 /// changes; it must construct a fresh widget tree covering `viewport` each
 /// time (widgets are cheap, immutable descriptions — see
 /// `creamui_core::Widget`). `clear_color` is the color the window is wiped
-/// to before `build_ui`'s tree is painted.
-pub fn run(options: WindowOptions, clear_color: Color, build_ui: impl Fn(Size) -> BoxedWidget + 'static) {
+/// to before `build_ui`'s tree is painted. `on_window_ready` is called once,
+/// as soon as the window exists, with a [`WindowHandle`] for issuing
+/// window-level operations (resize, move, always-on-top) later — e.g. from
+/// a click handler.
+pub fn run(
+    options: WindowOptions,
+    clear_color: Color,
+    on_window_ready: impl Fn(WindowHandle) + 'static,
+    build_ui: impl Fn(Size) -> BoxedWidget + 'static,
+) {
     init_logging();
 
     let viewport = Signal::new(Size {
@@ -450,6 +503,8 @@ pub fn run(options: WindowOptions, clear_color: Color, build_ui: impl Fn(Size) -
         dragging: None,
         repaint,
         _effect: effect,
+        on_window_ready: Rc::new(on_window_ready),
+        window_ready_notified: false,
     };
     event_loop.run_app(&mut handler).expect("event loop exited with an error");
 }
