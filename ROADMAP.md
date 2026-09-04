@@ -33,6 +33,14 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
       (`softbuffer`, no GPU device involved) via `WindowOptions::backend`
       (`CWindowOptions::backend` over FFI), force-overridable at launch
       with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu` (`creamui-render::backend`)
+- [x] Multi-window-in-one-process: `AppBuilder` opens several windows on one
+      shared winit event loop, each with fully independent reactive/paint
+      state (`creamui_render::window::{AppHandler, WindowState}`), closing
+      the process only once the last window closes; GPU-backend windows
+      share one `wgpu::Instance` (`AppHandler::gpu_instance`) rather than
+      each paying driver-init cost — the motivating case is a desktop-shell
+      dock where one process per icon would multiply fixed per-process
+      overhead for no benefit. Rust-only for now — no FFI surface yet.
 - [x] ABI-stable C interface (`creamui-ffi`, builds as `cdylib`): opaque
       widget handles, `#[repr(C)]` options/colors, `creamui_run` with a
       C callback rebuilding the tree — verified end-to-end via a

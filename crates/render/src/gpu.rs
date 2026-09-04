@@ -72,7 +72,7 @@ impl GpuState {
         })
     }
 
-    pub fn new(window: Arc<Window>, instance: wgpu::Instance) -> Self {
+    pub fn new(window: Arc<Window>, instance: &wgpu::Instance) -> Self {
         let t0 = std::time::Instant::now();
         let size = window.inner_size();
         log::debug!("creamui-render: instance ready: {:?}", t0.elapsed());

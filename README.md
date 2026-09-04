@@ -86,6 +86,17 @@ Whatever the app requests can be force-overridden at launch, without a
 rebuild, by setting `CUI_OVERRIDE_RENDER_BACKEND=gpu` or `=cpu` — handy for
 testing the CPU path or working around a broken GPU driver.
 
+`creamui_render::run` opens a single window. For several windows sharing one
+process and event loop — e.g. a desktop-shell dock where each icon is its
+own window — use `AppBuilder` instead: `AppBuilder::new().window(...).window(...).run()`.
+Every window keeps fully independent reactive/paint state, and all
+GPU-backend windows share a single `wgpu::Instance` rather than each paying
+its own driver-init cost. Note this only amortizes the *instance*; each
+GPU-backend window still creates its own `wgpu::Device`, which is where most
+of the GPU backend's per-window memory actually goes — for a dock with many
+small windows, prefer `RenderBackend::Cpu` unless a given window specifically
+needs GPU compositing.
+
 Text layout uses a real `taffy` measure function (`creamui_core::Widget::measure`)
 backed by `fontdue`'s own line-width calculation, not a hand-rolled estimate —
 see `creamui-widgets::text_metrics`.

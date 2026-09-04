@@ -468,7 +468,7 @@ fn main() {
             resizable: 1,
             decorations: 1,
             transparent: 0,
-            backend: 0, // CUI_RENDER_BACKEND_GPU; override with CUI_OVERRIDE_RENDER_BACKEND=cpu
+            backend: 1, // CUI_RENDER_BACKEND_GPU; override with CUI_OVERRIDE_RENDER_BACKEND=cpu
         };
 
         let initial_theme = (api.theme_dark)();

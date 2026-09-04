@@ -13,4 +13,4 @@ mod window;
 
 pub use backend::RenderBackend;
 pub use painter::SkiaPainter;
-pub use window::{run, WindowHandle, WindowOptions};
+pub use window::{run, AppBuilder, WindowHandle, WindowOptions};
