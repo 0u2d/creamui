@@ -112,12 +112,23 @@ just bake the perf ceiling into every app that uses it.
       but linked dynamically — zero CreamUI crate dependencies, resolves
       every function via `libloading` at runtime, proving static vs.
       dynamic linking is the app's choice, not baked into the engine
-- [ ] Expand the C ABI further: theme-token access (currently
-      `creamui_button_new`/`creamui_themed_text_new` hardcode
-      `Theme::dark()`, so `hello_world_dynamic` can't demo the theme
-      toggle the static example does), full layout style control, more
-      widget kinds, window-level operations (resize, move, always-on-top)
-      for desktop shell use cases
+- [x] Expand the C ABI further: theme-token access (`CTheme` +
+      `creamui_theme_dark`/`creamui_theme_light`, threaded through
+      `creamui_themed_text_new`/`creamui_button_new`/etc. instead of a
+      hardcoded `Theme::dark()` — `hello_world_dynamic` now demos the same
+      runtime theme toggle the static example does), full layout style
+      control (`CStyle`/`CDimension`, `creamui_view_new_styled` and
+      style params on the text-input/slider/scroll-view constructors,
+      covering flex direction/alignment/size/padding/margin/gap/flex-grow-
+      shrink-basis), more widget kinds (`creamui_checkbox_new`,
+      `creamui_text_input_new`, `creamui_slider_new`,
+      `creamui_scroll_view_new`/`creamui_scroll_view_add_child`),
+      window-level operations (`creamui_run`'s new `on_window_ready`
+      callback hands back a `CWindowHandle` for `creamui_window_resize`/
+      `creamui_window_set_position`/`creamui_window_set_always_on_top`,
+      backed by a new `creamui_render::WindowHandle`) — verified by new
+      `creamui-ffi` `dlopen` tests and `hello_world_dynamic`'s theme-toggle
+      and always-on-top buttons
 
 ## Iteration 3 — declarative layer: `jsx!`
 
@@ -144,7 +155,22 @@ reactivity model.
 
 ## Iteration 4 — Windows support
 
-- [ ] `creamui-render` backend validation on Windows (winit + wgpu should
+- [~] `creamui-render` backend validation on Windows (winit + wgpu should
       mostly carry over; the bundled font removes what used to be a
-      Windows-specific font-path gap)
-- [ ] CI matrix covering Linux + Windows
+      Windows-specific font-path gap): reviewed the codebase for
+      Windows-portability landmines and found none needing a fix — `winit`/
+      `wgpu`/`tiny-skia`/`fontdue` are all cross-platform, the GPU backend
+      is picked automatically by `wgpu::Instance::new` (DX12/Vulkan on
+      Windows) with no OS-specific code path, the font is embedded via
+      `include_bytes!` rather than probed from OS font paths, and the only
+      pre-existing `cfg!(target_os = ...)` branches (picking `creamui.dll`
+      vs. `libcreamui.so`/`.dylib` in the dynamic-loading examples/tests)
+      already handle Windows. What's *not* done: this was validated by
+      reading, not by running on Windows — there's no Windows machine in
+      this environment, so nothing here has actually built or run there
+      yet; the CI matrix below is what closes that gap on the next push
+- [x] CI matrix covering Linux + Windows: `.github/workflows/ci.yml` builds
+      and tests the whole workspace on `ubuntu-latest` and `windows-latest`
+      on every push/PR to `main` — this is the first real Windows build the
+      engine will get, so treat its first run as the actual validation for
+      the item above, not this checkbox

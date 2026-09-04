@@ -5,14 +5,108 @@
 
 use libloading::{Library, Symbol};
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::os::raw::c_int;
 use std::sync::atomic::{AtomicI32, Ordering};
 
 #[repr(C)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 struct CColor {
     r: u8,
     g: u8,
     b: u8,
     a: u8,
+}
+
+/// Mirrors `creamui_ffi::CTheme` field-for-field.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CTheme {
+    surface: CColor,
+    surface_elevated: CColor,
+    surface_hover: CColor,
+    accent: CColor,
+    accent_hover: CColor,
+    accent_pressed: CColor,
+    text_primary: CColor,
+    text_secondary: CColor,
+    text_disabled: CColor,
+    border: CColor,
+    border_strong: CColor,
+    danger: CColor,
+    warning: CColor,
+    success: CColor,
+    radius_small: f32,
+    radius_medium: f32,
+    radius_large: f32,
+    spacing_small: f32,
+    spacing_medium: f32,
+    spacing_large: f32,
+}
+
+/// Mirrors `creamui_ffi::CDimension`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CDimension {
+    kind: u8,
+    value: f32,
+}
+
+const DIM_AUTO: CDimension = CDimension { kind: 0, value: 0.0 };
+const ALIGN_UNSET: u8 = 255;
+
+/// Mirrors `creamui_ffi::CStyle`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct CStyle {
+    flex_direction: u8,
+    justify_content: u8,
+    align_items: u8,
+    width: CDimension,
+    height: CDimension,
+    min_width: CDimension,
+    min_height: CDimension,
+    max_width: CDimension,
+    max_height: CDimension,
+    padding_left: f32,
+    padding_right: f32,
+    padding_top: f32,
+    padding_bottom: f32,
+    margin_left: CDimension,
+    margin_right: CDimension,
+    margin_top: CDimension,
+    margin_bottom: CDimension,
+    gap_row: f32,
+    gap_column: f32,
+    flex_grow: f32,
+    flex_shrink: f32,
+    flex_basis: CDimension,
+}
+
+fn default_style() -> CStyle {
+    CStyle {
+        flex_direction: 0,
+        justify_content: ALIGN_UNSET,
+        align_items: ALIGN_UNSET,
+        width: DIM_AUTO,
+        height: DIM_AUTO,
+        min_width: DIM_AUTO,
+        min_height: DIM_AUTO,
+        max_width: DIM_AUTO,
+        max_height: DIM_AUTO,
+        padding_left: 0.0,
+        padding_right: 0.0,
+        padding_top: 0.0,
+        padding_bottom: 0.0,
+        margin_left: DIM_AUTO,
+        margin_right: DIM_AUTO,
+        margin_top: DIM_AUTO,
+        margin_bottom: DIM_AUTO,
+        gap_row: 0.0,
+        gap_column: 0.0,
+        flex_grow: 0.0,
+        flex_shrink: 1.0,
+        flex_basis: DIM_AUTO,
+    }
 }
 
 fn cdylib_path() -> std::path::PathBuf {
@@ -87,13 +181,14 @@ fn button_click_callback_crosses_the_abi_boundary() {
     }
 
     unsafe {
+        let theme_dark: Symbol<unsafe extern "C" fn() -> CTheme> = lib.get(b"creamui_theme_dark").unwrap();
         let button_new: Symbol<
-            unsafe extern "C" fn(*const c_char, extern "C" fn(*mut c_void), *mut c_void) -> *mut c_void,
+            unsafe extern "C" fn(CTheme, *const c_char, extern "C" fn(*mut c_void), *mut c_void) -> *mut c_void,
         > = lib.get(b"creamui_button_new").unwrap();
         let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> = lib.get(b"creamui_widget_free").unwrap();
 
         let label = CString::new("Click via FFI").unwrap();
-        let button = button_new(label.as_ptr(), on_click, std::ptr::null_mut());
+        let button = button_new(theme_dark(), label.as_ptr(), on_click, std::ptr::null_mut());
         assert!(!button.is_null());
 
         // We only verify the widget was constructed and the symbol
@@ -124,5 +219,129 @@ fn signal_i32_get_reflects_set() {
         assert_eq!(get(signal), 42, "a dynamically-linked app needs this to build a working counter, since it has no Rust-side Signal of its own");
 
         free(signal);
+    }
+}
+
+#[test]
+fn theme_dark_and_light_expose_distinct_tokens() {
+    let path = cdylib_path();
+    let lib = unsafe { Library::new(&path) }.unwrap();
+
+    unsafe {
+        let theme_dark: Symbol<unsafe extern "C" fn() -> CTheme> = lib.get(b"creamui_theme_dark").unwrap();
+        let theme_light: Symbol<unsafe extern "C" fn() -> CTheme> = lib.get(b"creamui_theme_light").unwrap();
+
+        let dark = theme_dark();
+        let light = theme_light();
+        assert_ne!(dark.surface, light.surface, "dark/light themes must expose different tokens over the ABI");
+        assert_eq!(dark.radius_medium, 8.0, "radius tokens must cross the ABI boundary too, not just colors");
+    }
+}
+
+#[test]
+fn themed_text_and_button_use_the_caller_supplied_theme() {
+    let path = cdylib_path();
+    let lib = unsafe { Library::new(&path) }.unwrap();
+
+    unsafe {
+        let theme_light: Symbol<unsafe extern "C" fn() -> CTheme> = lib.get(b"creamui_theme_light").unwrap();
+        let themed_text_new: Symbol<unsafe extern "C" fn(CTheme, *const c_char) -> *mut c_void> =
+            lib.get(b"creamui_themed_text_new").unwrap();
+        let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> = lib.get(b"creamui_widget_free").unwrap();
+
+        let label = CString::new("Themed via FFI").unwrap();
+        let text = themed_text_new(theme_light(), label.as_ptr());
+        assert!(!text.is_null(), "hello_world_dynamic needs this to demo the theme toggle the static example has");
+        widget_free(text);
+    }
+}
+
+#[test]
+fn view_new_styled_accepts_full_layout_control() {
+    let path = cdylib_path();
+    let lib = unsafe { Library::new(&path) }.unwrap();
+
+    unsafe {
+        let view_new_styled: Symbol<unsafe extern "C" fn(CStyle) -> *mut c_void> =
+            lib.get(b"creamui_view_new_styled").unwrap();
+        let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> = lib.get(b"creamui_widget_free").unwrap();
+
+        let mut style = default_style();
+        style.flex_direction = 1; // column
+        style.width = CDimension { kind: 1, value: 240.0 };
+        style.height = CDimension { kind: 2, value: 0.5 };
+        style.padding_left = 8.0;
+        style.gap_row = 4.0;
+        style.flex_grow = 1.0;
+
+        let view = view_new_styled(style);
+        assert!(!view.is_null());
+        widget_free(view);
+    }
+}
+
+#[test]
+fn checkbox_slider_text_input_and_scroll_view_construct_over_the_abi() {
+    let path = cdylib_path();
+    let lib = unsafe { Library::new(&path) }.unwrap();
+
+    extern "C" fn noop_click(_userdata: *mut c_void) {}
+    extern "C" fn noop_change(_value: *const c_char, _userdata: *mut c_void) {}
+    extern "C" fn noop_slide(_value: f32, _userdata: *mut c_void) {}
+    extern "C" fn noop_scroll(_delta: f32, _userdata: *mut c_void) {}
+
+    unsafe {
+        let theme_dark: Symbol<unsafe extern "C" fn() -> CTheme> = lib.get(b"creamui_theme_dark").unwrap();
+        let checkbox_new: Symbol<
+            unsafe extern "C" fn(CTheme, c_int, extern "C" fn(*mut c_void), *mut c_void) -> *mut c_void,
+        > = lib.get(b"creamui_checkbox_new").unwrap();
+        let text_input_new: Symbol<
+            unsafe extern "C" fn(
+                CTheme,
+                CStyle,
+                *const c_char,
+                extern "C" fn(*const c_char, *mut c_void),
+                *mut c_void,
+            ) -> *mut c_void,
+        > = lib.get(b"creamui_text_input_new").unwrap();
+        let slider_new: Symbol<
+            unsafe extern "C" fn(CTheme, CStyle, f32, extern "C" fn(f32, *mut c_void), *mut c_void) -> *mut c_void,
+        > = lib.get(b"creamui_slider_new").unwrap();
+        let scroll_view_new: Symbol<
+            unsafe extern "C" fn(
+                CTheme,
+                CStyle,
+                f32,
+                extern "C" fn(f32, *mut c_void),
+                *mut c_void,
+            ) -> *mut c_void,
+        > = lib.get(b"creamui_scroll_view_new").unwrap();
+        let scroll_view_add_child: Symbol<unsafe extern "C" fn(*mut c_void, *mut c_void)> =
+            lib.get(b"creamui_scroll_view_add_child").unwrap();
+        let themed_text_new: Symbol<unsafe extern "C" fn(CTheme, *const c_char) -> *mut c_void> =
+            lib.get(b"creamui_themed_text_new").unwrap();
+        let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> = lib.get(b"creamui_widget_free").unwrap();
+
+        let theme = theme_dark();
+
+        let checkbox = checkbox_new(theme, 1, noop_click, std::ptr::null_mut());
+        assert!(!checkbox.is_null());
+        widget_free(checkbox);
+
+        let value = CString::new("hello").unwrap();
+        let text_input = text_input_new(theme, default_style(), value.as_ptr(), noop_change, std::ptr::null_mut());
+        assert!(!text_input.is_null());
+        widget_free(text_input);
+
+        let slider = slider_new(theme, default_style(), 0.5, noop_slide, std::ptr::null_mut());
+        assert!(!slider.is_null());
+        widget_free(slider);
+
+        let scroll_view = scroll_view_new(theme, default_style(), 0.0, noop_scroll, std::ptr::null_mut());
+        assert!(!scroll_view.is_null());
+        let item_label = CString::new("item").unwrap();
+        let item = themed_text_new(theme, item_label.as_ptr());
+        scroll_view_add_child(scroll_view, item);
+        widget_free(scroll_view);
     }
 }
