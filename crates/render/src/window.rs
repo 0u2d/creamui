@@ -7,6 +7,8 @@
 //! `RedrawRequested` handler only uploads the already-painted buffer to the
 //! GPU and presents it.
 
+use crate::backend::RenderBackend;
+use crate::cpu::CpuState;
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
 use creamui_core::{BoxedWidget, CursorIcon, Key, KeyInput, Point, Renderer, Scene, Size};
@@ -67,6 +69,11 @@ pub struct WindowOptions {
     pub resizable: bool,
     pub decorations: bool,
     pub transparent: bool,
+    /// Which backend composites the CPU-rasterized frame to the window:
+    /// GPU (`wgpu`, the default) or CPU-only (`softbuffer`). Can be
+    /// force-overridden at launch with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu`
+    /// regardless of what's set here — see [`RenderBackend::resolve`].
+    pub backend: RenderBackend,
 }
 
 impl Default for WindowOptions {
@@ -78,14 +85,15 @@ impl Default for WindowOptions {
             resizable: true,
             decorations: true,
             transparent: false,
+            backend: RenderBackend::default(),
         }
     }
 }
 
-/// Enables verbose logging when `CREAMUI_DEBUG=1` is set in the
-/// environment, without overriding an explicit `RUST_LOG`.
+/// Enables verbose logging when `CUI_DEBUG=1` is set in the environment,
+/// without overriding an explicit `RUST_LOG`.
 fn init_logging() {
-    if std::env::var("CREAMUI_DEBUG").as_deref() == Ok("1") && std::env::var("RUST_LOG").is_err() {
+    if std::env::var("CUI_DEBUG").as_deref() == Ok("1") && std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "creamui_render=debug,creamui_core=debug");
     }
     let _ = env_logger::try_init();
@@ -95,6 +103,23 @@ struct FrameState {
     painter: SkiaPainter,
     renderer: Renderer,
     scene: Option<Scene>,
+}
+
+/// Whichever backend is actually composing frames for this window, picked
+/// once in `resumed` per [`WindowOptions::backend`] (as resolved by
+/// [`RenderBackend::resolve`]).
+enum Presenter {
+    Gpu(GpuState),
+    Cpu(CpuState),
+}
+
+impl Presenter {
+    fn present(&mut self, rgba: &[u8], width: u32, height: u32) {
+        match self {
+            Presenter::Gpu(gpu) => gpu.present(rgba, width, height),
+            Presenter::Cpu(cpu) => cpu.present(rgba, width, height),
+        }
+    }
 }
 
 type SharedWindow = Rc<RefCell<Option<Arc<Window>>>>;
@@ -143,7 +168,7 @@ struct AppHandler {
     frame: Rc<RefCell<FrameState>>,
     shared_window: SharedWindow,
     window: Option<Arc<Window>>,
-    gpu: Option<GpuState>,
+    presenter: Option<Presenter>,
     pointer_pos: Point,
     /// Index into the current `Scene`'s focusables, if any widget has
     /// keyboard focus. Only stable while the widget tree's shape doesn't
@@ -175,7 +200,8 @@ struct AppHandler {
     /// The `wgpu::Instance`, created on a background thread started at the
     /// top of `run` so its ~100-200ms Windows loader/ICD cost overlaps with
     /// the initial UI build instead of blocking `resumed`. `take()`n the
-    /// first time `resumed` runs.
+    /// first time `resumed` runs. `None` when the resolved backend is
+    /// [`RenderBackend::Cpu`] — that startup cost is skipped entirely.
     gpu_instance: Option<wgpu::Instance>,
 }
 
@@ -225,19 +251,24 @@ impl ApplicationHandler for AppHandler {
         self.scale_factor.set(window.scale_factor());
         self.sync_viewport_from_window(&window);
 
-        let instance = self.gpu_instance.take().unwrap_or_else(GpuState::create_instance);
-        let mut gpu = GpuState::new(window.clone(), instance);
-        log::debug!("creamui-render: gpu state ready: {:?}", t0.elapsed());
+        let mut presenter = match self.options.backend {
+            RenderBackend::Gpu => {
+                let instance = self.gpu_instance.take().unwrap_or_else(GpuState::create_instance);
+                Presenter::Gpu(GpuState::new(window.clone(), instance))
+            }
+            RenderBackend::Cpu => Presenter::Cpu(CpuState::new(window.clone())),
+        };
+        log::debug!("creamui-render: {:?} presenter ready: {:?}", self.options.backend, t0.elapsed());
 
         // Present the already-painted first frame (built by the initial
         // `create_effect` run in `run`, before this window existed).
         {
             let frame = self.frame.borrow();
             let pixmap = &frame.painter.pixmap;
-            gpu.present(pixmap.data(), pixmap.width(), pixmap.height());
+            presenter.present(pixmap.data(), pixmap.width(), pixmap.height());
         }
         log::debug!("creamui-render: first frame presented: {:?}", t0.elapsed());
-        self.gpu = Some(gpu);
+        self.presenter = Some(presenter);
 
         *self.shared_window.borrow_mut() = Some(window.clone());
         self.window = Some(window.clone());
@@ -403,10 +434,10 @@ impl ApplicationHandler for AppHandler {
                 }
             }
             WindowEvent::RedrawRequested => {
-                let Some(gpu) = self.gpu.as_mut() else { return };
+                let Some(presenter) = self.presenter.as_mut() else { return };
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
-                gpu.present(pixmap.data(), pixmap.width(), pixmap.height());
+                presenter.present(pixmap.data(), pixmap.width(), pixmap.height());
                 if !self.first_present_logged {
                     self.first_present_logged = true;
                     log::debug!("creamui-render: first present done: {:?}", self.t_run.elapsed());
@@ -442,7 +473,7 @@ impl ApplicationHandler for AppHandler {
 /// window-level operations (resize, move, always-on-top) later — e.g. from
 /// a click handler.
 pub fn run(
-    options: WindowOptions,
+    mut options: WindowOptions,
     clear_color: Color,
     on_window_ready: impl Fn(WindowHandle) + 'static,
     build_ui: impl Fn(Size) -> BoxedWidget + 'static,
@@ -451,11 +482,20 @@ pub fn run(
     let t_run = std::time::Instant::now();
     log::debug!("creamui-render: run() start");
 
+    // The app's requested backend can be force-overridden at launch via
+    // `CUI_OVERRIDE_RENDER_BACKEND` — resolve once, up front, so every later
+    // decision (whether to pay GPU init cost at all, which presenter
+    // `resumed` builds) uses the same value.
+    options.backend = RenderBackend::resolve(options.backend);
+    log::debug!("creamui-render: render backend: {:?}", options.backend);
+
     // `wgpu::Instance::new` doesn't depend on the window and costs ~100-200ms
     // on Windows (Vulkan/DX12 loader + ICD enumeration) — kick it off now so
     // it overlaps with the initial UI build below instead of sitting on
-    // `resumed`'s critical path.
-    let gpu_instance_handle = std::thread::spawn(GpuState::create_instance);
+    // `resumed`'s critical path. Skipped entirely for the CPU backend, which
+    // never touches wgpu.
+    let gpu_instance_handle =
+        matches!(options.backend, RenderBackend::Gpu).then(|| std::thread::spawn(GpuState::create_instance));
 
     let viewport = Signal::new(Size {
         width: options.width as f32,
@@ -472,7 +512,7 @@ pub fn run(
     let focused: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
     let caret_visible: Rc<Cell<bool>> = Rc::new(Cell::new(true));
 
-    let dump_frame_path = std::env::var("CREAMUI_DUMP_FRAME").ok();
+    let dump_frame_path = std::env::var("CUI_DUMP_FRAME").ok();
 
     // Rebuilds the UI, recomputes layout, and repaints. Runs both reactively
     // (wrapped in `create_effect` below, whenever a `Signal` it reads
@@ -510,7 +550,7 @@ pub fn run(
             // headless verification where no on-screen compositor is available.
             if let Some(path) = &dump_frame_path {
                 if let Err(err) = frame.painter.pixmap.save_png(path) {
-                    log::warn!("creamui-render: failed to write CREAMUI_DUMP_FRAME to {path}: {err}");
+                    log::warn!("creamui-render: failed to write CUI_DUMP_FRAME to {path}: {err}");
                 }
             }
             drop(frame);
@@ -529,8 +569,11 @@ pub fn run(
     log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
-    let gpu_instance = gpu_instance_handle.join().expect("gpu instance creation thread panicked");
-    log::debug!("creamui-render: gpu instance ready: {:?}", t_run.elapsed());
+    let gpu_instance = gpu_instance_handle.map(|handle| {
+        let instance = handle.join().expect("gpu instance creation thread panicked");
+        log::debug!("creamui-render: gpu instance ready: {:?}", t_run.elapsed());
+        instance
+    });
 
     let mut handler = AppHandler {
         options,
@@ -539,7 +582,7 @@ pub fn run(
         frame,
         shared_window,
         window: None,
-        gpu: None,
+        presenter: None,
         pointer_pos: Point::default(),
         focused,
         caret_visible,
@@ -552,7 +595,7 @@ pub fn run(
         window_ready_notified: false,
         t_run,
         first_present_logged: false,
-        gpu_instance: Some(gpu_instance),
+        gpu_instance,
     };
     event_loop.run_app(&mut handler).expect("event loop exited with an error");
 }

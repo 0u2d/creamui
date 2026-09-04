@@ -26,8 +26,13 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
 - [x] Reactive render loop: signal change → effect reruns → repaint →
       redraw request; click hit-testing dispatches to widget handlers,
       which mutate signals and trigger the next reactive re-render
-- [x] `CREAMUI_DEBUG=1` verbose logging; `CREAMUI_DUMP_FRAME=<path>` frame
+- [x] `CUI_DEBUG=1` verbose logging; `CUI_DUMP_FRAME=<path>` frame
       dump for headless visual verification
+- [x] Selectable GPU/CPU render backend: the embedding app picks
+      `RenderBackend::Gpu` (default, `wgpu`) or `RenderBackend::Cpu`
+      (`softbuffer`, no GPU device involved) via `WindowOptions::backend`
+      (`CWindowOptions::backend` over FFI), force-overridable at launch
+      with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu` (`creamui-render::backend`)
 - [x] ABI-stable C interface (`creamui-ffi`, builds as `cdylib`): opaque
       widget handles, `#[repr(C)]` options/colors, `creamui_run` with a
       C callback rebuilding the tree — verified end-to-end via a

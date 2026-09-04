@@ -56,7 +56,7 @@ static one only — the dynamic ABI doesn't expose theme tokens yet, see
 makes to binary size: the dynamic build carries none of `wgpu`/`winit`/
 `taffy` itself — that all lives in `libcreamui.so`.
 
-Set `CREAMUI_DEBUG=1` for verbose logging, or `CREAMUI_DUMP_FRAME=<path.png>`
+Set `CUI_DEBUG=1` for verbose logging, or `CUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
 no compositor attached).
 
@@ -73,11 +73,18 @@ built `cdylib` and drives it purely through its C ABI.
 
 ## How rendering works (MVP)
 
-Shape and text rasterization run on the CPU via `tiny-skia` and `fontdue`;
-the result is uploaded to a GPU texture and composited to the window
-surface via a single textured `wgpu` triangle. This keeps the MVP's
-rendering code small while still presenting through the GPU. A fully
-GPU-driven vector renderer is on the roadmap.
+Shape and text rasterization always run on the CPU via `tiny-skia` and
+`fontdue`. What happens to that buffer next is chosen by the embedding app
+at window-creation time via `WindowOptions::backend`
+(`CWindowOptions::backend` over FFI): `RenderBackend::Gpu` (the default)
+uploads it to a GPU texture and composites it via a single textured `wgpu`
+triangle; `RenderBackend::Cpu` blits it straight to the window surface with
+`softbuffer`, skipping GPU init entirely. Either way this keeps the MVP's
+rendering code small. A fully GPU-driven vector renderer is on the roadmap.
+
+Whatever the app requests can be force-overridden at launch, without a
+rebuild, by setting `CUI_OVERRIDE_RENDER_BACKEND=gpu` or `=cpu` — handy for
+testing the CPU path or working around a broken GPU driver.
 
 Text layout uses a real `taffy` measure function (`creamui_core::Widget::measure`)
 backed by `fontdue`'s own line-width calculation, not a hand-rolled estimate —

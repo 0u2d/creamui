@@ -150,6 +150,7 @@ struct CWindowOptions {
     resizable: c_int,
     decorations: c_int,
     transparent: c_int,
+    backend: c_int,
 }
 
 type ViewNewStyledFn = unsafe extern "C" fn(CStyle) -> *mut c_void;
@@ -467,6 +468,7 @@ fn main() {
             resizable: 1,
             decorations: 1,
             transparent: 0,
+            backend: 0, // CUI_RENDER_BACKEND_GPU; override with CUI_OVERRIDE_RENDER_BACKEND=cpu
         };
 
         let initial_theme = (api.theme_dark)();

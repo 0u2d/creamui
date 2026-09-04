@@ -509,6 +509,12 @@ impl From<CStyle> for Style {
     }
 }
 
+/// Render backend requested via [`CWindowOptions::backend`]: `0` for GPU
+/// (`wgpu`, the default), `1` for CPU-only (`softbuffer`). Can still be
+/// force-overridden at launch with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu`.
+pub const CUI_RENDER_BACKEND_GPU: c_int = 0;
+pub const CUI_RENDER_BACKEND_CPU: c_int = 1;
+
 /// Window creation options in the C ABI. `title` must be a valid
 /// NUL-terminated UTF-8 string for the duration of the [`creamui_run`] call.
 #[repr(C)]
@@ -519,6 +525,8 @@ pub struct CWindowOptions {
     pub resizable: c_int,
     pub decorations: c_int,
     pub transparent: c_int,
+    /// One of `CUI_RENDER_BACKEND_GPU` / `CUI_RENDER_BACKEND_CPU`.
+    pub backend: c_int,
 }
 
 enum WidgetKind {
@@ -998,6 +1006,11 @@ pub unsafe extern "C" fn creamui_run(
         resizable: options.resizable != 0,
         decorations: options.decorations != 0,
         transparent: options.transparent != 0,
+        backend: if options.backend == CUI_RENDER_BACKEND_CPU {
+            creamui_render::RenderBackend::Cpu
+        } else {
+            creamui_render::RenderBackend::Gpu
+        },
     };
 
     creamui_render::run(
