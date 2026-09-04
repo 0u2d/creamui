@@ -172,6 +172,11 @@ struct AppHandler {
     window_ready_notified: bool,
     t_run: Instant,
     first_present_logged: bool,
+    /// The `wgpu::Instance`, created on a background thread started at the
+    /// top of `run` so its ~100-200ms Windows loader/ICD cost overlaps with
+    /// the initial UI build instead of blocking `resumed`. `take()`n the
+    /// first time `resumed` runs.
+    gpu_instance: Option<wgpu::Instance>,
 }
 
 impl AppHandler {
@@ -195,18 +200,21 @@ impl ApplicationHandler for AppHandler {
             .with_inner_size(winit::dpi::LogicalSize::new(self.options.width, self.options.height))
             .with_resizable(self.options.resizable)
             .with_decorations(self.options.decorations)
-            .with_transparent(self.options.transparent)
-            // Stay hidden until the first frame is painted and presented
-            // below, so the OS never shows an empty/default-colored
-            // surface before CreamUI's own content is on screen.
-            .with_visible(false);
+            .with_transparent(self.options.transparent);
 
         let window = Arc::new(
             event_loop
                 .create_window(attrs)
                 .expect("failed to create window"),
         );
-        log::debug!("creamui-render: window created: {:?}", t0.elapsed());
+        // Show the window the instant it exists rather than waiting for GPU
+        // init (instance/adapter/device/pipeline — several hundred ms on
+        // Windows) to finish. That init cost doesn't go away, but the
+        // window appearing immediately is what "the app feels slow to
+        // launch" is actually about; the OS-default surface briefly shown
+        // underneath gets replaced by the real first frame a moment later.
+        window.set_visible(true);
+        log::debug!("creamui-render: window created and shown: {:?}", t0.elapsed());
         log::debug!(
             "creamui-render: window created ({}x{} logical, scale factor {})",
             self.options.width,
@@ -217,20 +225,18 @@ impl ApplicationHandler for AppHandler {
         self.scale_factor.set(window.scale_factor());
         self.sync_viewport_from_window(&window);
 
-        let mut gpu = GpuState::new(window.clone());
+        let instance = self.gpu_instance.take().unwrap_or_else(GpuState::create_instance);
+        let mut gpu = GpuState::new(window.clone(), instance);
         log::debug!("creamui-render: gpu state ready: {:?}", t0.elapsed());
 
         // Present the already-painted first frame (built by the initial
-        // `create_effect` run in `run`, before this window existed) while
-        // still hidden, then reveal — so the window never shows a blank
-        // frame before its real content.
+        // `create_effect` run in `run`, before this window existed).
         {
             let frame = self.frame.borrow();
             let pixmap = &frame.painter.pixmap;
             gpu.present(pixmap.data(), pixmap.width(), pixmap.height());
         }
-        window.set_visible(true);
-        log::debug!("creamui-render: window shown: {:?}", t0.elapsed());
+        log::debug!("creamui-render: first frame presented: {:?}", t0.elapsed());
         self.gpu = Some(gpu);
 
         *self.shared_window.borrow_mut() = Some(window.clone());
@@ -445,6 +451,12 @@ pub fn run(
     let t_run = std::time::Instant::now();
     log::debug!("creamui-render: run() start");
 
+    // `wgpu::Instance::new` doesn't depend on the window and costs ~100-200ms
+    // on Windows (Vulkan/DX12 loader + ICD enumeration) — kick it off now so
+    // it overlaps with the initial UI build below instead of sitting on
+    // `resumed`'s critical path.
+    let gpu_instance_handle = std::thread::spawn(GpuState::create_instance);
+
     let viewport = Signal::new(Size {
         width: options.width as f32,
         height: options.height as f32,
@@ -517,6 +529,9 @@ pub fn run(
     log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
+    let gpu_instance = gpu_instance_handle.join().expect("gpu instance creation thread panicked");
+    log::debug!("creamui-render: gpu instance ready: {:?}", t_run.elapsed());
+
     let mut handler = AppHandler {
         options,
         viewport,
@@ -537,6 +552,7 @@ pub fn run(
         window_ready_notified: false,
         t_run,
         first_present_logged: false,
+        gpu_instance: Some(gpu_instance),
     };
     event_loop.run_app(&mut handler).expect("event loop exited with an error");
 }

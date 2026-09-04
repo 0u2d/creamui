@@ -55,18 +55,27 @@ pub struct GpuState {
 }
 
 impl GpuState {
-    pub fn new(window: Arc<Window>) -> Self {
-        let t0 = std::time::Instant::now();
-        let size = window.inner_size();
-        // Skip probing secondary backends (GL, DX11) — they're slower to
-        // enumerate (driver/ICD loading) and this MVP pipeline (a single
-        // textured blit) has no feature that needs them over the native
-        // primary backend (Vulkan/Metal/DX12).
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+    /// Skip probing secondary backends (GL, DX11) — they're slower to
+    /// enumerate (driver/ICD loading) and this MVP pipeline (a single
+    /// textured blit) has no feature that needs them over the native
+    /// primary backend (Vulkan/Metal/DX12).
+    ///
+    /// Takes ~100-200ms on Windows (Vulkan/DX12 loader + ICD enumeration).
+    /// Callers should create this as early as possible — e.g. on a
+    /// background thread started before the window even exists — since it
+    /// has no dependency on the window and can overlap with other startup
+    /// work instead of sitting on the critical path in [`GpuState::new`].
+    pub fn create_instance() -> wgpu::Instance {
+        wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
             ..Default::default()
-        });
-        log::debug!("creamui-render: instance created: {:?}", t0.elapsed());
+        })
+    }
+
+    pub fn new(window: Arc<Window>, instance: wgpu::Instance) -> Self {
+        let t0 = std::time::Instant::now();
+        let size = window.inner_size();
+        log::debug!("creamui-render: instance ready: {:?}", t0.elapsed());
         let surface = instance
             .create_surface(window.clone())
             .expect("failed to create GPU surface for window");

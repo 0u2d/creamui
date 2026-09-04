@@ -81,6 +81,118 @@ pub unsafe extern "C" fn creamui_signal_i32_free(signal: *mut CSignalI32) {
     }
 }
 
+/// Opaque handle to a reactive `f32` value. Same semantics as
+/// [`CSignalI32`], for widgets like [`creamui_slider_new`] and
+/// [`creamui_scroll_view_new`] that read/write floats.
+pub struct CSignalF32(Signal<f32>);
+
+/// Creates a reactive `f32` signal with an initial value.
+#[no_mangle]
+pub extern "C" fn creamui_signal_f32_new(initial: f32) -> *mut CSignalF32 {
+    Box::into_raw(Box::new(CSignalF32(Signal::new(initial))))
+}
+
+/// Reads the current value, subscribing the enclosing render (if any) to
+/// future [`creamui_signal_f32_set`] calls.
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from [`creamui_signal_f32_new`]
+/// that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_f32_get(signal: *const CSignalF32) -> f32 {
+    (*signal).0.get()
+}
+
+/// Writes a new value, triggering a reactive re-render in anything that
+/// previously read this signal via [`creamui_signal_f32_get`].
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from [`creamui_signal_f32_new`]
+/// that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_f32_set(signal: *const CSignalF32, value: f32) {
+    (*signal).0.set(value);
+}
+
+/// Frees a signal created with [`creamui_signal_f32_new`].
+///
+/// # Safety
+/// Same contract as [`creamui_signal_i32_free`], for a [`creamui_signal_f32_new`]
+/// pointer.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_f32_free(signal: *mut CSignalF32) {
+    if !signal.is_null() {
+        drop(Box::from_raw(signal));
+    }
+}
+
+/// Opaque handle to a reactive `String` value, e.g. for a
+/// [`creamui_text_input_new`]'s current value. Same "read subscribes, write
+/// triggers a re-render" semantics as [`CSignalI32`].
+pub struct CSignalString {
+    signal: Signal<String>,
+    /// Backs the pointer [`creamui_signal_string_get`] returns — owned here
+    /// so it stays valid until the next call on this signal, rather than
+    /// dangling the instant a temporary `CString` would otherwise drop.
+    cache: std::cell::RefCell<CString>,
+}
+
+/// Creates a reactive `String` signal with an initial value.
+///
+/// # Safety
+/// `initial` must be a valid NUL-terminated UTF-8 string.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_string_new(initial: *const c_char) -> *mut CSignalString {
+    let initial = cstr_to_string(initial);
+    let cache = CString::new(initial.clone()).unwrap_or_default();
+    Box::into_raw(Box::new(CSignalString {
+        signal: Signal::new(initial),
+        cache: std::cell::RefCell::new(cache),
+    }))
+}
+
+/// Reads the current value, subscribing the enclosing render (if any) to
+/// future [`creamui_signal_string_set`] calls. The returned pointer is valid
+/// only until the next call to [`creamui_signal_string_get`],
+/// [`creamui_signal_string_set`], or [`creamui_signal_string_free`] on this
+/// same signal — copy it out before then if it needs to outlive that.
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from
+/// [`creamui_signal_string_new`] that has not been freed.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_string_get(signal: *const CSignalString) -> *const c_char {
+    let signal = &*signal;
+    let value = signal.signal.get();
+    let mut cache = signal.cache.borrow_mut();
+    *cache = CString::new(value).unwrap_or_default();
+    cache.as_ptr()
+}
+
+/// Writes a new value, triggering a reactive re-render in anything that
+/// previously read this signal via [`creamui_signal_string_get`].
+///
+/// # Safety
+/// `signal` must be a valid, non-null pointer from
+/// [`creamui_signal_string_new`] that has not been freed. `value` must be a
+/// valid NUL-terminated UTF-8 string.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_string_set(signal: *const CSignalString, value: *const c_char) {
+    (*signal).signal.set(cstr_to_string(value));
+}
+
+/// Frees a signal created with [`creamui_signal_string_new`].
+///
+/// # Safety
+/// Same contract as [`creamui_signal_i32_free`], for a
+/// [`creamui_signal_string_new`] pointer.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_signal_string_free(signal: *mut CSignalString) {
+    if !signal.is_null() {
+        drop(Box::from_raw(signal));
+    }
+}
+
 /// A color in the C ABI: identical layout to `creamui_theme::Color`.
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -328,8 +440,13 @@ pub struct CStyle {
 }
 
 /// Returns a [`CStyle`] matching `Style::default()`: row direction, no
-/// forced alignment, auto size/margin, zero padding/gap, `flex_grow: 0`,
+/// forced alignment, auto size, zero margin/padding/gap, `flex_grow: 0`,
 /// `flex_shrink: 1`, `flex_basis: auto`.
+///
+/// Margin is zero (not auto) to match `taffy::Style::default()` — an auto
+/// margin on the main axis acts as a flexible spacer that absorbs leftover
+/// flex space, which would silently defeat a parent's `gap`/`justify_content`
+/// for any child using this default unmodified.
 #[no_mangle]
 pub extern "C" fn creamui_style_default() -> CStyle {
     CStyle {
@@ -346,10 +463,10 @@ pub extern "C" fn creamui_style_default() -> CStyle {
         padding_right: 0.0,
         padding_top: 0.0,
         padding_bottom: 0.0,
-        margin_left: CDimension::AUTO,
-        margin_right: CDimension::AUTO,
-        margin_top: CDimension::AUTO,
-        margin_bottom: CDimension::AUTO,
+        margin_left: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
+        margin_right: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
+        margin_top: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
+        margin_bottom: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
         gap_row: 0.0,
         gap_column: 0.0,
         flex_grow: 0.0,
@@ -576,6 +693,36 @@ pub unsafe extern "C" fn creamui_themed_text_new(theme: CTheme, text: *const c_c
     let text = cstr_to_string(text);
     let theme: Theme = theme.into();
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text)));
+    Box::into_raw(Box::new(widget))
+}
+
+/// Creates a themed text label using `theme`'s secondary (muted) text color
+/// — e.g. for captions or de-emphasized helper text.
+///
+/// # Safety
+/// `text` must be a valid NUL-terminated UTF-8 string.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_themed_text_secondary_new(theme: CTheme, text: *const c_char) -> *mut CWidget {
+    let text = cstr_to_string(text);
+    let theme: Theme = theme.into();
+    let widget = CWidget(WidgetKind::ThemedText(ThemedText::secondary(&theme, text)));
+    Box::into_raw(Box::new(widget))
+}
+
+/// Same as [`creamui_themed_text_new`], but with an explicit font size in
+/// logical pixels instead of the default 14.0.
+///
+/// # Safety
+/// `text` must be a valid NUL-terminated UTF-8 string.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_themed_text_new_sized(
+    theme: CTheme,
+    text: *const c_char,
+    font_size: f32,
+) -> *mut CWidget {
+    let text = cstr_to_string(text);
+    let theme: Theme = theme.into();
+    let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text).font_size(font_size)));
     Box::into_raw(Box::new(widget))
 }
 
