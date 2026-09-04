@@ -78,3 +78,13 @@ the result is uploaded to a GPU texture and composited to the window
 surface via a single textured `wgpu` triangle. This keeps the MVP's
 rendering code small while still presenting through the GPU. A fully
 GPU-driven vector renderer is on the roadmap.
+
+Text layout uses a real `taffy` measure function (`creamui_core::Widget::measure`)
+backed by `fontdue`'s own line-width calculation, not a hand-rolled estimate —
+see `creamui-widgets::text_metrics`.
+
+## Credits
+
+CreamUI bundles [DejaVu Sans](https://dejavu-fonts.github.io/) as its
+default font (`assets/fonts/DejaVuSans.ttf`), licensed under the permissive
+Bitstream Vera license — see `assets/fonts/DejaVuSans-LICENSE.txt`.

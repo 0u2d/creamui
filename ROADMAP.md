@@ -38,7 +38,7 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
       test (`creamui-widgets/tests/integration.rs`) driving a real
       widget tree through layout, paint, and a simulated click
 
-## Iteration 2 — up next: foundations for scale
+## Iteration 2 — foundations for scale (nearly done)
 
 The important blocker to clear before a declarative/JSX layer is worth
 building: right now every signal change rebuilds the *entire* widget tree
@@ -61,13 +61,48 @@ just bake the perf ceiling into every app that uses it.
       path as any other signal — no special-casing needed in widgets
       (`creamui-theme`, 2 unit tests; demoed by a theme-toggle button in
       `examples/hello_world`)
-- [ ] Proper text shaping/measurement via `taffy`'s measure/context API
-      instead of the current heuristic width estimate in
-      `creamui-widgets::text_metrics`
-- [ ] Bundle a default font instead of probing system font paths
-- [ ] More headless/themed widgets: checkbox, text input, slider, scroll view
-- [ ] Keyboard input and focus handling
-- [ ] DPI/scale-factor awareness (currently assumes scale factor 1.0)
+- [x] Proper text shaping/measurement via `taffy`'s real measure/context API
+      (`Widget::measure`, `TaffyTree<MeasureFn>`, `compute_layout_with_measure`)
+      instead of baking a heuristic width into `Style` — width now comes
+      from `fontdue`'s own line-width calculation (`max_width - line.padding`),
+      so it matches exactly what the renderer does at paint time instead of
+      an approximation with a fudge factor (`creamui-widgets::text_metrics`,
+      2 unit tests)
+- [x] Bundle a default font instead of probing system font paths: DejaVu
+      Sans is embedded via `include_bytes!` (`assets/fonts/`, Bitstream
+      Vera license — see `assets/fonts/DejaVuSans-LICENSE.txt`) in both
+      `creamui-render` and `creamui-widgets`, so text rendering no longer
+      depends on what's installed on the target machine
+- [x] More headless/themed widgets: `Checkbox`/`RawCheckbox`,
+      `TextInput`/`RawTextInput`, `Slider`/`RawSlider`, and
+      `ScrollView`/`RawScrollView` — same "caller owns the state via a
+      `Signal`, widget only exposes a change callback" pattern as `Button`
+      throughout (5 integration tests: toggle, focus+typing+backspace,
+      proportional drag, and scroll-clipped hit-testing)
+- [x] Real clipping in the render pipeline (what made `ScrollView` possible):
+      `Widget::clips_children`/`scroll_offset`/`on_scroll` (`creamui-core`),
+      `Painter::push_clip`/`pop_clip` (default no-op; `SkiaPainter`
+      implements it with a stack of `tiny_skia::Mask`s, each already
+      intersected with its parent). `Scene` intersects every widget's own
+      hit/focus/drag/scroll rect against the ambient clip before
+      registering it, so content scrolled out of view is provably
+      unclickable, not just invisible — see the `Rect::intersect` unit
+      tests and the `scroll_view_clips_hit_testing_*` integration test
+- [x] Keyboard input and focus handling: `Widget::focusable`/`on_key`/
+      `on_drag` (`creamui-core`), with `Scene` collecting focusable and
+      draggable hit-regions alongside click hits during paint. A click
+      inside a focusable widget's rect gives it focus (elsewhere clears
+      it); `creamui-render` translates winit's `KeyEvent` into a
+      backend-agnostic `Key` enum and dispatches it to whichever widget is
+      currently focused. Indices are positional (stable only while the
+      tree's shape doesn't change — no keyed focus tracking yet, same
+      caveat as the retained-tree diffing above)
+- [x] DPI/scale-factor awareness: widgets are laid out and painted in
+      logical pixels; `creamui-render` tracks the window's `scale_factor`
+      as its own `Signal` (reacting to `WindowEvent::ScaleFactorChanged`),
+      converts pointer coordinates from physical to logical for hit-testing,
+      and `SkiaPainter` scales every paint call so the backing pixmap/GPU
+      texture stay sized in physical pixels for crisp HiDPI output
 - [x] Expose reactive state across the C ABI (`creamui_signal_i32_*`): a
       dynamically-linked app has no Rust-side `Signal`, so without this a
       C click handler had no way to trigger a re-render at all — verified
@@ -110,5 +145,6 @@ reactivity model.
 ## Iteration 4 — Windows support
 
 - [ ] `creamui-render` backend validation on Windows (winit + wgpu should
-      mostly carry over; font probing needs a Windows path list)
+      mostly carry over; the bundled font removes what used to be a
+      Windows-specific font-path gap)
 - [ ] CI matrix covering Linux + Windows

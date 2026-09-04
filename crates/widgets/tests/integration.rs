@@ -3,16 +3,18 @@
 //! painting and click hit-testing work together.
 
 use creamui_core::layout::{AlignItems, JustifyContent, Style};
-use creamui_core::{render_frame, Painter, Point, Rect, Size, TextAlign};
+use creamui_core::{render_frame, CursorIcon, Key, KeyInput, Painter, Point, Rect, Renderer, Size, TextAlign};
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
-use creamui_widgets::raw::RawView;
-use creamui_widgets::themed::Button;
+use creamui_widgets::raw::{RawButton, RawView};
+use creamui_widgets::themed::{Button, Checkbox, ScrollView, Slider, Text, TextInput};
 
 #[derive(Default)]
 struct RecordingPainter {
     filled_rects: Vec<(Rect, Color)>,
+    stroked_rects: Vec<(Rect, Color)>,
     texts: Vec<String>,
+    text_rects: Vec<Rect>,
 }
 
 impl Painter for RecordingPainter {
@@ -20,10 +22,13 @@ impl Painter for RecordingPainter {
         self.filled_rects.push((rect, color));
     }
 
-    fn stroke_rect(&mut self, _rect: Rect, _color: Color, _width: f32, _corner_radius: f32) {}
+    fn stroke_rect(&mut self, rect: Rect, color: Color, _width: f32, _corner_radius: f32) {
+        self.stroked_rects.push((rect, color));
+    }
 
-    fn fill_text(&mut self, _rect: Rect, text: &str, _color: Color, _font_size: f32, _align: TextAlign) {
+    fn fill_text(&mut self, rect: Rect, text: &str, _color: Color, _font_size: f32, _align: TextAlign) {
         self.texts.push(text.to_string());
+        self.text_rects.push(rect);
     }
 }
 
@@ -79,4 +84,278 @@ fn button_paints_and_responds_to_clicks() {
         scene.hit_test(Point { x: 0.0, y: 0.0 }).is_none(),
         "clicking far outside the button should not hit anything"
     );
+}
+
+/// Regression test: `themed::Text` wraps `raw::RawText`, and every trait
+/// method it doesn't explicitly forward silently falls back to
+/// `Widget`'s default — which, for `measure`, is "no intrinsic size".
+/// `RawText` used directly (e.g. inside `Button`) always worked; this
+/// specifically catches the themed wrapper forgetting to forward
+/// `measure`, which collapsed every `Text` widget's layout box to zero
+/// and visually stacked its glyphs one per line.
+#[test]
+fn themed_text_reports_a_real_intrinsic_width() {
+    let theme = Theme::dark();
+    // An auto-sized (hug-content) row: without a working `measure`, the
+    // text node's layout box collapses to ~0 width.
+    let root = RawView::new(creamui_widgets::layout::row(0.0))
+        .child(Box::new(Text::new(&theme, "Hello, CreamUI!").font_size(28.0)));
+
+    let mut painter = RecordingPainter::default();
+    render_frame(Box::new(root), Size { width: 800.0, height: 200.0 }, &mut painter);
+
+    assert_eq!(painter.texts, vec!["Hello, CreamUI!".to_string()]);
+    assert!(
+        painter.text_rects[0].width > 100.0,
+        "themed Text should measure a real width for a 28px heading, got {:?}",
+        painter.text_rects[0]
+    );
+}
+
+#[test]
+fn checkbox_toggles_on_click_and_repaints_accordingly() {
+    let theme = Theme::dark();
+    let checked = Signal::new(false);
+
+    let build = |checked: Signal<bool>| {
+        let checked_for_click = checked.clone();
+        let root_style = Style {
+            justify_content: Some(JustifyContent::Center),
+            align_items: Some(AlignItems::Center),
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(200.0),
+                height: creamui_core::layout::Dimension::Length(200.0),
+            },
+            ..Default::default()
+        };
+        RawView::new(root_style).child(Box::new(Checkbox::new(&theme, checked.get(), move || {
+            checked_for_click.update(|c| *c = !*c);
+        })))
+    };
+
+    let mut painter = RecordingPainter::default();
+    let size = Size { width: 200.0, height: 200.0 };
+    let scene = render_frame(Box::new(build(checked.clone())), size, &mut painter);
+
+    // Unchecked: painted as an outline, not a fill.
+    assert!(painter.stroked_rects.iter().any(|(_, color)| *color == theme.border_strong));
+    assert!(!painter.filled_rects.iter().any(|(_, color)| *color == theme.accent));
+
+    let checkbox_rect = painter.stroked_rects[0].0;
+    let center = Point {
+        x: checkbox_rect.x + checkbox_rect.width / 2.0,
+        y: checkbox_rect.y + checkbox_rect.height / 2.0,
+    };
+    scene.hit_test(center).expect("click inside checkbox should hit")();
+    assert!(checked.get(), "click should toggle the backing signal");
+
+    // Re-render with the now-checked state: painted as a fill, not an outline.
+    let mut painter2 = RecordingPainter::default();
+    render_frame(Box::new(build(checked.clone())), size, &mut painter2);
+    assert!(painter2.filled_rects.iter().any(|(_, color)| *color == theme.accent));
+}
+
+#[test]
+fn text_input_is_focusable_and_types_and_deletes_characters() {
+    let theme = Theme::dark();
+    let value = Signal::new(String::new());
+
+    // Mirrors what `creamui_render::window` actually does: rebuild the tree
+    // and fetch a fresh `on_key` from the new `Scene` after every keystroke,
+    // since (like `Button`'s `on_click`) `on_key` closures capture the value
+    // as of the render that produced them.
+    let build = |value: Signal<String>| {
+        let value_for_change = value.clone();
+        RawView::new(creamui_widgets::layout::row(0.0))
+            .child(Box::new(TextInput::new(&theme, value.get(), move |next| value_for_change.set(next))))
+    };
+    let size = Size { width: 400.0, height: 100.0 };
+
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(Box::new(build(value.clone())), size, &mut painter);
+    let input_rect = painter
+        .stroked_rects
+        .iter()
+        .find(|(_, color)| *color == theme.border)
+        .map(|(rect, _)| *rect)
+        .expect("text input border rect");
+    let center = Point {
+        x: input_rect.x + input_rect.width / 2.0,
+        y: input_rect.y + input_rect.height / 2.0,
+    };
+    let index = scene.focus_hit_test(center).expect("text input should be focusable");
+    assert!(
+        scene.focus_hit_test(Point { x: 399.0, y: 99.0 }).is_none(),
+        "a point far from the (top-left-positioned, 200x36) input should not be focusable"
+    );
+
+    scene.on_key_at(index).unwrap().clone()(KeyInput { key: Key::Char('h') });
+    assert_eq!(value.get(), "h");
+
+    let scene = render_frame(Box::new(build(value.clone())), size, &mut RecordingPainter::default());
+    scene.on_key_at(index).unwrap().clone()(KeyInput { key: Key::Char('i') });
+    assert_eq!(value.get(), "hi");
+
+    let scene = render_frame(Box::new(build(value.clone())), size, &mut RecordingPainter::default());
+    scene.on_key_at(index).unwrap().clone()(KeyInput { key: Key::Backspace });
+    assert_eq!(value.get(), "h");
+}
+
+#[test]
+fn text_input_shows_a_hover_cursor_and_a_focus_only_blinking_caret() {
+    let theme = Theme::dark();
+    let value = Signal::new(String::from("hi"));
+    let build = |value: Signal<String>| {
+        RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(TextInput::new(&theme, value.get(), move |_| {})))
+    };
+    let size = Size { width: 400.0, height: 100.0 };
+
+    let mut renderer = Renderer::new();
+    let mut painter = RecordingPainter::default();
+    let scene = renderer.render(Box::new(build(value.clone())), size, &mut painter);
+
+    let input_rect = painter
+        .stroked_rects
+        .iter()
+        .find(|(_, color)| *color == theme.border)
+        .map(|(rect, _)| *rect)
+        .expect("text input border rect");
+    let center = Point {
+        x: input_rect.x + input_rect.width / 2.0,
+        y: input_rect.y + input_rect.height / 2.0,
+    };
+    let index = scene.focus_hit_test(center).expect("text input should be focusable");
+
+    assert_eq!(
+        scene.cursor_hit_test(center),
+        Some(CursorIcon::Text),
+        "hovering a text input should request the system text (I-beam) cursor"
+    );
+
+    // A thin (sub-2px) filled rect is the caret; nothing else this widget
+    // paints is that narrow.
+    let is_caret = |(rect, _): &&(Rect, Color)| rect.width < 2.0;
+
+    let unfocused_carets = painter.filled_rects.iter().filter(is_caret).count();
+    assert_eq!(unfocused_carets, 0, "an unfocused text input should not paint a caret");
+
+    let mut focused_painter = RecordingPainter::default();
+    renderer.render_focused(Box::new(build(value.clone())), size, &mut focused_painter, Some(index), true);
+    let visible_carets = focused_painter.filled_rects.iter().filter(is_caret).count();
+    assert_eq!(visible_carets, 1, "a focused text input should paint exactly one caret rect while blinked on");
+
+    let mut blink_off_painter = RecordingPainter::default();
+    renderer.render_focused(Box::new(build(value.clone())), size, &mut blink_off_painter, Some(index), false);
+    let blinked_off_carets = blink_off_painter.filled_rects.iter().filter(is_caret).count();
+    assert_eq!(blinked_off_carets, 0, "the caret should disappear during the off phase of its blink");
+}
+
+#[test]
+fn slider_drag_updates_value_proportionally() {
+    let theme = Theme::dark();
+    let value = Signal::new(0.0_f32);
+    let value_for_change = value.clone();
+
+    let root = RawView::new(creamui_widgets::layout::row(0.0))
+        .child(Box::new(Slider::new(&theme, value.get(), move |next| value_for_change.set(next))));
+
+    let mut painter = RecordingPainter::default();
+    let size = Size { width: 400.0, height: 100.0 };
+    let scene = render_frame(Box::new(root), size, &mut painter);
+
+    let slider_rect = painter
+        .filled_rects
+        .iter()
+        .find(|(_, color)| *color == theme.border_strong)
+        .map(|(rect, _)| *rect)
+        .expect("slider track rect");
+    let center = Point {
+        x: slider_rect.x + slider_rect.width / 2.0,
+        y: slider_rect.y + slider_rect.height / 2.0,
+    };
+
+    let index = scene.drag_hit_test(center).expect("slider should be draggable");
+    let (rect, on_drag) = scene.draggable_at(index).expect("draggable slider region");
+    let local = Point { x: rect.width / 2.0, y: rect.height / 2.0 };
+    on_drag(local, rect);
+
+    assert!(
+        (value.get() - 0.5).abs() < 0.05,
+        "dragging to the middle of the track should set roughly 0.5, got {}",
+        value.get()
+    );
+}
+
+fn fixed_size_button(width: f32, height: f32, on_click: impl Fn() + 'static) -> RawButton {
+    let style = Style {
+        size: creamui_core::layout::Size {
+            width: creamui_core::layout::Dimension::Length(width),
+            height: creamui_core::layout::Dimension::Length(height),
+        },
+        ..Default::default()
+    };
+    RawButton::new(style, on_click)
+}
+
+#[test]
+fn scroll_view_clips_hit_testing_to_its_visible_area_and_scrolls() {
+    let theme = Theme::dark();
+    let clicked = Signal::new(-1i32);
+    let scroll_y = Signal::new(0.0_f32);
+
+    // Container viewport is 60px tall; three 40px-tall buttons stacked with
+    // no gap total 120px of content, so button 2 (y=[80,120)) starts out
+    // fully below the visible area.
+    let build = |scroll_y: Signal<f32>| {
+        let scroll_y_for_scroll = scroll_y.clone();
+        let mut view = ScrollView::new(
+            &theme,
+            Style {
+                size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Length(80.0),
+                    height: creamui_core::layout::Dimension::Length(60.0),
+                },
+                ..Default::default()
+            },
+            scroll_y.get(),
+            move |delta| scroll_y_for_scroll.update(|y| *y = (*y + delta).clamp(0.0, 60.0)),
+        );
+        for i in 0..3 {
+            let clicked = clicked.clone();
+            view = view.child(Box::new(fixed_size_button(80.0, 40.0, move || clicked.set(i))));
+        }
+        view
+    };
+
+    let size = Size { width: 200.0, height: 200.0 };
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(Box::new(build(scroll_y.clone())), size, &mut painter);
+
+    // Button 2's natural (unclipped) position is y=[80,120); at scroll_y=0
+    // that's entirely outside the 60px-tall viewport, so no click should
+    // land there at all.
+    let point_below_viewport = Point { x: 40.0, y: 100.0 };
+    assert!(
+        scene.hit_test(point_below_viewport).is_none(),
+        "content scrolled out of view should not be clickable"
+    );
+
+    // Button 0 (y=[0,40)) is fully visible at scroll_y=0 and should still work normally.
+    scene.hit_test(Point { x: 40.0, y: 20.0 }).expect("button 0 should be visible and clickable")();
+    assert_eq!(clicked.get(), 0);
+
+    // Simulate the scroll wheel: hit-test for a scrollable at a point inside
+    // the view, then drive it the same way `creamui_render::window` does.
+    let scroll_index = scene.scroll_hit_test(Point { x: 40.0, y: 30.0 }).expect("scroll view should be scrollable");
+    scene.on_scroll_at(scroll_index).unwrap()(60.0);
+    assert_eq!(scroll_y.get(), 60.0, "scrolling by 60px should move the clamped offset to 60");
+
+    // Re-render with the new offset: button 2 is now shifted up into view
+    // (screen y = 80 - 60 = 20, i.e. within [0, 40)), so the same point that
+    // missed before should now hit button 2.
+    let scene = render_frame(Box::new(build(scroll_y.clone())), size, &mut RecordingPainter::default());
+    scene
+        .hit_test(Point { x: 40.0, y: 20.0 })
+        .expect("button 2 should have scrolled into view")();
+    assert_eq!(clicked.get(), 2);
 }

@@ -10,5 +10,5 @@ pub mod raw;
 mod text_metrics;
 pub mod themed;
 
-pub use raw::{RawButton, RawText, RawView};
-pub use themed::{Button, Text, View};
+pub use raw::{RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextInput, RawView};
+pub use themed::{Button, Checkbox, ScrollView, Slider, Text, TextInput, View};

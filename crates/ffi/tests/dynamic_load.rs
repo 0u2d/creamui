@@ -16,9 +16,13 @@ struct CColor {
 }
 
 fn cdylib_path() -> std::path::PathBuf {
-    let mut path = std::env::current_exe().unwrap();
-    path.pop(); // deps/
-    path.pop(); // target/debug/
+    let mut deps_dir = std::env::current_exe().unwrap();
+    deps_dir.pop(); // this test binary lives directly in .../target/debug/deps/
+    let debug_dir = deps_dir
+        .parent()
+        .expect("deps/ always has a target/debug/ parent")
+        .to_path_buf();
+
     let name = if cfg!(target_os = "macos") {
         "libcreamui.dylib"
     } else if cfg!(target_os = "windows") {
@@ -26,7 +30,16 @@ fn cdylib_path() -> std::path::PathBuf {
     } else {
         "libcreamui.so"
     };
-    path.join(name)
+
+    // `cargo build` uplifts the cdylib to target/debug/; `cargo test` alone
+    // (with no prior `cargo build`) only leaves it in target/debug/deps/ —
+    // cdylib filenames aren't hash-suffixed, so that path is stable too.
+    let uplifted = debug_dir.join(name);
+    if uplifted.exists() {
+        uplifted
+    } else {
+        deps_dir.join(name)
+    }
 }
 
 #[test]

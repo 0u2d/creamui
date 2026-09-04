@@ -1,25 +1,30 @@
-//! Glyph rasterization via `fontdue`, loading a system sans-serif font.
+//! Glyph rasterization via `fontdue`, using CreamUI's bundled default font.
 //!
-//! CreamUI does not bundle a font for the MVP: it probes common Linux font
-//! paths at startup and uses the first one found. Bundling a default font
-//! (and proper `fontconfig` integration) is tracked on the roadmap.
+//! The font is embedded at compile time (see [`FONT_BYTES`]) rather than
+//! probed from system paths, so text rendering doesn't depend on what's
+//! installed on the target machine. See `assets/fonts/DejaVuSans-LICENSE.txt`
+//! for the bundled font's license (Bitstream Vera, permissive/redistributable).
 
-use fontdue::layout::{CoordinateSystem, HorizontalAlign, Layout, LayoutSettings, TextStyle, VerticalAlign};
+use fontdue::layout::{CoordinateSystem, GlyphRasterConfig, HorizontalAlign, Layout, LayoutSettings, TextStyle, VerticalAlign};
 use fontdue::Font as FontdueFont;
+use std::collections::HashMap;
+use std::rc::Rc;
 
-const CANDIDATE_PATHS: &[&str] = &[
-    "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
-    "/usr/share/fonts/liberation-sans-fonts/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/google-noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/TTF/DejaVuSans.ttf",
-];
+/// CreamUI's bundled default font (DejaVu Sans).
+const FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSans.ttf");
 
 /// A loaded font ready for rasterization, plus a reusable text layout buffer.
+///
+/// Rasterized glyph bitmaps are cached by [`GlyphRasterConfig`] (glyph +
+/// pixel size): every repaint re-lays-out and re-walks the same glyphs (the
+/// render loop repaints the whole scene on any change, e.g. scrolling), and
+/// without this cache each of those repaints re-rasterized every visible
+/// glyph from scratch via `fontdue`, which was the dominant cost behind
+/// laggy scrolling on any screen with a non-trivial amount of text.
 pub struct Font {
     inner: FontdueFont,
     layout: Layout,
+    glyph_cache: HashMap<GlyphRasterConfig, (fontdue::Metrics, Rc<Vec<u8>>)>,
 }
 
 /// One rasterized glyph, positioned in the coordinate space passed to
@@ -30,30 +35,20 @@ pub struct PositionedGlyph {
     pub width: usize,
     pub height: usize,
     /// Per-pixel coverage (`0..=255`), row-major, `width * height` long.
-    pub coverage: Vec<u8>,
+    /// Shared with [`Font`]'s glyph cache rather than copied per paint.
+    pub coverage: Rc<Vec<u8>>,
 }
 
 impl Font {
-    /// Loads the first available system font from a fixed list of common
-    /// Linux install paths. Returns `None` if none exist, in which case
-    /// callers should skip text rendering rather than panic.
-    pub fn load_system() -> Option<Self> {
-        for path in CANDIDATE_PATHS {
-            if let Ok(bytes) = std::fs::read(path) {
-                match FontdueFont::from_bytes(bytes, fontdue::FontSettings::default()) {
-                    Ok(inner) => {
-                        log::debug!("creamui-render: loaded font from {path}");
-                        return Some(Font {
-                            inner,
-                            layout: Layout::new(CoordinateSystem::PositiveYDown),
-                        });
-                    }
-                    Err(err) => log::debug!("creamui-render: failed to parse font at {path}: {err}"),
-                }
-            }
+    /// Loads CreamUI's bundled default font.
+    pub fn load() -> Self {
+        let inner = FontdueFont::from_bytes(FONT_BYTES, fontdue::FontSettings::default())
+            .expect("bundled font bytes are a valid, fixed asset checked in at build time");
+        Font {
+            inner,
+            layout: Layout::new(CoordinateSystem::PositiveYDown),
+            glyph_cache: HashMap::new(),
         }
-        log::warn!("creamui-render: no system font found in known paths; text will not render");
-        None
     }
 
     /// Lays out `text` inside a box of `max_width` starting at `(x, y)`,
@@ -81,18 +76,26 @@ impl Font {
         self.layout
             .append(&[&self.inner], &TextStyle::new(text, font_size, 0));
 
+        let inner = &self.inner;
+        let cache = &mut self.glyph_cache;
         self.layout
             .glyphs()
             .iter()
             .filter(|g| g.width > 0 && g.height > 0)
             .map(|g| {
-                let (_, bitmap) = self.inner.rasterize_config(g.key);
+                let (metrics, coverage) = cache
+                    .entry(g.key)
+                    .or_insert_with(|| {
+                        let (metrics, bitmap) = inner.rasterize_config(g.key);
+                        (metrics, Rc::new(bitmap))
+                    })
+                    .clone();
                 PositionedGlyph {
                     x: g.x as i32,
                     y: g.y as i32,
-                    width: g.width,
-                    height: g.height,
-                    coverage: bitmap,
+                    width: metrics.width,
+                    height: metrics.height,
+                    coverage,
                 }
             })
             .collect()

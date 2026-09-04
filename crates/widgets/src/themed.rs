@@ -1,17 +1,17 @@
 //! Themed widgets: opinionated, styled wrappers around the headless widgets
 //! in [`crate::raw`]. Each one reads its appearance from a
-//! [`creamui_theme::Theme`] passed in at construction time (the "one theme,
-//! in memory" model for the MVP — see the crate root docs for the future
-//! `ThemeProvider`).
+//! [`creamui_theme::Theme`] passed in at construction time — either a fixed
+//! value, or `creamui_theme::ThemeProvider::get()`'s result each render, to
+//! support runtime theme switching.
 //!
 //! These are meant to be copied and adapted: a themed `Button` is nothing
 //! more than a [`crate::raw::RawButton`] with theme-derived style baked in,
 //! so writing a derived component (e.g. a `DangerButton`) is just writing a
 //! new constructor function in the same shape.
 
-use crate::raw::{RawButton, RawText, RawView};
+use crate::raw::{RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextInput, RawView};
 use creamui_core::layout::{AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style};
-use creamui_core::{BoxedWidget, Painter, Rect, TextAlign, Widget};
+use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
 use creamui_theme::Theme;
 use std::rc::Rc;
 
@@ -61,6 +61,133 @@ impl Widget for Button {
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
         self.inner.on_click()
     }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+}
+
+/// A themed checkbox: filled with the theme's accent color when checked,
+/// outlined with its border color otherwise.
+pub struct Checkbox {
+    inner: RawCheckbox,
+}
+
+impl Checkbox {
+    pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
+        let mut inner = RawCheckbox::new(20.0, checked, theme.accent, theme.border_strong, on_click);
+        inner = inner.corner_radius(theme.radius_small);
+        Checkbox { inner }
+    }
+}
+
+impl Widget for Checkbox {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+}
+
+/// A themed single-line text input.
+pub struct TextInput {
+    inner: RawTextInput,
+}
+
+impl TextInput {
+    pub fn new(theme: &Theme, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+        let style = Style {
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(200.0),
+                height: creamui_core::layout::Dimension::Length(36.0),
+            },
+            ..Default::default()
+        };
+        let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
+            .background(theme.surface_elevated)
+            .border(theme.border, 1.0)
+            .corner_radius(theme.radius_small);
+        TextInput { inner }
+    }
+
+    /// Grayed-out text shown when the value is empty.
+    pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
+        self.inner = self.inner.placeholder(text, theme.text_disabled);
+        self
+    }
+}
+
+impl Widget for TextInput {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
+        self.inner.paint_focused_overlay(painter, rect, caret_visible);
+    }
+}
+
+/// A themed horizontal slider.
+pub struct Slider {
+    inner: RawSlider,
+}
+
+impl Slider {
+    pub fn new(theme: &Theme, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
+        let style = Style {
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(160.0),
+                height: creamui_core::layout::Dimension::Length(20.0),
+            },
+            ..Default::default()
+        };
+        let inner = RawSlider::new(style, value, theme.border_strong, theme.accent, theme.accent, on_change);
+        Slider { inner }
+    }
+}
+
+impl Widget for Slider {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        self.inner.on_drag()
+    }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
 }
 
 /// Themed body text using the theme's primary text color.
@@ -101,6 +228,10 @@ impl Widget for Text {
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
         self.inner.paint(painter, rect);
     }
+
+    fn measure(&self) -> Option<creamui_core::MeasureFn> {
+        self.inner.measure()
+    }
 }
 
 /// A themed surface container ("card") with background and rounded corners.
@@ -139,5 +270,55 @@ impl Widget for View {
 
     fn children(&mut self) -> Vec<BoxedWidget> {
         Widget::children(&mut self.inner)
+    }
+}
+
+/// A themed vertically-scrollable container.
+pub struct ScrollView {
+    inner: RawScrollView,
+}
+
+impl ScrollView {
+    pub fn new(theme: &Theme, style: Style, scroll_y: f32, on_scroll: impl Fn(f32) + 'static) -> Self {
+        let inner = RawScrollView::new(style, scroll_y, on_scroll)
+            .background(theme.surface)
+            .corner_radius(theme.radius_medium);
+        ScrollView { inner }
+    }
+
+    pub fn child(mut self, widget: BoxedWidget) -> Self {
+        self.inner = self.inner.child(widget);
+        self
+    }
+
+    pub fn with_children(mut self, widgets: Vec<BoxedWidget>) -> Self {
+        self.inner = self.inner.with_children(widgets);
+        self
+    }
+}
+
+impl Widget for ScrollView {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        Widget::children(&mut self.inner)
+    }
+
+    fn clips_children(&self) -> bool {
+        self.inner.clips_children()
+    }
+
+    fn scroll_offset(&self) -> Point {
+        self.inner.scroll_offset()
+    }
+
+    fn on_scroll(&self) -> Option<Rc<dyn Fn(f32)>> {
+        self.inner.on_scroll()
     }
 }

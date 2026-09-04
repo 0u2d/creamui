@@ -91,8 +91,8 @@ fn cdylib_path() -> std::path::PathBuf {
     if let Ok(override_path) = std::env::var("CREAMUI_LIB_PATH") {
         return override_path.into();
     }
-    let mut path = std::env::current_exe().expect("failed to resolve current executable path");
-    path.pop(); // target/debug/
+    let mut debug_dir = std::env::current_exe().expect("failed to resolve current executable path");
+    debug_dir.pop(); // target/debug/ (or target/release/)
     let name = if cfg!(target_os = "macos") {
         "libcreamui.dylib"
     } else if cfg!(target_os = "windows") {
@@ -100,7 +100,17 @@ fn cdylib_path() -> std::path::PathBuf {
     } else {
         "libcreamui.so"
     };
-    path.join(name)
+
+    // `cargo build` uplifts the cdylib next to sibling binaries in this same
+    // directory; if only `cargo test -p creamui-ffi` built it, it only
+    // exists one level down in deps/ (unhashed, since cdylib filenames
+    // aren't hash-suffixed) — check both.
+    let sibling = debug_dir.join(name);
+    if sibling.exists() {
+        sibling
+    } else {
+        debug_dir.join("deps").join(name)
+    }
 }
 
 fn main() {

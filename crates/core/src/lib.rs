@@ -11,7 +11,7 @@ mod widget;
 
 pub use geometry::{Point, Rect, Size};
 pub use scene::{render_frame, Renderer, Scene};
-pub use widget::{BoxedWidget, Painter, TextAlign, Widget};
+pub use widget::{BoxedWidget, CursorIcon, Key, KeyInput, MeasureFn, Painter, TextAlign, Widget};
 
 /// Re-exported so downstream crates can build `taffy::style::Style` values
 /// without adding a direct `taffy` dependency of their own.

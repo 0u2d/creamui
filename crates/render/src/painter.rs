@@ -7,23 +7,47 @@ use crate::font::Font;
 use creamui_core::{Painter, Rect, TextAlign};
 use creamui_theme::Color;
 use fontdue::layout::HorizontalAlign;
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
 
+/// Widgets are laid out and painted in logical (DPI-independent) pixels;
+/// `SkiaPainter` scales every coordinate by `scale` (the window's
+/// `scale_factor`) before rasterizing, so the backing `pixmap` — and the
+/// GPU texture it's uploaded into — are always sized in physical pixels for
+/// crisp output on HiDPI displays.
 pub struct SkiaPainter {
     pub pixmap: Pixmap,
-    font: Option<Font>,
+    font: Font,
+    scale: f32,
+    /// One [`Mask`] per active [`Painter::push_clip`], each already
+    /// intersected with its parent so the top of the stack is always the
+    /// full cumulative clip region.
+    clip_stack: Vec<Mask>,
 }
 
 impl SkiaPainter {
+    /// `width`/`height` are physical pixels.
     pub fn new(width: u32, height: u32) -> Self {
         SkiaPainter {
             pixmap: Pixmap::new(width.max(1), height.max(1)).expect("non-zero pixmap size"),
-            font: Font::load_system(),
+            font: Font::load(),
+            scale: 1.0,
+            clip_stack: Vec::new(),
         }
     }
 
+    /// Sets the logical-to-physical pixel scale factor applied to every
+    /// subsequent paint call.
+    pub fn set_scale(&mut self, scale: f32) {
+        self.scale = scale.max(0.01);
+    }
+
+    /// `width`/`height` are physical pixels.
     pub fn resize(&mut self, width: u32, height: u32) {
         self.pixmap = Pixmap::new(width.max(1), height.max(1)).expect("non-zero pixmap size");
+        // A resize mid-clip-stack shouldn't happen (push/pop are balanced
+        // within one frame, and resize only ever runs between frames), but
+        // clear defensively rather than risk stale masks sized for the old pixmap.
+        self.clip_stack.clear();
     }
 
     pub fn clear(&mut self, color: Color) {
@@ -56,9 +80,18 @@ impl SkiaPainter {
     }
 }
 
+fn scale_rect(rect: Rect, scale: f32) -> Rect {
+    Rect {
+        x: rect.x * scale,
+        y: rect.y * scale,
+        width: rect.width * scale,
+        height: rect.height * scale,
+    }
+}
+
 impl Painter for SkiaPainter {
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
-        let Some(path) = Self::rounded_rect_path(rect, corner_radius) else {
+        let Some(path) = Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale) else {
             return;
         };
         let [r, g, b, a] = color.to_f32();
@@ -70,12 +103,17 @@ impl Painter for SkiaPainter {
             (a * 255.0) as u8,
         );
         paint.anti_alias = true;
-        self.pixmap
-            .fill_path(&path, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
+        self.pixmap.fill_path(
+            &path,
+            &paint,
+            tiny_skia::FillRule::Winding,
+            Transform::identity(),
+            self.clip_stack.last(),
+        );
     }
 
     fn stroke_rect(&mut self, rect: Rect, color: Color, width: f32, corner_radius: f32) {
-        let Some(path) = Self::rounded_rect_path(rect, corner_radius) else {
+        let Some(path) = Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale) else {
             return;
         };
         let [r, g, b, a] = color.to_f32();
@@ -88,25 +126,61 @@ impl Painter for SkiaPainter {
         );
         paint.anti_alias = true;
         let stroke = Stroke {
-            width,
+            width: width * self.scale,
             ..Default::default()
         };
-        self.pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+        self.pixmap
+            .stroke_path(&path, &paint, &stroke, Transform::identity(), self.clip_stack.last());
+    }
+
+    fn push_clip(&mut self, rect: Rect) {
+        let width = self.pixmap.width();
+        let height = self.pixmap.height();
+        let scaled = scale_rect(rect, self.scale);
+
+        let Some(path) = Self::rounded_rect_path(scaled, 0.0) else {
+            // Degenerate (zero-size) clip rect: nothing inside it can be
+            // visible, so push a fully-blocking (all-zero) mask.
+            if let Some(mask) = Mask::new(width, height) {
+                self.clip_stack.push(mask);
+            }
+            return;
+        };
+
+        let mask = match self.clip_stack.last() {
+            Some(parent) => {
+                let mut mask = parent.clone();
+                mask.intersect_path(&path, tiny_skia::FillRule::Winding, true, Transform::identity());
+                mask
+            }
+            None => {
+                let mut mask = Mask::new(width, height).expect("non-zero pixmap size");
+                mask.fill_path(&path, tiny_skia::FillRule::Winding, true, Transform::identity());
+                mask
+            }
+        };
+        self.clip_stack.push(mask);
+    }
+
+    fn pop_clip(&mut self) {
+        self.clip_stack.pop();
     }
 
     fn fill_text(&mut self, rect: Rect, text: &str, color: Color, font_size: f32, align: TextAlign) {
-        let Some(font) = self.font.as_mut() else {
-            return;
-        };
         let horizontal_align = match align {
             TextAlign::Start => HorizontalAlign::Left,
             TextAlign::Center => HorizontalAlign::Center,
             TextAlign::End => HorizontalAlign::Right,
         };
-        let glyphs = font.layout_text(text, font_size, rect.x, rect.y, rect.width, rect.height, horizontal_align);
+        let rect = scale_rect(rect, self.scale);
+        let font_size = font_size * self.scale;
+        let glyphs = self
+            .font
+            .layout_text(text, font_size, rect.x, rect.y, rect.width, rect.height, horizontal_align);
 
         let pixmap_width = self.pixmap.width() as i32;
         let pixmap_height = self.pixmap.height() as i32;
+        let clip_mask = self.clip_stack.last();
         let pixels = self.pixmap.pixels_mut();
         let text_alpha = color.a as f32 / 255.0;
 
@@ -122,12 +196,13 @@ impl Painter for SkiaPainter {
                         continue;
                     }
                     let coverage = glyph.coverage[gy * glyph.width + gx] as f32 / 255.0;
-                    let src_alpha = coverage * text_alpha;
+                    let idx = (py * pixmap_width + px) as usize;
+                    let clip = clip_mask.map(|mask| mask.data()[idx] as f32 / 255.0).unwrap_or(1.0);
+                    let src_alpha = coverage * text_alpha * clip;
                     if src_alpha <= 0.0 {
                         continue;
                     }
 
-                    let idx = (py * pixmap_width + px) as usize;
                     let dst = pixels[idx];
                     let inv = 1.0 - src_alpha;
 
