@@ -7,6 +7,7 @@
 //! built on the headless ones, HTML/CSS-like flex layout (via `taffy`),
 //! keyboard focus, pointer-drag, and scroll-wheel input, and a
 //! GPU-presented window.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use creamui_core::layout::{AlignItems, FlexDirection, JustifyContent, Style};
 use creamui_core::{BoxedWidget, Size};

@@ -12,6 +12,7 @@
 //! Compare `target/release/hello_world` (static, links the whole engine
 //! into the binary) against this binary's size — this one stays tiny
 //! because the engine lives in the shared `libcreamui.so` instead.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use libloading::{Library, Symbol};
 use std::cell::Cell;
