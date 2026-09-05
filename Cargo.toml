@@ -6,7 +6,9 @@ members = [
     "crates/theme",
     "crates/widgets",
     "crates/render",
+    "crates/abi",
     "crates/ffi",
+    "crates/dynamic",
     "examples/hello_world",
     "examples/hello_world_dynamic",
 ]
@@ -23,6 +25,9 @@ creamui-core = { path = "crates/core" }
 creamui-theme = { path = "crates/theme" }
 creamui-widgets = { path = "crates/widgets" }
 creamui-render = { path = "crates/render" }
+creamui-abi = { path = "crates/abi" }
+creamui-ffi = { path = "crates/ffi" }
+creamui-dynamic = { path = "crates/dynamic" }
 
 taffy = "0.7"
 wgpu = "22"
@@ -31,3 +36,4 @@ tiny-skia = "0.11"
 raw-window-handle = "0.6"
 pollster = "0.3"
 softbuffer = "0.4"
+libloading = "0.8"

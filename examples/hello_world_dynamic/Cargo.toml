@@ -5,4 +5,4 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-libloading = "0.8"
+creamui-dynamic = { workspace = true }

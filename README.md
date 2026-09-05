@@ -39,8 +39,10 @@ done and what's next.
 | `creamui-core` | `Widget` trait, layout (via `taffy`), `Painter` trait, scene/hit-testing |
 | `creamui-theme` | Semantic design tokens (`Theme`, `Color`) |
 | `creamui-widgets` | Headless (`raw`) and themed (`themed`) widgets, layout helpers |
-| `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu` presentation |
+| `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu`/`softbuffer` presentation |
+| `creamui-abi` | Plain `#[repr(C)]` ABI types shared by `creamui-ffi` and `creamui-dynamic`, no engine dependency |
 | `creamui-ffi` | `#[no_mangle] extern "C"` ABI, built as a `cdylib`, for dynamic linking |
+| `creamui-dynamic` | Safe client that `dlopen`s the `cdylib` and resolves its ABI once, for apps that don't want to hand-write `libloading`/`#[repr(C)]` boilerplate |
 
 ## Running the examples
 
@@ -49,12 +51,13 @@ cargo run -p hello_world           # static: links the Rust crates directly
 cargo run -p hello_world_dynamic   # dynamic: dlopens the built cdylib, zero CreamUI crate deps
 ```
 
-Both are the same themed counter with a runtime theme-toggle button (the
-static one only — the dynamic ABI doesn't expose theme tokens yet, see
-`ROADMAP.md`). Compare `target/release/hello_world` against
-`target/release/hello_world_dynamic` to see the difference linking mode
-makes to binary size: the dynamic build carries none of `wgpu`/`winit`/
-`taffy` itself — that all lives in `libcreamui.so`.
+Both are the same themed counter with a runtime theme-toggle button.
+`hello_world_dynamic` depends only on `creamui-dynamic` (which itself only
+depends on `creamui-abi` + `libloading`) — no engine crate compiled in.
+Compare `target/release/hello_world` against `target/release/hello_world_dynamic`
+to see the difference linking mode makes to binary size: the dynamic build
+carries none of `wgpu`/`winit`/`taffy` itself — that all lives in
+`libcreamui.so`.
 
 Set `CUI_DEBUG=1` for verbose logging, or `CUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
@@ -96,6 +99,11 @@ GPU-backend window still creates its own `wgpu::Device`, which is where most
 of the GPU backend's per-window memory actually goes — for a dock with many
 small windows, prefer `RenderBackend::Cpu` unless a given window specifically
 needs GPU compositing.
+
+The same multi-window capability is exposed across the ABI —
+`creamui_app_builder_new`/`creamui_app_builder_add_window`/`creamui_app_builder_run`
+in `creamui-ffi` — and as `creamui_dynamic::AppBuilder` on the `dlopen`
+side, mirroring the native API one-for-one.
 
 Text layout uses a real `taffy` measure function (`creamui_core::Widget::measure`)
 backed by `fontdue`'s own line-width calculation, not a hand-rolled estimate —

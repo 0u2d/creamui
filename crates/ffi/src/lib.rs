@@ -15,13 +15,14 @@
 //! [`creamui_run`] (which takes ownership of the root), or else freed with
 //! [`creamui_widget_free`].
 
+use creamui_abi::{DIMENSION_LENGTH, DIMENSION_PERCENT};
 use creamui_core::layout::{
     AlignItems, Dimension, FlexDirection, JustifyContent, LengthPercentage, LengthPercentageAuto, Rect as LayoutRect,
     Size as LayoutSize, Style,
 };
 use creamui_core::{BoxedWidget, Size};
 use creamui_reactive::Signal;
-use creamui_render::WindowHandle;
+use creamui_render::{AppBuilder as RenderAppBuilder, WindowHandle};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::raw::{RawText, RawView};
 use creamui_widgets::themed::{
@@ -30,6 +31,14 @@ use creamui_widgets::themed::{
 };
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::os::raw::c_int;
+
+// Plain `#[repr(C)]` value types (colors, theme tokens, style, window
+// options) live in `creamui-abi`, shared verbatim with `creamui-dynamic` on
+// the consuming side of this ABI so the two can never drift out of sync.
+// Re-exported here so existing code importing them from `creamui_ffi`
+// (this crate's public name) keeps working unchanged.
+pub use creamui_abi::{CColor, CDimension, CStyle, CTheme, CWindowOptions};
+pub use creamui_abi::{CUI_RENDER_BACKEND_CPU, CUI_RENDER_BACKEND_GPU};
 
 /// Opaque handle to a reactive `i32` value.
 ///
@@ -193,177 +202,107 @@ pub unsafe extern "C" fn creamui_signal_string_free(signal: *mut CSignalString) 
     }
 }
 
-/// A color in the C ABI: identical layout to `creamui_theme::Color`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CColor {
-    pub r: u8,
-    pub g: u8,
-    pub b: u8,
-    pub a: u8,
+// `CColor`/`CTheme`/`CStyle` are foreign types now (they live in
+// `creamui-abi`, shared with `creamui-dynamic`), and so are `Color`/`Theme`/
+// `Style` (from `creamui-theme`/`creamui-core`) — the orphan rule forbids
+// `impl From<Foreign> for OtherForeign`, so these are plain conversion
+// functions instead of trait impls.
+fn color_from_c(c: CColor) -> Color {
+    Color::rgba(c.r, c.g, c.b, c.a)
 }
 
-impl From<CColor> for Color {
-    fn from(c: CColor) -> Self {
-        Color::rgba(c.r, c.g, c.b, c.a)
+fn color_to_c(c: Color) -> CColor {
+    CColor { r: c.r, g: c.g, b: c.b, a: c.a }
+}
+
+fn theme_to_c(t: Theme) -> CTheme {
+    CTheme {
+        surface: color_to_c(t.surface),
+        surface_elevated: color_to_c(t.surface_elevated),
+        surface_hover: color_to_c(t.surface_hover),
+        accent: color_to_c(t.accent),
+        accent_hover: color_to_c(t.accent_hover),
+        accent_pressed: color_to_c(t.accent_pressed),
+        text_primary: color_to_c(t.text_primary),
+        text_secondary: color_to_c(t.text_secondary),
+        text_disabled: color_to_c(t.text_disabled),
+        border: color_to_c(t.border),
+        border_strong: color_to_c(t.border_strong),
+        danger: color_to_c(t.danger),
+        warning: color_to_c(t.warning),
+        success: color_to_c(t.success),
+        radius_small: t.radius_small,
+        radius_medium: t.radius_medium,
+        radius_large: t.radius_large,
+        spacing_small: t.spacing_small,
+        spacing_medium: t.spacing_medium,
+        spacing_large: t.spacing_large,
     }
 }
 
-impl From<Color> for CColor {
-    fn from(c: Color) -> Self {
-        CColor { r: c.r, g: c.g, b: c.b, a: c.a }
-    }
-}
-
-/// A full theme-token set in the C ABI: identical field-for-field to
-/// `creamui_theme::Theme`. A dynamically-linked app has no Rust-side
-/// `Theme`, so this (plus [`creamui_theme_dark`]/[`creamui_theme_light`]) is
-/// what lets it read the same semantic tokens themed widgets use, and pass
-/// them back in to [`creamui_themed_text_new`]/[`creamui_button_new`]/etc.
-/// so a runtime theme toggle works the same way the static example's does.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CTheme {
-    pub surface: CColor,
-    pub surface_elevated: CColor,
-    pub surface_hover: CColor,
-
-    pub accent: CColor,
-    pub accent_hover: CColor,
-    pub accent_pressed: CColor,
-
-    pub text_primary: CColor,
-    pub text_secondary: CColor,
-    pub text_disabled: CColor,
-
-    pub border: CColor,
-    pub border_strong: CColor,
-
-    pub danger: CColor,
-    pub warning: CColor,
-    pub success: CColor,
-
-    pub radius_small: f32,
-    pub radius_medium: f32,
-    pub radius_large: f32,
-
-    pub spacing_small: f32,
-    pub spacing_medium: f32,
-    pub spacing_large: f32,
-}
-
-impl From<Theme> for CTheme {
-    fn from(t: Theme) -> Self {
-        CTheme {
-            surface: t.surface.into(),
-            surface_elevated: t.surface_elevated.into(),
-            surface_hover: t.surface_hover.into(),
-            accent: t.accent.into(),
-            accent_hover: t.accent_hover.into(),
-            accent_pressed: t.accent_pressed.into(),
-            text_primary: t.text_primary.into(),
-            text_secondary: t.text_secondary.into(),
-            text_disabled: t.text_disabled.into(),
-            border: t.border.into(),
-            border_strong: t.border_strong.into(),
-            danger: t.danger.into(),
-            warning: t.warning.into(),
-            success: t.success.into(),
-            radius_small: t.radius_small,
-            radius_medium: t.radius_medium,
-            radius_large: t.radius_large,
-            spacing_small: t.spacing_small,
-            spacing_medium: t.spacing_medium,
-            spacing_large: t.spacing_large,
-        }
-    }
-}
-
-impl From<CTheme> for Theme {
-    fn from(t: CTheme) -> Self {
-        Theme {
-            surface: t.surface.into(),
-            surface_elevated: t.surface_elevated.into(),
-            surface_hover: t.surface_hover.into(),
-            accent: t.accent.into(),
-            accent_hover: t.accent_hover.into(),
-            accent_pressed: t.accent_pressed.into(),
-            text_primary: t.text_primary.into(),
-            text_secondary: t.text_secondary.into(),
-            text_disabled: t.text_disabled.into(),
-            border: t.border.into(),
-            border_strong: t.border_strong.into(),
-            danger: t.danger.into(),
-            warning: t.warning.into(),
-            success: t.success.into(),
-            radius_small: t.radius_small,
-            radius_medium: t.radius_medium,
-            radius_large: t.radius_large,
-            spacing_small: t.spacing_small,
-            spacing_medium: t.spacing_medium,
-            spacing_large: t.spacing_large,
-        }
+fn theme_from_c(t: CTheme) -> Theme {
+    Theme {
+        surface: color_from_c(t.surface),
+        surface_elevated: color_from_c(t.surface_elevated),
+        surface_hover: color_from_c(t.surface_hover),
+        accent: color_from_c(t.accent),
+        accent_hover: color_from_c(t.accent_hover),
+        accent_pressed: color_from_c(t.accent_pressed),
+        text_primary: color_from_c(t.text_primary),
+        text_secondary: color_from_c(t.text_secondary),
+        text_disabled: color_from_c(t.text_disabled),
+        border: color_from_c(t.border),
+        border_strong: color_from_c(t.border_strong),
+        danger: color_from_c(t.danger),
+        warning: color_from_c(t.warning),
+        success: color_from_c(t.success),
+        radius_small: t.radius_small,
+        radius_medium: t.radius_medium,
+        radius_large: t.radius_large,
+        spacing_small: t.spacing_small,
+        spacing_medium: t.spacing_medium,
+        spacing_large: t.spacing_large,
     }
 }
 
 /// Returns the bundled default dark theme's tokens.
 #[no_mangle]
 pub extern "C" fn creamui_theme_dark() -> CTheme {
-    Theme::dark().into()
+    theme_to_c(Theme::dark())
 }
 
 /// Returns the bundled default light theme's tokens.
 #[no_mangle]
 pub extern "C" fn creamui_theme_light() -> CTheme {
-    Theme::light().into()
+    theme_to_c(Theme::light())
 }
 
-/// A length in the C ABI, tagged by `kind`:
-/// `0` = auto (only meaningful for `size`/`min_size`/`max_size`/`flex_basis`
-/// fields — treated as zero-length elsewhere), `1` = an absolute length in
-/// logical pixels (`value`), `2` = a percentage of the containing block in
-/// the `[0.0, 1.0]` range (`value`).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CDimension {
-    pub kind: u8,
-    pub value: f32,
-}
-
-const DIMENSION_AUTO: u8 = 0;
-const DIMENSION_LENGTH: u8 = 1;
-const DIMENSION_PERCENT: u8 = 2;
-
-impl CDimension {
-    pub const AUTO: CDimension = CDimension { kind: DIMENSION_AUTO, value: 0.0 };
-
-    fn to_dimension(self) -> Dimension {
-        match self.kind {
-            DIMENSION_LENGTH => Dimension::Length(self.value),
-            DIMENSION_PERCENT => Dimension::Percent(self.value),
-            _ => Dimension::Auto,
-        }
-    }
-
-    fn to_length_percentage(self) -> LengthPercentage {
-        match self.kind {
-            DIMENSION_PERCENT => LengthPercentage::Percent(self.value),
-            _ => LengthPercentage::Length(self.value),
-        }
-    }
-
-    fn to_length_percentage_auto(self) -> LengthPercentageAuto {
-        match self.kind {
-            DIMENSION_LENGTH => LengthPercentageAuto::Length(self.value),
-            DIMENSION_PERCENT => LengthPercentageAuto::Percent(self.value),
-            _ => LengthPercentageAuto::Auto,
-        }
+// `CDimension` (like `CColor`/`CTheme`/`CStyle`/`CWindowOptions`) lives in
+// `creamui-abi` now, shared with `creamui-dynamic` — these are free
+// functions rather than an inherent `impl CDimension` block since the
+// orphan rule forbids inherent impls on a foreign type.
+fn dimension_to_dimension(d: CDimension) -> Dimension {
+    match d.kind {
+        DIMENSION_LENGTH => Dimension::Length(d.value),
+        DIMENSION_PERCENT => Dimension::Percent(d.value),
+        _ => Dimension::Auto,
     }
 }
 
-/// A sentinel for `justify_content`/`align_items` meaning "unset" (`None`),
-/// distinct from any real alignment value.
-const ALIGN_UNSET: u8 = 255;
+fn dimension_to_length_percentage(d: CDimension) -> LengthPercentage {
+    match d.kind {
+        DIMENSION_PERCENT => LengthPercentage::Percent(d.value),
+        _ => LengthPercentage::Length(d.value),
+    }
+}
+
+fn dimension_to_length_percentage_auto(d: CDimension) -> LengthPercentageAuto {
+    match d.kind {
+        DIMENSION_LENGTH => LengthPercentageAuto::Length(d.value),
+        DIMENSION_PERCENT => LengthPercentageAuto::Percent(d.value),
+        _ => LengthPercentageAuto::Auto,
+    }
+}
 
 fn decode_justify_content(code: u8) -> Option<JustifyContent> {
     Some(match code {
@@ -402,89 +341,29 @@ fn decode_flex_direction(code: u8) -> FlexDirection {
     }
 }
 
-/// Full flex-layout style control in the C ABI — the field-for-field subset
-/// of `taffy::Style` (via `creamui_core::layout::Style`) that CreamUI's
-/// widgets actually use. Build one with [`creamui_style_default`] (which
-/// matches `Style::default()`) and override only the fields you need.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CStyle {
-    /// `0` = row, `1` = column, `2` = row-reverse, `3` = column-reverse.
-    pub flex_direction: u8,
-    /// One of the `JustifyContent`/`AlignContent` codes documented on
-    /// [`decode_justify_content`], or [`ALIGN_UNSET`] (255) for "unset".
-    pub justify_content: u8,
-    /// One of the `AlignItems` codes documented on [`decode_align_items`],
-    /// or [`ALIGN_UNSET`] (255) for "unset".
-    pub align_items: u8,
-    pub width: CDimension,
-    pub height: CDimension,
-    pub min_width: CDimension,
-    pub min_height: CDimension,
-    pub max_width: CDimension,
-    pub max_height: CDimension,
-    pub padding_left: f32,
-    pub padding_right: f32,
-    pub padding_top: f32,
-    pub padding_bottom: f32,
-    /// `kind` `0` (auto) collapses to `taffy`'s `Auto` margin.
-    pub margin_left: CDimension,
-    pub margin_right: CDimension,
-    pub margin_top: CDimension,
-    pub margin_bottom: CDimension,
-    pub gap_row: f32,
-    pub gap_column: f32,
-    pub flex_grow: f32,
-    pub flex_shrink: f32,
-    pub flex_basis: CDimension,
-}
-
-/// Returns a [`CStyle`] matching `Style::default()`: row direction, no
-/// forced alignment, auto size, zero margin/padding/gap, `flex_grow: 0`,
-/// `flex_shrink: 1`, `flex_basis: auto`.
-///
-/// Margin is zero (not auto) to match `taffy::Style::default()` — an auto
-/// margin on the main axis acts as a flexible spacer that absorbs leftover
-/// flex space, which would silently defeat a parent's `gap`/`justify_content`
-/// for any child using this default unmodified.
+/// Returns a [`CStyle`] matching `Style::default()`. Thin wrapper over
+/// [`CStyle::default_style`] (from `creamui-abi`) for parity with the rest
+/// of this crate's `_new`/`_default`-style entry points.
 #[no_mangle]
 pub extern "C" fn creamui_style_default() -> CStyle {
-    CStyle {
-        flex_direction: 0,
-        justify_content: ALIGN_UNSET,
-        align_items: ALIGN_UNSET,
-        width: CDimension::AUTO,
-        height: CDimension::AUTO,
-        min_width: CDimension::AUTO,
-        min_height: CDimension::AUTO,
-        max_width: CDimension::AUTO,
-        max_height: CDimension::AUTO,
-        padding_left: 0.0,
-        padding_right: 0.0,
-        padding_top: 0.0,
-        padding_bottom: 0.0,
-        margin_left: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
-        margin_right: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
-        margin_top: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
-        margin_bottom: CDimension { kind: DIMENSION_LENGTH, value: 0.0 },
-        gap_row: 0.0,
-        gap_column: 0.0,
-        flex_grow: 0.0,
-        flex_shrink: 1.0,
-        flex_basis: CDimension::AUTO,
-    }
+    CStyle::default_style()
 }
 
-impl From<CStyle> for Style {
-    fn from(s: CStyle) -> Self {
-        Style {
+fn style_from_c(s: CStyle) -> Style {
+    Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: decode_flex_direction(s.flex_direction),
             justify_content: decode_justify_content(s.justify_content),
             align_items: decode_align_items(s.align_items),
-            size: LayoutSize { width: s.width.to_dimension(), height: s.height.to_dimension() },
-            min_size: LayoutSize { width: s.min_width.to_dimension(), height: s.min_height.to_dimension() },
-            max_size: LayoutSize { width: s.max_width.to_dimension(), height: s.max_height.to_dimension() },
+            size: LayoutSize { width: dimension_to_dimension(s.width), height: dimension_to_dimension(s.height) },
+            min_size: LayoutSize {
+                width: dimension_to_dimension(s.min_width),
+                height: dimension_to_dimension(s.min_height),
+            },
+            max_size: LayoutSize {
+                width: dimension_to_dimension(s.max_width),
+                height: dimension_to_dimension(s.max_height),
+            },
             padding: LayoutRect {
                 left: LengthPercentage::Length(s.padding_left),
                 right: LengthPercentage::Length(s.padding_right),
@@ -492,41 +371,20 @@ impl From<CStyle> for Style {
                 bottom: LengthPercentage::Length(s.padding_bottom),
             },
             margin: LayoutRect {
-                left: s.margin_left.to_length_percentage_auto(),
-                right: s.margin_right.to_length_percentage_auto(),
-                top: s.margin_top.to_length_percentage_auto(),
-                bottom: s.margin_bottom.to_length_percentage_auto(),
+                left: dimension_to_length_percentage_auto(s.margin_left),
+                right: dimension_to_length_percentage_auto(s.margin_right),
+                top: dimension_to_length_percentage_auto(s.margin_top),
+                bottom: dimension_to_length_percentage_auto(s.margin_bottom),
             },
             gap: LayoutSize {
-                width: CDimension { kind: DIMENSION_LENGTH, value: s.gap_column }.to_length_percentage(),
-                height: CDimension { kind: DIMENSION_LENGTH, value: s.gap_row }.to_length_percentage(),
+                width: dimension_to_length_percentage(CDimension::length(s.gap_column)),
+                height: dimension_to_length_percentage(CDimension::length(s.gap_row)),
             },
             flex_grow: s.flex_grow,
             flex_shrink: s.flex_shrink,
-            flex_basis: s.flex_basis.to_dimension(),
+            flex_basis: dimension_to_dimension(s.flex_basis),
             ..Default::default()
         }
-    }
-}
-
-/// Render backend requested via [`CWindowOptions::backend`]: `0` for GPU
-/// (`wgpu`, the default), `1` for CPU-only (`softbuffer`). Can still be
-/// force-overridden at launch with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu`.
-pub const CUI_RENDER_BACKEND_GPU: c_int = 0;
-pub const CUI_RENDER_BACKEND_CPU: c_int = 1;
-
-/// Window creation options in the C ABI. `title` must be a valid
-/// NUL-terminated UTF-8 string for the duration of the [`creamui_run`] call.
-#[repr(C)]
-pub struct CWindowOptions {
-    pub title: *const c_char,
-    pub width: u32,
-    pub height: u32,
-    pub resizable: c_int,
-    pub decorations: c_int,
-    pub transparent: c_int,
-    /// One of `CUI_RENDER_BACKEND_GPU` / `CUI_RENDER_BACKEND_CPU`.
-    pub backend: c_int,
 }
 
 enum WidgetKind {
@@ -596,7 +454,7 @@ pub extern "C" fn creamui_view_new() -> *mut CWidget {
 /// `View`/`RawView` expose natively.
 #[no_mangle]
 pub extern "C" fn creamui_view_new_styled(style: CStyle) -> *mut CWidget {
-    let widget = CWidget(WidgetKind::View(RawView::new(style.into())));
+    let widget = CWidget(WidgetKind::View(RawView::new(style_from_c(style))));
     Box::into_raw(Box::new(widget))
 }
 
@@ -614,7 +472,7 @@ pub unsafe extern "C" fn creamui_view_set_background(view: *mut CWidget, color: 
         return;
     }
     if let WidgetKind::View(v) = &mut (*view).0 {
-        v.background = Some(color.into());
+        v.background = Some(color_from_c(color));
     }
 }
 
@@ -687,7 +545,7 @@ pub unsafe extern "C" fn creamui_scroll_view_add_child(view: *mut CWidget, child
 #[no_mangle]
 pub unsafe extern "C" fn creamui_text_new(text: *const c_char, color: CColor, font_size: f32) -> *mut CWidget {
     let text = cstr_to_string(text);
-    let widget = CWidget(WidgetKind::Text(RawText::new(text, color.into(), font_size)));
+    let widget = CWidget(WidgetKind::Text(RawText::new(text, color_from_c(color), font_size)));
     Box::into_raw(Box::new(widget))
 }
 
@@ -699,7 +557,7 @@ pub unsafe extern "C" fn creamui_text_new(text: *const c_char, color: CColor, fo
 #[no_mangle]
 pub unsafe extern "C" fn creamui_themed_text_new(theme: CTheme, text: *const c_char) -> *mut CWidget {
     let text = cstr_to_string(text);
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text)));
     Box::into_raw(Box::new(widget))
 }
@@ -712,7 +570,7 @@ pub unsafe extern "C" fn creamui_themed_text_new(theme: CTheme, text: *const c_c
 #[no_mangle]
 pub unsafe extern "C" fn creamui_themed_text_secondary_new(theme: CTheme, text: *const c_char) -> *mut CWidget {
     let text = cstr_to_string(text);
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::secondary(&theme, text)));
     Box::into_raw(Box::new(widget))
 }
@@ -729,7 +587,7 @@ pub unsafe extern "C" fn creamui_themed_text_new_sized(
     font_size: f32,
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text).font_size(font_size)));
     Box::into_raw(Box::new(widget))
 }
@@ -755,7 +613,7 @@ pub unsafe extern "C" fn creamui_button_new(
     unsafe impl Send for SendPtr {}
     let userdata = SendPtr(userdata);
 
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     let button = ThemedButton::new(&theme, text, move || {
         on_click(userdata.0);
     });
@@ -781,7 +639,7 @@ pub unsafe extern "C" fn creamui_checkbox_new(
     unsafe impl Send for SendPtr {}
     let userdata = SendPtr(userdata);
 
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     let checkbox = ThemedCheckbox::new(&theme, checked != 0, move || {
         on_click(userdata.0);
     });
@@ -810,8 +668,8 @@ pub unsafe extern "C" fn creamui_text_input_new(
     let userdata = SendPtr(userdata);
 
     let value = cstr_to_string(value);
-    let theme_owned: Theme = theme.into();
-    let inner = ThemedTextInput::with_style(&theme_owned, style.into(), value, move |next: String| {
+    let theme_owned: Theme = theme_from_c(theme);
+    let inner = ThemedTextInput::with_style(&theme_owned, style_from_c(style), value, move |next: String| {
         // CString::new fails only on interior NULs, which a text input's
         // keystroke-built value can never contain (Key::Char never yields
         // '\0'), so this is infallible in practice.
@@ -835,7 +693,7 @@ pub unsafe extern "C" fn creamui_text_input_set_placeholder(theme: CTheme, input
         return;
     }
     let text = cstr_to_string(text);
-    let theme: Theme = theme.into();
+    let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextInput(w) = &mut (*input).0 {
         let taken = std::mem::replace(w, ThemedTextInput::new(&theme, String::new(), |_| {}));
         *w = taken.placeholder(&theme, text);
@@ -861,8 +719,8 @@ pub unsafe extern "C" fn creamui_slider_new(
     unsafe impl Send for SendPtr {}
     let userdata = SendPtr(userdata);
 
-    let theme: Theme = theme.into();
-    let slider = ThemedSlider::with_style(&theme, style.into(), value, move |next| {
+    let theme: Theme = theme_from_c(theme);
+    let slider = ThemedSlider::with_style(&theme, style_from_c(style), value, move |next| {
         on_change(next, userdata.0);
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedSlider(slider))))
@@ -889,8 +747,8 @@ pub unsafe extern "C" fn creamui_scroll_view_new(
     unsafe impl Send for SendPtr {}
     let userdata = SendPtr(userdata);
 
-    let theme: Theme = theme.into();
-    let scroll_view = ThemedScrollView::new(&theme, style.into(), scroll_y, move |delta| {
+    let theme: Theme = theme_from_c(theme);
+    let scroll_view = ThemedScrollView::new(&theme, style_from_c(style), scroll_y, move |delta| {
         on_scroll(delta, userdata.0);
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedScrollView(scroll_view))))
@@ -970,6 +828,57 @@ pub unsafe extern "C" fn creamui_window_handle_free(handle: *mut CWindowHandle) 
 type CBuildFn = extern "C" fn(width: f32, height: f32, userdata: *mut c_void) -> *mut CWidget;
 type CWindowReadyFn = extern "C" fn(handle: *mut CWindowHandle, userdata: *mut c_void);
 
+fn window_options_from_c(options: CWindowOptions) -> creamui_render::WindowOptions {
+    creamui_render::WindowOptions {
+        title: unsafe { cstr_to_string(options.title) },
+        width: options.width,
+        height: options.height,
+        resizable: options.resizable != 0,
+        decorations: options.decorations != 0,
+        transparent: options.transparent != 0,
+        backend: if options.backend == CUI_RENDER_BACKEND_CPU {
+            creamui_render::RenderBackend::Cpu
+        } else {
+            creamui_render::RenderBackend::Gpu
+        },
+    }
+}
+
+/// Wraps a nullable [`CWindowReadyFn`] into the `Fn(WindowHandle)` closure
+/// `creamui_render::run`/`AppBuilder::window` expect, shared by
+/// [`creamui_run`] and [`creamui_app_builder_add_window`].
+fn window_ready_callback(
+    on_window_ready: Option<CWindowReadyFn>,
+    userdata: *mut c_void,
+) -> impl Fn(WindowHandle) {
+    struct SendPtr(*mut c_void);
+    unsafe impl Send for SendPtr {}
+    let ready_userdata = SendPtr(userdata);
+    move |handle: WindowHandle| {
+        if let Some(on_ready) = on_window_ready {
+            let boxed = Box::into_raw(Box::new(CWindowHandle(handle)));
+            on_ready(boxed, ready_userdata.0);
+        }
+    }
+}
+
+/// Wraps a [`CBuildFn`] into the `Fn(Size) -> BoxedWidget` closure
+/// `creamui_render::run`/`AppBuilder::window` expect, shared by
+/// [`creamui_run`] and [`creamui_app_builder_add_window`].
+fn build_callback(build: CBuildFn, userdata: *mut c_void) -> impl Fn(Size) -> BoxedWidget {
+    struct SendPtr(*mut c_void);
+    unsafe impl Send for SendPtr {}
+    let build_userdata = SendPtr(userdata);
+    move |size: Size| -> BoxedWidget {
+        let raw = build(size.width, size.height, build_userdata.0);
+        assert!(!raw.is_null(), "build callback returned a null widget");
+        // SAFETY: `build` is contractually required to return an owned,
+        // freshly-allocated widget pointer each call; we take ownership here.
+        let widget = unsafe { *Box::from_raw(raw) };
+        widget.0.into_boxed()
+    }
+}
+
 /// Opens a window and runs the render loop until closed, calling `build`
 /// once up front and again on every reactive change to construct the
 /// widget tree for the current viewport size. If `on_window_ready` is
@@ -978,6 +887,9 @@ type CWindowReadyFn = extern "C" fn(handle: *mut CWindowHandle, userdata: *mut c
 /// `userdata` and use later (e.g. from a click handler) to resize, move, or
 /// pin the window — see [`creamui_window_resize`] and friends. Blocks until
 /// the window is closed.
+///
+/// To open several windows sharing one process and event loop (e.g. a
+/// desktop-shell dock), use [`creamui_app_builder_new`] instead.
 ///
 /// # Safety
 /// `options.title` must be a valid NUL-terminated UTF-8 string for the
@@ -994,41 +906,81 @@ pub unsafe extern "C" fn creamui_run(
     on_window_ready: Option<CWindowReadyFn>,
     userdata: *mut c_void,
 ) {
-    struct SendPtr(*mut c_void);
-    unsafe impl Send for SendPtr {}
-    let build_userdata = SendPtr(userdata);
-    let ready_userdata = SendPtr(userdata);
-
-    let window_options = creamui_render::WindowOptions {
-        title: cstr_to_string(options.title),
-        width: options.width,
-        height: options.height,
-        resizable: options.resizable != 0,
-        decorations: options.decorations != 0,
-        transparent: options.transparent != 0,
-        backend: if options.backend == CUI_RENDER_BACKEND_CPU {
-            creamui_render::RenderBackend::Cpu
-        } else {
-            creamui_render::RenderBackend::Gpu
-        },
-    };
-
     creamui_render::run(
-        window_options,
-        background.into(),
-        move |handle: WindowHandle| {
-            if let Some(on_ready) = on_window_ready {
-                let boxed = Box::into_raw(Box::new(CWindowHandle(handle)));
-                on_ready(boxed, ready_userdata.0);
-            }
-        },
-        move |size: Size| -> BoxedWidget {
-            let raw = build(size.width, size.height, build_userdata.0);
-            assert!(!raw.is_null(), "creamui_run: build callback returned a null widget");
-            // SAFETY: `build` is contractually required to return an owned,
-            // freshly-allocated widget pointer each call; we take ownership here.
-            let widget = *Box::from_raw(raw);
-            widget.0.into_boxed()
-        },
+        window_options_from_c(options),
+        color_from_c(background),
+        window_ready_callback(on_window_ready, userdata),
+        build_callback(build, userdata),
     );
+}
+
+/// Opaque builder for opening several windows sharing one process and one
+/// event loop — e.g. a desktop-shell dock where each icon/panel is its own
+/// window but spawning a process per icon would multiply fixed
+/// per-process overhead (runtime, allocator, embedded font, and — for the
+/// GPU backend — the graphics driver) for no benefit. Windows added via
+/// [`creamui_app_builder_add_window`] keep fully independent reactive/paint
+/// state; the process's windows stay open until every one of them has been
+/// closed. See `creamui_render::AppBuilder` for the native Rust equivalent.
+pub struct CAppBuilder(Option<RenderAppBuilder>);
+
+/// Creates an empty builder. Add windows with
+/// [`creamui_app_builder_add_window`], then open them all with
+/// [`creamui_app_builder_run`].
+#[no_mangle]
+pub extern "C" fn creamui_app_builder_new() -> *mut CAppBuilder {
+    Box::into_raw(Box::new(CAppBuilder(Some(RenderAppBuilder::new()))))
+}
+
+/// Queues a window to be opened when [`creamui_app_builder_run`] starts the
+/// shared event loop. Arguments have the same meaning as the identically
+/// named ones on [`creamui_run`].
+///
+/// # Safety
+/// `builder` must be a valid, non-null, not-yet-`_run` pointer from
+/// [`creamui_app_builder_new`]. `options.title` must be a valid
+/// NUL-terminated UTF-8 string for the duration of this call. `build` and
+/// `on_window_ready` have the same contract as on [`creamui_run`], scoped
+/// to the eventual [`creamui_app_builder_run`] call instead.
+#[no_mangle]
+pub unsafe extern "C" fn creamui_app_builder_add_window(
+    builder: *mut CAppBuilder,
+    options: CWindowOptions,
+    background: CColor,
+    build: CBuildFn,
+    on_window_ready: Option<CWindowReadyFn>,
+    userdata: *mut c_void,
+) {
+    if builder.is_null() {
+        return;
+    }
+    let slot = &mut (*builder).0;
+    let owned = slot
+        .take()
+        .expect("creamui_app_builder_add_window: builder was already consumed by creamui_app_builder_run");
+    *slot = Some(owned.window(
+        window_options_from_c(options),
+        color_from_c(background),
+        window_ready_callback(on_window_ready, userdata),
+        build_callback(build, userdata),
+    ));
+}
+
+/// Opens every window queued with [`creamui_app_builder_add_window`] and
+/// runs one shared event loop until all of them have closed. Consumes and
+/// frees `builder` — it must not be used again afterward.
+///
+/// # Safety
+/// `builder` must be a valid, non-null, not-yet-`_run` pointer from
+/// [`creamui_app_builder_new`].
+#[no_mangle]
+pub unsafe extern "C" fn creamui_app_builder_run(builder: *mut CAppBuilder) {
+    if builder.is_null() {
+        return;
+    }
+    let boxed = Box::from_raw(builder);
+    let owned = boxed
+        .0
+        .expect("creamui_app_builder_run: builder was already consumed by an earlier creamui_app_builder_run");
+    owned.run();
 }

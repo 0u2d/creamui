@@ -16,6 +16,7 @@ creamui-theme = { workspace = true }
 creamui-widgets = { workspace = true }
 creamui-render = { workspace = true }
 creamui-reactive = { workspace = true }
+creamui-abi = { workspace = true }
 
 [dev-dependencies]
 libloading = "0.8"

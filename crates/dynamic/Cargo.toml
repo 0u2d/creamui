@@ -1,0 +1,11 @@
+[package]
+name = "creamui-dynamic"
+description = "Safe, dependency-light client for dlopen-ing the creamui cdylib and driving it through its C ABI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-abi = { workspace = true }
+libloading = { workspace = true }

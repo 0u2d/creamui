@@ -40,7 +40,32 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
       share one `wgpu::Instance` (`AppHandler::gpu_instance`) rather than
       each paying driver-init cost — the motivating case is a desktop-shell
       dock where one process per icon would multiply fixed per-process
-      overhead for no benefit. Rust-only for now — no FFI surface yet.
+      overhead for no benefit. Exposed across the ABI too: `creamui_ffi`'s
+      `creamui_app_builder_new`/`_add_window`/`_run`, and
+      `creamui_dynamic::AppBuilder` on the `dlopen` side.
+- [x] `creamui-abi`: the plain `#[repr(C)]` types (`CColor`/`CTheme`/
+      `CStyle`/`CDimension`/`CWindowOptions`) and wire-format constants
+      moved out of `creamui-ffi` into their own dependency-free crate,
+      re-exported by `creamui-ffi` for source compatibility. Both the
+      producer (`creamui-ffi`) and consumer (`creamui-dynamic`) side of the
+      ABI now share one definition of every struct layout instead of two
+      hand-copied ones that could silently drift apart.
+- [x] `creamui-dynamic`: a safe client crate that `dlopen`s the `creamui`
+      cdylib, resolves every symbol once in `Runtime::load` (failing loudly
+      on a missing/renamed one instead of crashing later), and exposes a
+      `Widget`/`SignalI32`/`SignalF32`/`SignalString`/`run`/`AppBuilder` API
+      mirroring the native `creamui-widgets`/`creamui-render` ergonomics.
+      Per-window callback closures (rebuilt fresh every repaint, since a
+      new widget tree is built every frame) are kept alive by a small
+      double-buffered arena (`creamui_dynamic::arena::ClosureArena`) that
+      frees anything older than the previous frame — sound because widget
+      trees are only ever built from the top-level render loop, never
+      reentrantly from within a callback still on the stack, so at most two
+      frames' worth of closures are ever live at once. Depends only on
+      `creamui-abi` + `libloading`, so consuming it stays as free of the
+      engine at compile time as talking to the raw C ABI would be.
+      `examples/hello_world_dynamic` was rewritten on top of it, dropping
+      all hand-declared `#[repr(C)]`/`Symbol<...>` boilerplate.
 - [x] ABI-stable C interface (`creamui-ffi`, builds as `cdylib`): opaque
       widget handles, `#[repr(C)]` options/colors, `creamui_run` with a
       C callback rebuilding the tree — verified end-to-end via a
