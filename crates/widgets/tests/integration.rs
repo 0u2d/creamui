@@ -398,6 +398,45 @@ fn text_area_drag_and_shift_arrows_update_controlled_selection() {
 }
 
 #[test]
+fn text_area_ctrl_a_selects_the_entire_controlled_document() {
+    let theme = Theme::dark();
+    let value = Signal::new(String::from("select all"));
+    let cursor = Signal::new(0usize);
+    let selection = Signal::new(TextSelection::default());
+    let value_for_change = value.clone();
+    let cursor_for_change = cursor.clone();
+    let selection_for_change = selection.clone();
+    let root = RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(
+        TextArea::new(&theme, value.get(), move |next| value_for_change.set(next))
+            .cursor(cursor.get(), move |next| cursor_for_change.set(next))
+            .selection(selection.get(), move |next| selection_for_change.set(next)),
+    ));
+    let scene = render_frame(
+        Box::new(root),
+        Size {
+            width: 500.0,
+            height: 300.0,
+        },
+        &mut RecordingPainter::default(),
+    );
+    let index = scene.focus_hit_test(Point { x: 20.0, y: 20.0 }).unwrap();
+    scene.on_key_at(index).unwrap().clone()(KeyInput {
+        key: Key::Char('a'),
+        modifiers: Modifiers {
+            ctrl: true,
+            shift: false,
+        },
+    });
+    assert_eq!(
+        selection.get(),
+        TextSelection {
+            anchor: 0,
+            focus: value.get().len()
+        }
+    );
+}
+
+#[test]
 fn text_area_paints_each_source_line_at_its_own_baseline() {
     let theme = Theme::dark();
     let root = RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(TextArea::new(

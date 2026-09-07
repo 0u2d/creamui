@@ -168,6 +168,11 @@ impl TextInput {
         self.inner = self.inner.placeholder(text, theme.text_disabled);
         self
     }
+
+    pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
+        self.inner = self.inner.clipboard_enabled(enabled);
+        self
+    }
 }
 
 impl Widget for TextInput {
@@ -230,7 +235,9 @@ impl TextArea {
             inner: RawTextArea::new(style, value, 14.0, theme.text_primary, on_change)
                 .background(theme.surface_elevated)
                 .border(theme.border, 1.0)
-                .corner_radius(theme.radius_medium),
+                .corner_radius(theme.radius_medium)
+                .selection_background(theme.selection_background)
+                .selection_text_color(theme.selection_text),
         }
     }
     pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
@@ -287,6 +294,11 @@ impl TextArea {
 
     pub fn on_ctrl_o(mut self, callback: impl Fn() + 'static) -> Self {
         self.inner = self.inner.on_ctrl_o(callback);
+        self
+    }
+
+    pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
+        self.inner = self.inner.clipboard_enabled(enabled);
         self
     }
 }

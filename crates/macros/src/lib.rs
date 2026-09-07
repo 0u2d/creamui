@@ -415,6 +415,7 @@ impl Element {
                     "on_change",
                     "style",
                     "placeholder",
+                    "clipboard_enabled",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -432,6 +433,9 @@ impl Element {
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.placeholder(#theme, #placeholder));
+                }
+                if let Some(enabled) = self.prop("clipboard_enabled")? {
+                    output = quote!(#output.clipboard_enabled(#enabled));
                 }
                 Ok(output)
             }
@@ -455,6 +459,7 @@ impl Element {
                     "selection_background",
                     "selection_text_color",
                     "on_ctrl_o",
+                    "clipboard_enabled",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -517,6 +522,9 @@ impl Element {
                 }
                 if let Some(callback) = self.prop("on_ctrl_o")? {
                     output = quote!(#output.on_ctrl_o(#callback));
+                }
+                if let Some(enabled) = self.prop("clipboard_enabled")? {
+                    output = quote!(#output.clipboard_enabled(#enabled));
                 }
                 Ok(output)
             }

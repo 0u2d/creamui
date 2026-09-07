@@ -8,8 +8,38 @@ use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
 use creamui_theme::Color;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+thread_local! {
+    // On X11/Wayland the clipboard owner must remain alive after the write;
+    // creating and dropping `arboard::Clipboard` inside a key callback makes
+    // clipboard managers lose the contents immediately.
+    static SYSTEM_CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
+}
+
+fn clipboard_write(text: String) {
+    SYSTEM_CLIPBOARD.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = arboard::Clipboard::new().ok();
+        }
+        if let Some(clipboard) = slot.as_mut() {
+            let _ = clipboard.set_text(text);
+        }
+    });
+}
+
+fn clipboard_read() -> Option<String> {
+    SYSTEM_CLIPBOARD.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = arboard::Clipboard::new().ok();
+        }
+        slot.as_mut()
+            .and_then(|clipboard| clipboard.get_text().ok())
+    })
+}
 
 /// A controlled text selection represented as byte offsets into a UTF-8
 /// document. `anchor` stays at the point where selection began while `focus`
@@ -249,6 +279,7 @@ pub struct RawTextInput {
     pub corner_radius: f32,
     pub font_size: f32,
     pub on_change: Rc<dyn Fn(String)>,
+    pub clipboard_enabled: bool,
 }
 
 /// An unstyled multi-line text editor. Like [`RawTextInput`], its value is
@@ -275,11 +306,13 @@ pub struct RawTextArea {
     pub on_cursor_change: Rc<dyn Fn(usize)>,
     pub on_selection_change: Rc<dyn Fn(TextSelection)>,
     pub on_ctrl_o: Rc<dyn Fn()>,
+    pub clipboard_enabled: bool,
     // Pointer interaction can outlive a reactive frame when renders are
     // coalesced. This tiny ephemeral cell keeps drag selection anchored
     // without requiring every mouse move to rebuild the widget tree.
     drag_anchor: Rc<Cell<usize>>,
     drag_focus: Rc<Cell<usize>>,
+    keyboard_selection: Rc<Cell<TextSelection>>,
 }
 
 impl RawTextArea {
@@ -316,8 +349,13 @@ impl RawTextArea {
             on_cursor_change: Rc::new(|_| {}),
             on_selection_change: Rc::new(|_| {}),
             on_ctrl_o: Rc::new(|| {}),
+            clipboard_enabled: true,
             drag_anchor: Rc::new(Cell::new(cursor)),
             drag_focus: Rc::new(Cell::new(cursor)),
+            keyboard_selection: Rc::new(Cell::new(TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            })),
         }
     }
 
@@ -327,6 +365,10 @@ impl RawTextArea {
         self.cursor = cursor.min(self.value.len());
         self.drag_anchor.set(self.cursor);
         self.drag_focus.set(self.cursor);
+        self.keyboard_selection.set(TextSelection {
+            anchor: self.cursor,
+            focus: self.cursor,
+        });
         self.on_cursor_change = Rc::new(on_change);
         self
     }
@@ -345,6 +387,7 @@ impl RawTextArea {
         };
         self.drag_anchor.set(self.selection.anchor);
         self.drag_focus.set(self.selection.focus);
+        self.keyboard_selection.set(self.selection);
         self.on_selection_change = Rc::new(on_change);
         self
     }
@@ -368,6 +411,14 @@ impl RawTextArea {
     /// focus. The app decides what opening a document means.
     pub fn on_ctrl_o(mut self, callback: impl Fn() + 'static) -> Self {
         self.on_ctrl_o = Rc::new(callback);
+        self
+    }
+
+    /// Enables the platform clipboard shortcuts (Ctrl/Cmd+A, C and V).
+    /// Enabled by default; disable it for sensitive or deliberately isolated
+    /// editors without changing their keyboard-editing behavior.
+    pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
+        self.clipboard_enabled = enabled;
         self
     }
 
@@ -540,10 +591,75 @@ impl Widget for RawTextArea {
         let on_change = self.on_change.clone();
         let cursor = self.cursor;
         let on_cursor_change = self.on_cursor_change.clone();
-        let selection = self.selection;
+        let keyboard_selection = self.keyboard_selection.clone();
         let on_selection_change = self.on_selection_change.clone();
         let on_ctrl_o = self.on_ctrl_o.clone();
+        let clipboard_enabled = self.clipboard_enabled;
         Some(Rc::new(move |input| {
+            let selection = keyboard_selection.get();
+            if clipboard_enabled && input.modifiers.ctrl {
+                match input.key {
+                    Key::Char('a') | Key::Char('A') => {
+                        let all = TextSelection {
+                            anchor: 0,
+                            focus: value.len(),
+                        };
+                        keyboard_selection.set(all);
+                        creamui_reactive::batch(|| {
+                            on_cursor_change(value.len());
+                            on_selection_change(all);
+                        });
+                        return;
+                    }
+                    Key::Char('c') | Key::Char('C') if !selection.is_empty() => {
+                        clipboard_write(value[selection.range()].to_owned());
+                        return;
+                    }
+                    Key::Char('x') | Key::Char('X') if !selection.is_empty() => {
+                        let range = selection.range();
+                        clipboard_write(value[range.clone()].to_owned());
+                        let mut next = value.clone();
+                        next.replace_range(range.clone(), "");
+                        let next_cursor = range.start;
+                        creamui_reactive::batch(|| {
+                            on_change(next);
+                            on_cursor_change(next_cursor);
+                            on_selection_change(TextSelection {
+                                anchor: next_cursor,
+                                focus: next_cursor,
+                            });
+                        });
+                        return;
+                    }
+                    Key::Char('v') | Key::Char('V') => {
+                        if let Some(pasted) = clipboard_read() {
+                            let mut next = value.clone();
+                            let range = selection.range();
+                            let next_cursor = if range.is_empty() {
+                                next.insert_str(cursor.min(next.len()), &pasted);
+                                cursor.min(value.len()) + pasted.len()
+                            } else {
+                                next.replace_range(range.clone(), &pasted);
+                                range.start + pasted.len()
+                            };
+                            keyboard_selection.set(TextSelection {
+                                anchor: next_cursor,
+                                focus: next_cursor,
+                            });
+                            creamui_reactive::batch(|| {
+                                on_change(next);
+                                on_cursor_change(next_cursor);
+                                on_selection_change(TextSelection {
+                                    anchor: next_cursor,
+                                    focus: next_cursor,
+                                });
+                            });
+                        }
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             if input.modifiers.ctrl && matches!(input.key, Key::Char('o') | Key::Char('O')) {
                 on_ctrl_o();
                 return;
@@ -652,6 +768,7 @@ impl Widget for RawTextArea {
                     focus: next_cursor,
                 }
             };
+            keyboard_selection.set(next_selection);
             creamui_reactive::batch(|| {
                 if edited {
                     on_change(next);
@@ -669,10 +786,15 @@ impl Widget for RawTextArea {
         let on_selection_change = self.on_selection_change.clone();
         let drag_anchor = self.drag_anchor.clone();
         let drag_focus = self.drag_focus.clone();
+        let keyboard_selection = self.keyboard_selection.clone();
         Some(Rc::new(move |point, _| {
             let cursor = cursor_at_point(&value, font_size, point);
             drag_anchor.set(cursor);
             drag_focus.set(cursor);
+            keyboard_selection.set(TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            });
             creamui_reactive::batch(|| {
                 on_cursor_change(cursor);
                 on_selection_change(TextSelection {
@@ -690,10 +812,15 @@ impl Widget for RawTextArea {
         let on_selection_change = self.on_selection_change.clone();
         let drag_anchor = self.drag_anchor.clone();
         let drag_focus = self.drag_focus.clone();
+        let keyboard_selection = self.keyboard_selection.clone();
         Some(Rc::new(move |point, _| {
             let cursor = cursor_at_point(&value, font_size, point);
             if cursor != drag_focus.get() {
                 drag_focus.set(cursor);
+                keyboard_selection.set(TextSelection {
+                    anchor: drag_anchor.get(),
+                    focus: cursor,
+                });
                 creamui_reactive::batch(|| {
                     on_cursor_change(cursor);
                     on_selection_change(TextSelection {
@@ -738,6 +865,7 @@ impl RawTextInput {
             corner_radius: 0.0,
             font_size,
             on_change: Rc::new(on_change),
+            clipboard_enabled: true,
         }
     }
 
@@ -760,6 +888,13 @@ impl RawTextInput {
     pub fn placeholder(mut self, text: impl Into<String>, color: Color) -> Self {
         self.placeholder = text.into();
         self.placeholder_color = color;
+        self
+    }
+
+    /// Enables Ctrl/Cmd+V for this field. Text inputs expose the same opt-out
+    /// surface as text areas; it is enabled by default.
+    pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
+        self.clipboard_enabled = enabled;
         self
     }
 }
@@ -843,8 +978,19 @@ impl Widget for RawTextInput {
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
         let value = self.value.clone();
         let on_change = self.on_change.clone();
+        let clipboard_enabled = self.clipboard_enabled;
         Some(Rc::new(move |input: KeyInput| {
             let mut next = value.clone();
+            if clipboard_enabled
+                && input.modifiers.ctrl
+                && matches!(input.key, Key::Char('v') | Key::Char('V'))
+            {
+                if let Some(pasted) = clipboard_read() {
+                    next.push_str(&pasted);
+                    on_change(next);
+                }
+                return;
+            }
             match input.key {
                 Key::Char(c) => next.push(c),
                 Key::Backspace => {

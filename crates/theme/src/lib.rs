@@ -48,6 +48,11 @@ pub struct Theme {
     pub accent_hover: Color,
     pub accent_pressed: Color,
 
+    /// Background and foreground for selected text. These are independent
+    /// from accent so a theme can keep controls and editor selection legible.
+    pub selection_background: Color,
+    pub selection_text: Color,
+
     pub text_primary: Color,
     pub text_secondary: Color,
     pub text_disabled: Color,
@@ -81,6 +86,8 @@ impl Theme {
             accent: Color::rgb(0x7c, 0x5c, 0xff),
             accent_hover: Color::rgb(0x8d, 0x71, 0xff),
             accent_pressed: Color::rgb(0x6a, 0x4a, 0xe6),
+            selection_background: Color::rgb(0x0a, 0x84, 0xff),
+            selection_text: Color::rgb(0xff, 0xff, 0xff),
 
             text_primary: Color::rgb(0xf2, 0xf2, 0xf5),
             text_secondary: Color::rgb(0xa4, 0xa5, 0xad),
@@ -113,6 +120,8 @@ impl Theme {
             accent: Color::rgb(0x6a, 0x4a, 0xe6),
             accent_hover: Color::rgb(0x7c, 0x5c, 0xff),
             accent_pressed: Color::rgb(0x59, 0x3c, 0xcc),
+            selection_background: Color::rgb(0x0a, 0x66, 0xcc),
+            selection_text: Color::rgb(0xff, 0xff, 0xff),
 
             text_primary: Color::rgb(0x1a, 0x1b, 0x1e),
             text_secondary: Color::rgb(0x54, 0x55, 0x5c),
@@ -189,7 +198,10 @@ mod tests {
 
     #[test]
     fn color_to_f32_normalizes() {
-        assert_eq!(Color::rgb(255, 0, 128).to_f32(), [1.0, 0.0, 128.0 / 255.0, 1.0]);
+        assert_eq!(
+            Color::rgb(255, 0, 128).to_f32(),
+            [1.0, 0.0, 128.0 / 255.0, 1.0]
+        );
     }
 
     #[test]
@@ -220,7 +232,11 @@ mod tests {
 
         assert_eq!(seen.get(), Theme::dark());
         provider.set(Theme::light());
-        assert_eq!(seen.get(), Theme::light(), "effect should re-run and observe the new theme");
+        assert_eq!(
+            seen.get(),
+            Theme::light(),
+            "effect should re-run and observe the new theme"
+        );
     }
 
     #[test]

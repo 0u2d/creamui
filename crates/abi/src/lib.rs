@@ -43,6 +43,8 @@ pub struct CTheme {
     pub accent: CColor,
     pub accent_hover: CColor,
     pub accent_pressed: CColor,
+    pub selection_background: CColor,
+    pub selection_text: CColor,
 
     pub text_primary: CColor,
     pub text_secondary: CColor,
@@ -81,14 +83,23 @@ pub const DIMENSION_LENGTH: u8 = 1;
 pub const DIMENSION_PERCENT: u8 = 2;
 
 impl CDimension {
-    pub const AUTO: CDimension = CDimension { kind: DIMENSION_AUTO, value: 0.0 };
+    pub const AUTO: CDimension = CDimension {
+        kind: DIMENSION_AUTO,
+        value: 0.0,
+    };
 
     pub const fn length(value: f32) -> CDimension {
-        CDimension { kind: DIMENSION_LENGTH, value }
+        CDimension {
+            kind: DIMENSION_LENGTH,
+            value,
+        }
     }
 
     pub const fn percent(value: f32) -> CDimension {
-        CDimension { kind: DIMENSION_PERCENT, value }
+        CDimension {
+            kind: DIMENSION_PERCENT,
+            value,
+        }
     }
 }
 
