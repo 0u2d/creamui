@@ -26,8 +26,46 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
 - [x] Reactive render loop: signal change → effect reruns → repaint →
       redraw request; click hit-testing dispatches to widget handlers,
       which mutate signals and trigger the next reactive re-render
-- [x] `CREAMUI_DEBUG=1` verbose logging; `CREAMUI_DUMP_FRAME=<path>` frame
+- [x] `CUI_DEBUG=1` verbose logging; `CUI_DUMP_FRAME=<path>` frame
       dump for headless visual verification
+- [x] Selectable GPU/CPU render backend: the embedding app picks
+      `RenderBackend::Gpu` (default, `wgpu`) or `RenderBackend::Cpu`
+      (`softbuffer`, no GPU device involved) via `WindowOptions::backend`
+      (`CWindowOptions::backend` over FFI), force-overridable at launch
+      with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu` (`creamui-render::backend`)
+- [x] Multi-window-in-one-process: `AppBuilder` opens several windows on one
+      shared winit event loop, each with fully independent reactive/paint
+      state (`creamui_render::window::{AppHandler, WindowState}`), closing
+      the process only once the last window closes; GPU-backend windows
+      share one `wgpu::Instance` (`AppHandler::gpu_instance`) rather than
+      each paying driver-init cost — the motivating case is a desktop-shell
+      dock where one process per icon would multiply fixed per-process
+      overhead for no benefit. Exposed across the ABI too: `creamui_ffi`'s
+      `creamui_app_builder_new`/`_add_window`/`_run`, and
+      `creamui_dynamic::AppBuilder` on the `dlopen` side.
+- [x] `creamui-abi`: the plain `#[repr(C)]` types (`CColor`/`CTheme`/
+      `CStyle`/`CDimension`/`CWindowOptions`) and wire-format constants
+      moved out of `creamui-ffi` into their own dependency-free crate,
+      re-exported by `creamui-ffi` for source compatibility. Both the
+      producer (`creamui-ffi`) and consumer (`creamui-dynamic`) side of the
+      ABI now share one definition of every struct layout instead of two
+      hand-copied ones that could silently drift apart.
+- [x] `creamui-dynamic`: a safe client crate that `dlopen`s the `creamui`
+      cdylib, resolves every symbol once in `Runtime::load` (failing loudly
+      on a missing/renamed one instead of crashing later), and exposes a
+      `Widget`/`SignalI32`/`SignalF32`/`SignalString`/`run`/`AppBuilder` API
+      mirroring the native `creamui-widgets`/`creamui-render` ergonomics.
+      Per-window callback closures (rebuilt fresh every repaint, since a
+      new widget tree is built every frame) are kept alive by a small
+      double-buffered arena (`creamui_dynamic::arena::ClosureArena`) that
+      frees anything older than the previous frame — sound because widget
+      trees are only ever built from the top-level render loop, never
+      reentrantly from within a callback still on the stack, so at most two
+      frames' worth of closures are ever live at once. Depends only on
+      `creamui-abi` + `libloading`, so consuming it stays as free of the
+      engine at compile time as talking to the raw C ABI would be.
+      `examples/hello_world_dynamic` was rewritten on top of it, dropping
+      all hand-declared `#[repr(C)]`/`Symbol<...>` boilerplate.
 - [x] ABI-stable C interface (`creamui-ffi`, builds as `cdylib`): opaque
       widget handles, `#[repr(C)]` options/colors, `creamui_run` with a
       C callback rebuilding the tree — verified end-to-end via a
