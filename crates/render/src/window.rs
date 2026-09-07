@@ -20,7 +20,7 @@ use crate::backend::RenderBackend;
 use crate::cpu::CpuState;
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
-use creamui_core::{BoxedWidget, CursorIcon, Key, KeyInput, Point, Renderer, Scene, Size};
+use creamui_core::{BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size};
 use creamui_reactive::{create_effect, Effect, Signal};
 use creamui_theme::Color;
 use std::cell::{Cell, RefCell};
@@ -31,7 +31,7 @@ use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{Key as WinitKey, NamedKey};
+use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
 use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId, WindowLevel};
 
 /// How long the text-input caret stays in each visibility phase while
@@ -60,6 +60,8 @@ fn translate_key(key: &WinitKey) -> Option<Key> {
         WinitKey::Named(NamedKey::Escape) => Some(Key::Escape),
         WinitKey::Named(NamedKey::ArrowLeft) => Some(Key::Left),
         WinitKey::Named(NamedKey::ArrowRight) => Some(Key::Right),
+        WinitKey::Named(NamedKey::ArrowUp) => Some(Key::Up),
+        WinitKey::Named(NamedKey::ArrowDown) => Some(Key::Down),
         WinitKey::Named(NamedKey::Home) => Some(Key::Home),
         WinitKey::Named(NamedKey::End) => Some(Key::End),
         _ => None,
@@ -266,6 +268,7 @@ struct WindowState {
     window: Arc<Window>,
     presenter: Presenter,
     pointer_pos: Point,
+    modifiers: ModifiersState,
     /// Index into the current `Scene`'s focusables, if any widget has
     /// keyboard focus. Only stable while the widget tree's shape doesn't
     /// change — see `Scene`'s doc comment. Shared with `repaint` (below) so
@@ -448,9 +451,10 @@ impl WindowState {
                     // possibly toggling off right as the text changes.
                     self.caret_visible.set(true);
                     self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
-                    handler(KeyInput { key });
+                    handler(KeyInput { key, modifiers: Modifiers { ctrl: self.modifiers.control_key(), shift: self.modifiers.shift_key() } });
                 }
             }
+            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => {
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
@@ -559,6 +563,7 @@ impl ApplicationHandler for AppHandler {
                     window,
                     presenter,
                     pointer_pos: Point::default(),
+                    modifiers: ModifiersState::default(),
                     focused: spec.focused,
                     caret_visible: spec.caret_visible,
                     next_blink: Instant::now() + CARET_BLINK_INTERVAL,

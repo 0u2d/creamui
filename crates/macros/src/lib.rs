@@ -446,6 +446,8 @@ impl Element {
                     "active_line_background",
                     "corner_radius",
                     "border_width",
+                    "cursor",
+                    "on_cursor_change",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -475,6 +477,11 @@ impl Element {
                 }
                 if let Some(width) = self.prop("border_width")? {
                     output = quote!(#output.border_width(#width));
+                }
+                match (self.prop("cursor")?, self.prop("on_cursor_change")?) {
+                    (Some(cursor), Some(on_change)) => output = quote!(#output.cursor(#cursor, #on_change)),
+                    (None, None) => {},
+                    _ => return Err(Error::new_spanned(&self.tag, "`TextArea` requires both `cursor` and `on_cursor_change`")),
                 }
                 Ok(output)
             }

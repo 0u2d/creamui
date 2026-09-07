@@ -15,6 +15,8 @@ pub enum Key {
     Escape,
     Left,
     Right,
+    Up,
+    Down,
     Home,
     End,
 }
@@ -23,6 +25,14 @@ pub enum Key {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KeyInput {
     pub key: Key,
+    pub modifiers: Modifiers,
+}
+
+/// Keyboard modifiers carried with every [`KeyInput`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Modifiers {
+    pub ctrl: bool,
+    pub shift: bool,
 }
 
 /// A widget's intrinsic-size function, used by `taffy`'s layout algorithm

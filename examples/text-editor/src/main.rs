@@ -148,6 +148,7 @@ fn LineNumbers(value: String) -> BoxedWidget {
 fn main() {
     let document = Signal::new("# A small thought\n\nCreamUI makes desktop interfaces feel calm.\n\nStart writing here — this is a real multiline editor.\nThe line count, word count, and character count react to each change.\n\n## Notes\n\n- Press Return for a new line\n- Backspace edits normally\n- The UI tree is declarative JSX".to_owned());
     let saved = Signal::new(false);
+    let cursor = Signal::new(document.get().len());
     let active_menu = Signal::new(0_i32);
     let status_message = Signal::new("Markdown · UTF-8".to_owned());
     run(
@@ -167,6 +168,7 @@ fn main() {
             let status_text = status_message.get();
             let on_change = document.clone();
             let saved_for_change = saved.clone();
+            let cursor_for_change = cursor.clone();
             let mut editor_theme = creamui_theme::Theme::dark();
             editor_theme.surface = WINDOW;
             editor_theme.surface_elevated = CONTENT;
@@ -212,7 +214,7 @@ fn main() {
                     <EditorToolbar menus={vec!["File".into()]} title={"Untitled.md".into()} active={active_menu.clone()} children={Vec::<BoxedWidget>::new()} />
                     <RawView style={editor_row}>
                         <LineNumbers value={value.clone()} />
-                        <TextArea theme={&editor_theme} style={area} value={value} on_change={move |next| { saved_for_change.set(false); on_change.set(next) }} placeholder={"Start writing…"} corner_radius={0.0} border_width={0.0} active_line_background={ACTIVE_LINE} />
+                        <TextArea theme={&editor_theme} style={area} value={value.clone()} cursor={cursor.get()} on_cursor_change={move |next| cursor_for_change.set(next)} on_change={move |next| { saved_for_change.set(false); on_change.set(next) }} placeholder={"Start writing…"} corner_radius={0.0} border_width={0.0} active_line_background={ACTIVE_LINE} />
                     </RawView>
                     <RawView style={status} background={WINDOW}>
                         <RawText color={BLUE} font_size={12.0} style={Style { flex_grow: 1.0, ..Default::default()}}>{status_text}</RawText>

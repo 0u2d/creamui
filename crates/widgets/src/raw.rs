@@ -245,9 +245,11 @@ pub struct RawTextArea {
     pub border_width: f32,
     pub corner_radius: f32,
     pub font_size: f32,
+    pub cursor: usize,
     pub alternating_line_background: Option<Color>,
     pub active_line_background: Option<Color>,
     pub on_change: Rc<dyn Fn(String)>,
+    pub on_cursor_change: Rc<dyn Fn(usize)>,
 }
 
 impl RawTextArea {
@@ -258,9 +260,11 @@ impl RawTextArea {
         text_color: Color,
         on_change: impl Fn(String) + 'static,
     ) -> Self {
+        let value = value.into();
+        let cursor = value.len();
         Self {
             style,
-            value: value.into(),
+            value,
             placeholder: String::new(),
             text_color,
             placeholder_color: text_color,
@@ -269,10 +273,20 @@ impl RawTextArea {
             border_width: 1.0,
             corner_radius: 0.0,
             font_size,
+            cursor,
             alternating_line_background: None,
             active_line_background: None,
             on_change: Rc::new(on_change),
+            on_cursor_change: Rc::new(|_| {}),
         }
+    }
+
+    /// Supplies a controlled byte-index cursor and receives updates from
+    /// keyboard navigation or pointer placement.
+    pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        self.cursor = cursor.min(self.value.len());
+        self.on_cursor_change = Rc::new(on_change);
+        self
     }
 
     pub fn background(mut self, color: Color) -> Self {
@@ -337,7 +351,9 @@ impl Widget for RawTextArea {
         // Draw each line in its own line-height box and clip overflowing
         // document content to the editor's inner padding box.
         let line_height = self.font_size * 1.4;
-        let active_line = self.value.matches('\n').count();
+        let active_line = self.value[..self.cursor.min(self.value.len())]
+            .matches('\n')
+            .count();
         painter.push_clip(text_rect);
         for (index, line) in text.split('\n').enumerate() {
             let line_rect = Rect {
@@ -371,13 +387,15 @@ impl Widget for RawTextArea {
             return;
         }
         let padding = 12.0;
-        let line = self.value.rsplit('\n').next().unwrap_or("");
+        let cursor = self.cursor.min(self.value.len());
+        let before_cursor = &self.value[..cursor];
+        let line = before_cursor.rsplit('\n').next().unwrap_or("");
         let (width, _) = crate::text_metrics::measure(
             line,
             self.font_size,
             crate::text_metrics::unbounded_width(),
         );
-        let lines = (self.value.matches('\n').count() + 1) as f32;
+        let lines = (before_cursor.matches('\n').count() + 1) as f32;
         let line_height = self.font_size * 1.4;
         painter.fill_rect(
             Rect {
@@ -394,17 +412,57 @@ impl Widget for RawTextArea {
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
         let value = self.value.clone();
         let on_change = self.on_change.clone();
+        let cursor = self.cursor;
+        let on_cursor_change = self.on_cursor_change.clone();
         Some(Rc::new(move |input| {
             let mut next = value.clone();
+            let mut next_cursor = cursor.min(next.len());
             match input.key {
-                Key::Char(c) => next.push(c),
-                Key::Enter => next.push('\n'),
+                Key::Char(c) => { next.insert(next_cursor, c); next_cursor += c.len_utf8(); }
+                Key::Enter => { next.insert(next_cursor, '\n'); next_cursor += 1; }
                 Key::Backspace => {
-                    next.pop();
+                    if let Some(previous) = next[..next_cursor].char_indices().last().map(|(index, _)| index) {
+                        next.drain(previous..next_cursor); next_cursor = previous;
+                    }
+                }
+                Key::Left => { if let Some(previous) = next[..next_cursor].char_indices().last().map(|(index, _)| index) { next_cursor = previous; } }
+                Key::Right => { if let Some(character) = next[next_cursor..].chars().next() { next_cursor += character.len_utf8(); } }
+                Key::Home => { next_cursor = next[..next_cursor].rfind('\n').map_or(0, |index| index + 1); }
+                Key::End => { next_cursor = next[next_cursor..].find('\n').map_or(next.len(), |index| next_cursor + index); }
+                Key::Up | Key::Down => {
+                    let line_start = next[..next_cursor].rfind('\n').map_or(0, |index| index + 1);
+                    let column = next[line_start..next_cursor].chars().count();
+                    let lines: Vec<&str> = next.split('\n').collect();
+                    let line = next[..next_cursor].matches('\n').count();
+                    let target = if input.key == Key::Up { line.checked_sub(1) } else { (line + 1 < lines.len()).then_some(line + 1) };
+                    if let Some(target) = target {
+                        let start = lines.iter().take(target).map(|line| line.len() + 1).sum::<usize>();
+                        next_cursor = start + lines[target].char_indices().nth(column).map_or(lines[target].len(), |(index, _)| index);
+                    }
                 }
                 _ => return,
             }
-            on_change(next);
+            if next != value { on_change(next); }
+            on_cursor_change(next_cursor);
+        }))
+    }
+
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        let value = self.value.clone();
+        let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone();
+        Some(Rc::new(move |point, _| {
+            let line = ((point.y - 12.0) / (font_size * 1.4)).floor().max(0.0) as usize;
+            let lines: Vec<&str> = value.split('\n').collect();
+            let line = line.min(lines.len().saturating_sub(1));
+            let start = lines.iter().take(line).map(|line| line.len() + 1).sum::<usize>();
+            let target_x = (point.x - 12.0).max(0.0);
+            let mut cursor = lines[line].len();
+            for (index, _) in lines[line].char_indices() {
+                let (width, _) = crate::text_metrics::measure(&lines[line][..index], font_size, crate::text_metrics::unbounded_width());
+                if width >= target_x { cursor = index; break; }
+            }
+            on_cursor_change(start + cursor);
         }))
     }
 }

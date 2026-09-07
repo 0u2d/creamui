@@ -261,6 +261,11 @@ impl TextArea {
         }
         self
     }
+
+    pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        self.inner = self.inner.cursor(cursor, on_change);
+        self
+    }
 }
 
 impl Widget for TextArea {
@@ -275,6 +280,9 @@ impl Widget for TextArea {
     }
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
         self.inner.on_key()
+    }
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        self.inner.on_drag()
     }
     fn cursor_icon(&self) -> Option<CursorIcon> {
         self.inner.cursor_icon()
