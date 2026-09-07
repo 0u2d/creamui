@@ -17,8 +17,8 @@
 
 use creamui_abi::{DIMENSION_LENGTH, DIMENSION_PERCENT};
 use creamui_core::layout::{
-    AlignItems, Dimension, FlexDirection, JustifyContent, LengthPercentage, LengthPercentageAuto, Rect as LayoutRect,
-    Size as LayoutSize, Style,
+    AlignItems, Dimension, FlexDirection, JustifyContent, LengthPercentage, LengthPercentageAuto,
+    Rect as LayoutRect, Size as LayoutSize, Style,
 };
 use creamui_core::{BoxedWidget, Size};
 use creamui_reactive::Signal;
@@ -26,8 +26,9 @@ use creamui_render::{AppBuilder as RenderAppBuilder, WindowHandle};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::raw::{RawText, RawView};
 use creamui_widgets::themed::{
-    Button as ThemedButton, Checkbox as ThemedCheckbox, ScrollView as ThemedScrollView, Slider as ThemedSlider,
-    Text as ThemedText, TextInput as ThemedTextInput,
+    Button as ThemedButton, Checkbox as ThemedCheckbox, ScrollView as ThemedScrollView,
+    Slider as ThemedSlider, Text as ThemedText, TextArea as ThemedTextArea,
+    TextInput as ThemedTextInput,
 };
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::os::raw::c_int;
@@ -186,7 +187,10 @@ pub unsafe extern "C" fn creamui_signal_string_get(signal: *const CSignalString)
 /// [`creamui_signal_string_new`] that has not been freed. `value` must be a
 /// valid NUL-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_signal_string_set(signal: *const CSignalString, value: *const c_char) {
+pub unsafe extern "C" fn creamui_signal_string_set(
+    signal: *const CSignalString,
+    value: *const c_char,
+) {
     (*signal).signal.set(cstr_to_string(value));
 }
 
@@ -212,7 +216,12 @@ fn color_from_c(c: CColor) -> Color {
 }
 
 fn color_to_c(c: Color) -> CColor {
-    CColor { r: c.r, g: c.g, b: c.b, a: c.a }
+    CColor {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+        a: c.a,
+    }
 }
 
 fn theme_to_c(t: Theme) -> CTheme {
@@ -351,40 +360,43 @@ pub extern "C" fn creamui_style_default() -> CStyle {
 
 fn style_from_c(s: CStyle) -> Style {
     Style {
-            display: creamui_core::layout::Display::Flex,
-            flex_direction: decode_flex_direction(s.flex_direction),
-            justify_content: decode_justify_content(s.justify_content),
-            align_items: decode_align_items(s.align_items),
-            size: LayoutSize { width: dimension_to_dimension(s.width), height: dimension_to_dimension(s.height) },
-            min_size: LayoutSize {
-                width: dimension_to_dimension(s.min_width),
-                height: dimension_to_dimension(s.min_height),
-            },
-            max_size: LayoutSize {
-                width: dimension_to_dimension(s.max_width),
-                height: dimension_to_dimension(s.max_height),
-            },
-            padding: LayoutRect {
-                left: LengthPercentage::Length(s.padding_left),
-                right: LengthPercentage::Length(s.padding_right),
-                top: LengthPercentage::Length(s.padding_top),
-                bottom: LengthPercentage::Length(s.padding_bottom),
-            },
-            margin: LayoutRect {
-                left: dimension_to_length_percentage_auto(s.margin_left),
-                right: dimension_to_length_percentage_auto(s.margin_right),
-                top: dimension_to_length_percentage_auto(s.margin_top),
-                bottom: dimension_to_length_percentage_auto(s.margin_bottom),
-            },
-            gap: LayoutSize {
-                width: dimension_to_length_percentage(CDimension::length(s.gap_column)),
-                height: dimension_to_length_percentage(CDimension::length(s.gap_row)),
-            },
-            flex_grow: s.flex_grow,
-            flex_shrink: s.flex_shrink,
-            flex_basis: dimension_to_dimension(s.flex_basis),
-            ..Default::default()
-        }
+        display: creamui_core::layout::Display::Flex,
+        flex_direction: decode_flex_direction(s.flex_direction),
+        justify_content: decode_justify_content(s.justify_content),
+        align_items: decode_align_items(s.align_items),
+        size: LayoutSize {
+            width: dimension_to_dimension(s.width),
+            height: dimension_to_dimension(s.height),
+        },
+        min_size: LayoutSize {
+            width: dimension_to_dimension(s.min_width),
+            height: dimension_to_dimension(s.min_height),
+        },
+        max_size: LayoutSize {
+            width: dimension_to_dimension(s.max_width),
+            height: dimension_to_dimension(s.max_height),
+        },
+        padding: LayoutRect {
+            left: LengthPercentage::Length(s.padding_left),
+            right: LengthPercentage::Length(s.padding_right),
+            top: LengthPercentage::Length(s.padding_top),
+            bottom: LengthPercentage::Length(s.padding_bottom),
+        },
+        margin: LayoutRect {
+            left: dimension_to_length_percentage_auto(s.margin_left),
+            right: dimension_to_length_percentage_auto(s.margin_right),
+            top: dimension_to_length_percentage_auto(s.margin_top),
+            bottom: dimension_to_length_percentage_auto(s.margin_bottom),
+        },
+        gap: LayoutSize {
+            width: dimension_to_length_percentage(CDimension::length(s.gap_column)),
+            height: dimension_to_length_percentage(CDimension::length(s.gap_row)),
+        },
+        flex_grow: s.flex_grow,
+        flex_shrink: s.flex_shrink,
+        flex_basis: dimension_to_dimension(s.flex_basis),
+        ..Default::default()
+    }
 }
 
 enum WidgetKind {
@@ -394,6 +406,7 @@ enum WidgetKind {
     ThemedButton(ThemedButton),
     ThemedCheckbox(ThemedCheckbox),
     ThemedTextInput(ThemedTextInput),
+    ThemedTextArea(ThemedTextArea),
     ThemedSlider(ThemedSlider),
     ThemedScrollView(ThemedScrollView),
 }
@@ -407,6 +420,7 @@ impl WidgetKind {
             WidgetKind::ThemedButton(w) => Box::new(w),
             WidgetKind::ThemedCheckbox(w) => Box::new(w),
             WidgetKind::ThemedTextInput(w) => Box::new(w),
+            WidgetKind::ThemedTextArea(w) => Box::new(w),
             WidgetKind::ThemedSlider(w) => Box::new(w),
             WidgetKind::ThemedScrollView(w) => Box::new(w),
         }
@@ -441,7 +455,10 @@ pub extern "C" fn creamui_view_new() -> *mut CWidget {
         flex_direction: FlexDirection::Column,
         justify_content: Some(JustifyContent::Center),
         align_items: Some(AlignItems::Center),
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Percent(1.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
         ..Default::default()
     };
     let widget = CWidget(WidgetKind::View(RawView::new(style)));
@@ -516,7 +533,10 @@ pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut 
 /// reference via a throwaway placeholder so both `creamui_view_add_child`
 /// and [`creamui_scroll_view_add_child`] can share this one code path.
 fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
-    let taken = std::mem::replace(view, ThemedScrollView::new(&Theme::dark(), Style::default(), 0.0, |_| {}));
+    let taken = std::mem::replace(
+        view,
+        ThemedScrollView::new(&Theme::dark(), Style::default(), 0.0, |_| {}),
+    );
     *view = taken.child(child);
 }
 
@@ -543,9 +563,17 @@ pub unsafe extern "C" fn creamui_scroll_view_add_child(view: *mut CWidget, child
 /// # Safety
 /// `text` must be a valid NUL-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_text_new(text: *const c_char, color: CColor, font_size: f32) -> *mut CWidget {
+pub unsafe extern "C" fn creamui_text_new(
+    text: *const c_char,
+    color: CColor,
+    font_size: f32,
+) -> *mut CWidget {
     let text = cstr_to_string(text);
-    let widget = CWidget(WidgetKind::Text(RawText::new(text, color_from_c(color), font_size)));
+    let widget = CWidget(WidgetKind::Text(RawText::new(
+        text,
+        color_from_c(color),
+        font_size,
+    )));
     Box::into_raw(Box::new(widget))
 }
 
@@ -555,7 +583,10 @@ pub unsafe extern "C" fn creamui_text_new(text: *const c_char, color: CColor, fo
 /// # Safety
 /// `text` must be a valid NUL-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_themed_text_new(theme: CTheme, text: *const c_char) -> *mut CWidget {
+pub unsafe extern "C" fn creamui_themed_text_new(
+    theme: CTheme,
+    text: *const c_char,
+) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text)));
@@ -568,7 +599,10 @@ pub unsafe extern "C" fn creamui_themed_text_new(theme: CTheme, text: *const c_c
 /// # Safety
 /// `text` must be a valid NUL-terminated UTF-8 string.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_themed_text_secondary_new(theme: CTheme, text: *const c_char) -> *mut CWidget {
+pub unsafe extern "C" fn creamui_themed_text_secondary_new(
+    theme: CTheme,
+    text: *const c_char,
+) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     let widget = CWidget(WidgetKind::ThemedText(ThemedText::secondary(&theme, text)));
@@ -588,7 +622,9 @@ pub unsafe extern "C" fn creamui_themed_text_new_sized(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text).font_size(font_size)));
+    let widget = CWidget(WidgetKind::ThemedText(
+        ThemedText::new(&theme, text).font_size(font_size),
+    ));
     Box::into_raw(Box::new(widget))
 }
 
@@ -669,14 +705,19 @@ pub unsafe extern "C" fn creamui_text_input_new(
 
     let value = cstr_to_string(value);
     let theme_owned: Theme = theme_from_c(theme);
-    let inner = ThemedTextInput::with_style(&theme_owned, style_from_c(style), value, move |next: String| {
-        // CString::new fails only on interior NULs, which a text input's
-        // keystroke-built value can never contain (Key::Char never yields
-        // '\0'), so this is infallible in practice.
-        if let Ok(c_next) = CString::new(next) {
-            on_change(c_next.as_ptr(), userdata.0);
-        }
-    });
+    let inner = ThemedTextInput::with_style(
+        &theme_owned,
+        style_from_c(style),
+        value,
+        move |next: String| {
+            // CString::new fails only on interior NULs, which a text input's
+            // keystroke-built value can never contain (Key::Char never yields
+            // '\0'), so this is infallible in practice.
+            if let Ok(c_next) = CString::new(next) {
+                on_change(c_next.as_ptr(), userdata.0);
+            }
+        },
+    );
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextInput(inner))))
 }
 
@@ -688,7 +729,11 @@ pub unsafe extern "C" fn creamui_text_input_new(
 /// [`creamui_text_input_new`]. `text` must be a valid NUL-terminated UTF-8
 /// string.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_text_input_set_placeholder(theme: CTheme, input: *mut CWidget, text: *const c_char) {
+pub unsafe extern "C" fn creamui_text_input_set_placeholder(
+    theme: CTheme,
+    input: *mut CWidget,
+    text: *const c_char,
+) {
     if input.is_null() {
         return;
     }
@@ -696,6 +741,53 @@ pub unsafe extern "C" fn creamui_text_input_set_placeholder(theme: CTheme, input
     let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextInput(w) = &mut (*input).0 {
         let taken = std::mem::replace(w, ThemedTextInput::new(&theme, String::new(), |_| {}));
+        *w = taken.placeholder(&theme, text);
+    }
+}
+
+/// Creates a themed multi-line text area. Its ABI and controlled-value
+/// callback contract mirror [`creamui_text_input_new`].
+#[no_mangle]
+pub unsafe extern "C" fn creamui_text_area_new(
+    theme: CTheme,
+    style: CStyle,
+    value: *const c_char,
+    on_change: extern "C" fn(*const c_char, *mut c_void),
+    userdata: *mut c_void,
+) -> *mut CWidget {
+    struct SendPtr(*mut c_void);
+    unsafe impl Send for SendPtr {}
+    let userdata = SendPtr(userdata);
+    let value = cstr_to_string(value);
+    let theme_owned: Theme = theme_from_c(theme);
+    let area = ThemedTextArea::with_style(
+        &theme_owned,
+        style_from_c(style),
+        value,
+        move |next: String| {
+            if let Ok(c_next) = CString::new(next) {
+                on_change(c_next.as_ptr(), userdata.0);
+            }
+        },
+    );
+    Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextArea(area))))
+}
+
+/// Sets placeholder text on a text area created with
+/// [`creamui_text_area_new`].
+#[no_mangle]
+pub unsafe extern "C" fn creamui_text_area_set_placeholder(
+    theme: CTheme,
+    input: *mut CWidget,
+    text: *const c_char,
+) {
+    if input.is_null() {
+        return;
+    }
+    let text = cstr_to_string(text);
+    let theme: Theme = theme_from_c(theme);
+    if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
+        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
         *w = taken.placeholder(&theme, text);
     }
 }
@@ -780,7 +872,11 @@ pub struct CWindowHandle(WindowHandle);
 /// `handle` must be a valid, non-null pointer from a [`creamui_run`]
 /// `on_window_ready` callback, still within that `creamui_run` call.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_window_resize(handle: *const CWindowHandle, width: u32, height: u32) {
+pub unsafe extern "C" fn creamui_window_resize(
+    handle: *const CWindowHandle,
+    width: u32,
+    height: u32,
+) {
     if handle.is_null() {
         return;
     }
@@ -804,7 +900,10 @@ pub unsafe extern "C" fn creamui_window_set_position(handle: *const CWindowHandl
 /// # Safety
 /// Same contract as [`creamui_window_resize`].
 #[no_mangle]
-pub unsafe extern "C" fn creamui_window_set_always_on_top(handle: *const CWindowHandle, enabled: c_int) {
+pub unsafe extern "C" fn creamui_window_set_always_on_top(
+    handle: *const CWindowHandle,
+    enabled: c_int,
+) {
     if handle.is_null() {
         return;
     }
@@ -955,9 +1054,9 @@ pub unsafe extern "C" fn creamui_app_builder_add_window(
         return;
     }
     let slot = &mut (*builder).0;
-    let owned = slot
-        .take()
-        .expect("creamui_app_builder_add_window: builder was already consumed by creamui_app_builder_run");
+    let owned = slot.take().expect(
+        "creamui_app_builder_add_window: builder was already consumed by creamui_app_builder_run",
+    );
     *slot = Some(owned.window(
         window_options_from_c(options),
         color_from_c(background),

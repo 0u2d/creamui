@@ -47,13 +47,14 @@ pub use runtime::{LoadError, Runtime};
 pub use signal::{SignalF32, SignalI32, SignalString};
 pub use value::{Color, Dimension, RenderBackend, Size, Style, Theme, WindowOptions};
 pub use value::{
-    ALIGN_BASELINE, ALIGN_CENTER, ALIGN_END, ALIGN_FLEX_END, ALIGN_FLEX_START, ALIGN_START, ALIGN_STRETCH,
-    ALIGN_UNSET, FLEX_DIRECTION_COLUMN, FLEX_DIRECTION_COLUMN_REVERSE, FLEX_DIRECTION_ROW,
-    FLEX_DIRECTION_ROW_REVERSE, JUSTIFY_CENTER, JUSTIFY_END, JUSTIFY_FLEX_END, JUSTIFY_FLEX_START,
-    JUSTIFY_SPACE_AROUND, JUSTIFY_SPACE_BETWEEN, JUSTIFY_SPACE_EVENLY, JUSTIFY_START, JUSTIFY_STRETCH,
+    ALIGN_BASELINE, ALIGN_CENTER, ALIGN_END, ALIGN_FLEX_END, ALIGN_FLEX_START, ALIGN_START,
+    ALIGN_STRETCH, ALIGN_UNSET, FLEX_DIRECTION_COLUMN, FLEX_DIRECTION_COLUMN_REVERSE,
+    FLEX_DIRECTION_ROW, FLEX_DIRECTION_ROW_REVERSE, JUSTIFY_CENTER, JUSTIFY_END, JUSTIFY_FLEX_END,
+    JUSTIFY_FLEX_START, JUSTIFY_SPACE_AROUND, JUSTIFY_SPACE_BETWEEN, JUSTIFY_SPACE_EVENLY,
+    JUSTIFY_START, JUSTIFY_STRETCH,
 };
 pub use widget::{
-    button, checkbox, scroll_view, slider, text, text_input, themed_text, themed_text_secondary,
-    themed_text_sized, view, view_styled, Widget,
+    button, checkbox, scroll_view, slider, text, text_area, text_input, themed_text,
+    themed_text_secondary, themed_text_sized, view, view_styled, Widget,
 };
 pub use window::{run, AppBuilder, Context, WindowHandle};

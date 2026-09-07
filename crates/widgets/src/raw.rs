@@ -231,6 +231,184 @@ pub struct RawTextInput {
     pub on_change: Rc<dyn Fn(String)>,
 }
 
+/// An unstyled multi-line text editor. Like [`RawTextInput`], its value is
+/// owned by the caller; this deliberately keeps editing state compatible
+/// with CreamUI's reactive, rebuild-on-change model.
+pub struct RawTextArea {
+    pub style: Style,
+    pub value: String,
+    pub placeholder: String,
+    pub text_color: Color,
+    pub placeholder_color: Color,
+    pub background: Option<Color>,
+    pub border_color: Option<Color>,
+    pub border_width: f32,
+    pub corner_radius: f32,
+    pub font_size: f32,
+    pub alternating_line_background: Option<Color>,
+    pub active_line_background: Option<Color>,
+    pub on_change: Rc<dyn Fn(String)>,
+}
+
+impl RawTextArea {
+    pub fn new(
+        style: Style,
+        value: impl Into<String>,
+        font_size: f32,
+        text_color: Color,
+        on_change: impl Fn(String) + 'static,
+    ) -> Self {
+        Self {
+            style,
+            value: value.into(),
+            placeholder: String::new(),
+            text_color,
+            placeholder_color: text_color,
+            background: None,
+            border_color: None,
+            border_width: 1.0,
+            corner_radius: 0.0,
+            font_size,
+            alternating_line_background: None,
+            active_line_background: None,
+            on_change: Rc::new(on_change),
+        }
+    }
+
+    pub fn background(mut self, color: Color) -> Self {
+        self.background = Some(color);
+        self
+    }
+    pub fn border(mut self, color: Color, width: f32) -> Self {
+        self.border_color = Some(color);
+        self.border_width = width;
+        self
+    }
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = radius;
+        self
+    }
+    pub fn placeholder(mut self, text: impl Into<String>, color: Color) -> Self {
+        self.placeholder = text.into();
+        self.placeholder_color = color;
+        self
+    }
+
+    /// Paints every second source line with a subtle reading-guide color.
+    pub fn alternating_line_background(mut self, color: Color) -> Self {
+        self.alternating_line_background = Some(color);
+        self
+    }
+
+    /// Highlights the source line containing the caret. CreamUI's current
+    /// textarea caret is append-only, so this is the final source line.
+    pub fn active_line_background(mut self, color: Color) -> Self {
+        self.active_line_background = Some(color);
+        self
+    }
+}
+
+impl Widget for RawTextArea {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if let Some(color) = self.background {
+            painter.fill_rect(rect, color, self.corner_radius);
+        }
+        if let Some(color) = self.border_color.filter(|_| self.border_width > 0.0) {
+            painter.stroke_rect(rect, color, self.border_width, self.corner_radius);
+        }
+        let padding = 12.0;
+        let text_rect = Rect {
+            x: rect.x + padding,
+            y: rect.y + padding,
+            width: (rect.width - padding * 2.0).max(0.0),
+            height: (rect.height - padding * 2.0).max(0.0),
+        };
+        let (text, color) = if self.value.is_empty() && !self.placeholder.is_empty() {
+            (&self.placeholder, self.placeholder_color)
+        } else {
+            (&self.value, self.text_color)
+        };
+        // `Painter::fill_text` vertically centers a text run. A textarea
+        // needs a stable baseline per source line, not one centered block.
+        // Draw each line in its own line-height box and clip overflowing
+        // document content to the editor's inner padding box.
+        let line_height = self.font_size * 1.4;
+        let active_line = self.value.matches('\n').count();
+        painter.push_clip(text_rect);
+        for (index, line) in text.split('\n').enumerate() {
+            let line_rect = Rect {
+                y: text_rect.y + index as f32 * line_height,
+                height: line_height,
+                ..text_rect
+            };
+            if index == active_line {
+                if let Some(background) = self.active_line_background {
+                    painter.fill_rect(line_rect, background, 0.0);
+                }
+            } else if index % 2 == 1 {
+                if let Some(background) = self.alternating_line_background {
+                    painter.fill_rect(line_rect, background, 0.0);
+                }
+            }
+            painter.fill_text(line_rect, line, color, self.font_size, TextAlign::Start);
+        }
+        painter.pop_clip();
+    }
+
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        Some(CursorIcon::Text)
+    }
+
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
+        if !caret_visible {
+            return;
+        }
+        let padding = 12.0;
+        let line = self.value.rsplit('\n').next().unwrap_or("");
+        let (width, _) = crate::text_metrics::measure(
+            line,
+            self.font_size,
+            crate::text_metrics::unbounded_width(),
+        );
+        let lines = (self.value.matches('\n').count() + 1) as f32;
+        let line_height = self.font_size * 1.4;
+        painter.fill_rect(
+            Rect {
+                x: (rect.x + padding + width).min(rect.x + rect.width - 1.0),
+                y: rect.y + padding + (lines - 1.0) * line_height,
+                width: 1.5,
+                height: line_height.min((rect.height - padding * 2.0).max(0.0)),
+            },
+            self.text_color,
+            0.0,
+        );
+    }
+
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        let value = self.value.clone();
+        let on_change = self.on_change.clone();
+        Some(Rc::new(move |input| {
+            let mut next = value.clone();
+            match input.key {
+                Key::Char(c) => next.push(c),
+                Key::Enter => next.push('\n'),
+                Key::Backspace => {
+                    next.pop();
+                }
+                _ => return,
+            }
+            on_change(next);
+        }))
+    }
+}
+
 impl RawTextInput {
     pub fn new(
         style: Style,

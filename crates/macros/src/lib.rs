@@ -194,6 +194,7 @@ impl Element {
                 | "Text"
                 | "Button"
                 | "Checkbox"
+                | "TextArea"
                 | "TextInput"
                 | "Slider"
         )
@@ -434,6 +435,49 @@ impl Element {
                 }
                 Ok(output)
             }
+            "TextArea" => {
+                self.reject_unknown_props(&[
+                    "theme",
+                    "value",
+                    "on_change",
+                    "style",
+                    "placeholder",
+                    "alternating_line_background",
+                    "active_line_background",
+                    "corner_radius",
+                    "border_width",
+                ])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`TextArea` cannot have children",
+                    ));
+                }
+                let theme = self.required_prop("theme")?;
+                let value = self.required_prop("value")?;
+                let on_change = self.required_prop("on_change")?;
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(::creamui_widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                } else {
+                    quote!(::creamui_widgets::themed::TextArea::new(#theme, #value, #on_change))
+                };
+                if let Some(placeholder) = self.prop("placeholder")? {
+                    output = quote!(#output.placeholder(#theme, #placeholder));
+                }
+                if let Some(color) = self.prop("alternating_line_background")? {
+                    output = quote!(#output.alternating_line_background(#color));
+                }
+                if let Some(color) = self.prop("active_line_background")? {
+                    output = quote!(#output.active_line_background(#color));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(width) = self.prop("border_width")? {
+                    output = quote!(#output.border_width(#width));
+                }
+                Ok(output)
+            }
             "Slider" => {
                 self.reject_unknown_props(&["theme", "value", "on_change", "style"])?;
                 if !self.children.is_empty() {
@@ -631,6 +675,32 @@ impl Element {
                 let mut output = quote!(::creamui_dynamic::text_input(#ctx, #theme, #style, &(#value), #on_change));
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.placeholder(#theme, &(#placeholder)));
+                }
+                Ok(output)
+            }
+            "TextArea" => {
+                self.reject_unknown_props(&[
+                    "ctx",
+                    "theme",
+                    "style",
+                    "value",
+                    "on_change",
+                    "placeholder",
+                ])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`TextArea` cannot have children",
+                    ));
+                }
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let style = self.required_prop("style")?;
+                let value = self.required_prop("value")?;
+                let on_change = self.required_prop("on_change")?;
+                let mut output = quote!(::creamui_dynamic::text_area(#ctx, #theme, #style, &(#value), #on_change));
+                if let Some(placeholder) = self.prop("placeholder")? {
+                    output = quote!(#output.area_placeholder(#theme, &(#placeholder)));
                 }
                 Ok(output)
             }

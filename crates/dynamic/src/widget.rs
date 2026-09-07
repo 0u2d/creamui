@@ -21,7 +21,11 @@ pub struct Widget {
 
 impl Widget {
     fn new(rt: &Rc<Runtime>, ptr: *mut c_void) -> Self {
-        Widget { rt: rt.clone(), ptr, consumed: std::cell::Cell::new(false) }
+        Widget {
+            rt: rt.clone(),
+            ptr,
+            consumed: std::cell::Cell::new(false),
+        }
     }
 
     pub(crate) fn into_raw(self) -> *mut c_void {
@@ -58,6 +62,13 @@ impl Widget {
         unsafe { (self.rt.sym.text_input_set_placeholder)(theme, self.ptr, c_text.as_ptr()) };
         self
     }
+
+    /// Sets a text area's placeholder. No-op on widgets of another kind.
+    pub fn area_placeholder(self, theme: Theme, text: &str) -> Self {
+        let c_text = CString::new(text).unwrap_or_default();
+        unsafe { (self.rt.sym.text_area_set_placeholder)(theme, self.ptr, c_text.as_ptr()) };
+        self
+    }
 }
 
 impl Drop for Widget {
@@ -82,27 +93,35 @@ pub fn view_styled(ctx: &Context, style: Style) -> Widget {
 /// An unthemed, single-line text label with an explicit color and size.
 pub fn text(ctx: &Context, text: &str, color: Color, font_size: f32) -> Widget {
     let c_text = CString::new(text).unwrap_or_default();
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.text_new)(c_text.as_ptr(), color, font_size) })
+    Widget::new(&ctx.rt, unsafe {
+        (ctx.rt.sym.text_new)(c_text.as_ptr(), color, font_size)
+    })
 }
 
 /// A themed text label using `theme`'s primary text color.
 pub fn themed_text(ctx: &Context, theme: Theme, text: &str) -> Widget {
     let c_text = CString::new(text).unwrap_or_default();
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.themed_text_new)(theme, c_text.as_ptr()) })
+    Widget::new(&ctx.rt, unsafe {
+        (ctx.rt.sym.themed_text_new)(theme, c_text.as_ptr())
+    })
 }
 
 /// A themed text label using `theme`'s secondary (muted) text color — e.g.
 /// for captions or de-emphasized helper text.
 pub fn themed_text_secondary(ctx: &Context, theme: Theme, text: &str) -> Widget {
     let c_text = CString::new(text).unwrap_or_default();
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.themed_text_secondary_new)(theme, c_text.as_ptr()) })
+    Widget::new(&ctx.rt, unsafe {
+        (ctx.rt.sym.themed_text_secondary_new)(theme, c_text.as_ptr())
+    })
 }
 
 /// Same as [`themed_text`], but with an explicit font size in logical
 /// pixels instead of the default 14.0.
 pub fn themed_text_sized(ctx: &Context, theme: Theme, text: &str, font_size: f32) -> Widget {
     let c_text = CString::new(text).unwrap_or_default();
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.themed_text_new_sized)(theme, c_text.as_ptr(), font_size) })
+    Widget::new(&ctx.rt, unsafe {
+        (ctx.rt.sym.themed_text_new_sized)(theme, c_text.as_ptr(), font_size)
+    })
 }
 
 extern "C" fn click_trampoline<F: FnMut() + 'static>(userdata: *mut c_void) {
@@ -110,12 +129,17 @@ extern "C" fn click_trampoline<F: FnMut() + 'static>(userdata: *mut c_void) {
     f();
 }
 
-extern "C" fn text_change_trampoline<F: FnMut(String) + 'static>(value: *const c_char, userdata: *mut c_void) {
+extern "C" fn text_change_trampoline<F: FnMut(String) + 'static>(
+    value: *const c_char,
+    userdata: *mut c_void,
+) {
     let f = unsafe { &mut *(userdata as *mut F) };
     let value = if value.is_null() {
         String::new()
     } else {
-        unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(value) }
+            .to_string_lossy()
+            .into_owned()
     };
     f(value);
 }
@@ -166,7 +190,31 @@ where
     let c_value = CString::new(value).unwrap_or_default();
     let userdata = ctx.arena.keep(on_change) as *mut c_void;
     Widget::new(&ctx.rt, unsafe {
-        (ctx.rt.sym.text_input_new)(theme, style, c_value.as_ptr(), text_change_trampoline::<F>, userdata)
+        (ctx.rt.sym.text_input_new)(
+            theme,
+            style,
+            c_value.as_ptr(),
+            text_change_trampoline::<F>,
+            userdata,
+        )
+    })
+}
+
+/// A themed multi-line text editor, constructed over the dynamic ABI.
+pub fn text_area<F>(ctx: &Context, theme: Theme, style: Style, value: &str, on_change: F) -> Widget
+where
+    F: FnMut(String) + 'static,
+{
+    let c_value = CString::new(value).unwrap_or_default();
+    let userdata = ctx.arena.keep(on_change) as *mut c_void;
+    Widget::new(&ctx.rt, unsafe {
+        (ctx.rt.sym.text_area_new)(
+            theme,
+            style,
+            c_value.as_ptr(),
+            text_change_trampoline::<F>,
+            userdata,
+        )
     })
 }
 
@@ -187,12 +235,24 @@ where
 /// with [`Widget::child`]. `on_scroll` fires with the wheel delta on every
 /// wheel event over the view; the caller owns and clamps the scroll offset,
 /// same as the native `ScrollView`.
-pub fn scroll_view<F>(ctx: &Context, theme: Theme, style: Style, scroll_y: f32, on_scroll: F) -> Widget
+pub fn scroll_view<F>(
+    ctx: &Context,
+    theme: Theme,
+    style: Style,
+    scroll_y: f32,
+    on_scroll: F,
+) -> Widget
 where
     F: FnMut(f32) + 'static,
 {
     let userdata = ctx.arena.keep(on_scroll) as *mut c_void;
     Widget::new(&ctx.rt, unsafe {
-        (ctx.rt.sym.scroll_view_new)(theme, style, scroll_y, float_change_trampoline::<F>, userdata)
+        (ctx.rt.sym.scroll_view_new)(
+            theme,
+            style,
+            scroll_y,
+            float_change_trampoline::<F>,
+            userdata,
+        )
     })
 }

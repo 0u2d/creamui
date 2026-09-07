@@ -20,9 +20,14 @@ pub(crate) type ViewAddChildFn = unsafe extern "C" fn(*mut c_void, *mut c_void);
 pub(crate) type ThemeFn = unsafe extern "C" fn() -> CTheme;
 pub(crate) type TextNewFn = unsafe extern "C" fn(*const c_char, CColor, f32) -> *mut c_void;
 pub(crate) type ThemedTextNewFn = unsafe extern "C" fn(CTheme, *const c_char) -> *mut c_void;
-pub(crate) type ThemedTextNewSizedFn = unsafe extern "C" fn(CTheme, *const c_char, f32) -> *mut c_void;
-pub(crate) type ButtonNewFn =
-    unsafe extern "C" fn(CTheme, *const c_char, extern "C" fn(*mut c_void), *mut c_void) -> *mut c_void;
+pub(crate) type ThemedTextNewSizedFn =
+    unsafe extern "C" fn(CTheme, *const c_char, f32) -> *mut c_void;
+pub(crate) type ButtonNewFn = unsafe extern "C" fn(
+    CTheme,
+    *const c_char,
+    extern "C" fn(*mut c_void),
+    *mut c_void,
+) -> *mut c_void;
 pub(crate) type CheckboxNewFn =
     unsafe extern "C" fn(CTheme, c_int, extern "C" fn(*mut c_void), *mut c_void) -> *mut c_void;
 pub(crate) type TextInputNewFn = unsafe extern "C" fn(
@@ -32,11 +37,24 @@ pub(crate) type TextInputNewFn = unsafe extern "C" fn(
     extern "C" fn(*const c_char, *mut c_void),
     *mut c_void,
 ) -> *mut c_void;
-pub(crate) type TextInputSetPlaceholderFn = unsafe extern "C" fn(CTheme, *mut c_void, *const c_char);
-pub(crate) type SliderNewFn =
-    unsafe extern "C" fn(CTheme, CStyle, f32, extern "C" fn(f32, *mut c_void), *mut c_void) -> *mut c_void;
-pub(crate) type ScrollViewNewFn =
-    unsafe extern "C" fn(CTheme, CStyle, f32, extern "C" fn(f32, *mut c_void), *mut c_void) -> *mut c_void;
+pub(crate) type TextInputSetPlaceholderFn =
+    unsafe extern "C" fn(CTheme, *mut c_void, *const c_char);
+pub(crate) type TextAreaNewFn = TextInputNewFn;
+pub(crate) type TextAreaSetPlaceholderFn = TextInputSetPlaceholderFn;
+pub(crate) type SliderNewFn = unsafe extern "C" fn(
+    CTheme,
+    CStyle,
+    f32,
+    extern "C" fn(f32, *mut c_void),
+    *mut c_void,
+) -> *mut c_void;
+pub(crate) type ScrollViewNewFn = unsafe extern "C" fn(
+    CTheme,
+    CStyle,
+    f32,
+    extern "C" fn(f32, *mut c_void),
+    *mut c_void,
+) -> *mut c_void;
 pub(crate) type WidgetFreeFn = unsafe extern "C" fn(*mut c_void);
 
 pub(crate) type SignalI32NewFn = unsafe extern "C" fn(i32) -> *mut c_void;
@@ -60,8 +78,14 @@ pub(crate) type WindowHandleFreeFn = unsafe extern "C" fn(*mut c_void);
 pub(crate) type BuildFn = extern "C" fn(f32, f32, *mut c_void) -> *mut c_void;
 pub(crate) type WindowReadyFn = extern "C" fn(*mut c_void, *mut c_void);
 pub(crate) type AppBuilderNewFn = unsafe extern "C" fn() -> *mut c_void;
-pub(crate) type AppBuilderAddWindowFn =
-    unsafe extern "C" fn(*mut c_void, CWindowOptions, CColor, BuildFn, Option<WindowReadyFn>, *mut c_void);
+pub(crate) type AppBuilderAddWindowFn = unsafe extern "C" fn(
+    *mut c_void,
+    CWindowOptions,
+    CColor,
+    BuildFn,
+    Option<WindowReadyFn>,
+    *mut c_void,
+);
 pub(crate) type AppBuilderRunFn = unsafe extern "C" fn(*mut c_void);
 
 /// Every resolved symbol this crate needs. Private — callers only ever see
@@ -83,6 +107,8 @@ pub(crate) struct Symbols {
     pub(crate) checkbox_new: CheckboxNewFn,
     pub(crate) text_input_new: TextInputNewFn,
     pub(crate) text_input_set_placeholder: TextInputSetPlaceholderFn,
+    pub(crate) text_area_new: TextAreaNewFn,
+    pub(crate) text_area_set_placeholder: TextAreaSetPlaceholderFn,
     pub(crate) slider_new: SliderNewFn,
     pub(crate) scroll_view_new: ScrollViewNewFn,
     pub(crate) widget_free: WidgetFreeFn,
@@ -127,7 +153,9 @@ impl std::error::Error for LoadError {}
 
 macro_rules! resolve {
     ($lib:expr, $name:literal) => {{
-        let sym: Symbol<_> = $lib.get($name.as_bytes()).map_err(|e| LoadError::MissingSymbol($name, e))?;
+        let sym: Symbol<_> = $lib
+            .get($name.as_bytes())
+            .map_err(|e| LoadError::MissingSymbol($name, e))?;
         *sym
     }};
 }
@@ -155,6 +183,8 @@ impl Symbols {
                 checkbox_new: resolve!(lib, "creamui_checkbox_new"),
                 text_input_new: resolve!(lib, "creamui_text_input_new"),
                 text_input_set_placeholder: resolve!(lib, "creamui_text_input_set_placeholder"),
+                text_area_new: resolve!(lib, "creamui_text_area_new"),
+                text_area_set_placeholder: resolve!(lib, "creamui_text_area_set_placeholder"),
                 slider_new: resolve!(lib, "creamui_slider_new"),
                 scroll_view_new: resolve!(lib, "creamui_scroll_view_new"),
                 widget_free: resolve!(lib, "creamui_widget_free"),
@@ -213,8 +243,11 @@ impl Runtime {
     /// instead.
     pub fn load_default() -> Rc<Runtime> {
         let path = Self::locate_cdylib();
-        Self::load(&path)
-            .unwrap_or_else(|e| panic!("creamui-dynamic: failed to load {path:?}: {e} (set CREAMUI_LIB_PATH to override)"))
+        Self::load(&path).unwrap_or_else(|e| {
+            panic!(
+                "creamui-dynamic: failed to load {path:?}: {e} (set CREAMUI_LIB_PATH to override)"
+            )
+        })
     }
 
     /// Locates the `creamui` cdylib next to the current executable, the way

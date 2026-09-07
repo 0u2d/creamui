@@ -136,7 +136,7 @@ second, partial CSS object syntax. `RawView` accepts `style`, `background`,
 fully headless design system. `View` accepts `theme` and `style`; `Text`
 accepts `theme`, `font_size`, `secondary`, `style`, `align`, and `color`; and
 `Button` accepts `theme`, `on_click`, and an optional `style`. `Checkbox`,
-`TextInput`, `Slider`, and `ScrollView` map one to
+`TextInput`, `TextArea`, `Slider`, and `ScrollView` map one to
 one to their themed constructors: their required state/callback props retain
 the constructor names (`checked`/`on_click`, `value`/`on_change`, or
 `scroll_y`/`on_scroll`). Containers accept nested components; dynamic child
@@ -194,6 +194,12 @@ Native `jsx!` and `abi_jsx!` deliberately do not share children: native
 widgets are Rust trait objects, while dynamic widgets own opaque C handles
 that must be attached through the loaded ABI. `#[component]` works with both;
 its return type decides which tree it belongs to.
+
+`TextArea` follows the same controlled `value` / `on_change` contract as
+`TextInput`, but accepts Return as a newline. It is exposed natively as
+`creamui_widgets::TextArea`, dynamically as `creamui_dynamic::text_area`,
+and through both JSX macros. See `examples/text-editor` for a complete editor
+with a reactive line-number gutter and document statistics.
 
 ## Credits
 

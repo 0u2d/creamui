@@ -10,7 +10,7 @@
 //! new constructor function in the same shape.
 
 use crate::raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextInput, RawView,
+    RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextArea, RawTextInput, RawView,
 };
 use creamui_core::layout::{
     AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
@@ -168,6 +168,7 @@ impl TextInput {
         self.inner = self.inner.placeholder(text, theme.text_disabled);
         self
     }
+
 }
 
 impl Widget for TextInput {
@@ -194,6 +195,93 @@ impl Widget for TextInput {
     fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
         self.inner
             .paint_focused_overlay(painter, rect, caret_visible);
+    }
+}
+
+/// A themed multi-line text editor. It shares `TextInput`'s controlled-value
+/// API while choosing an editor-friendly 14px inset and surface treatment.
+pub struct TextArea {
+    inner: RawTextArea,
+}
+
+impl TextArea {
+    pub fn default_style() -> Style {
+        Style {
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(400.0),
+                height: creamui_core::layout::Dimension::Length(240.0),
+            },
+            ..Default::default()
+        }
+    }
+    pub fn new(
+        theme: &Theme,
+        value: impl Into<String>,
+        on_change: impl Fn(String) + 'static,
+    ) -> Self {
+        Self::with_style(theme, Self::default_style(), value, on_change)
+    }
+    pub fn with_style(
+        theme: &Theme,
+        style: Style,
+        value: impl Into<String>,
+        on_change: impl Fn(String) + 'static,
+    ) -> Self {
+        Self {
+            inner: RawTextArea::new(style, value, 14.0, theme.text_primary, on_change)
+                .background(theme.surface_elevated)
+                .border(theme.border, 1.0)
+                .corner_radius(theme.radius_medium),
+        }
+    }
+    pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
+        self.inner = self.inner.placeholder(text, theme.text_disabled);
+        self
+    }
+
+    pub fn alternating_line_background(mut self, color: creamui_theme::Color) -> Self {
+        self.inner = self.inner.alternating_line_background(color);
+        self
+    }
+
+    pub fn active_line_background(mut self, color: creamui_theme::Color) -> Self {
+        self.inner = self.inner.active_line_background(color);
+        self
+    }
+
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.inner = self.inner.corner_radius(radius);
+        self
+    }
+
+    /// Sets the editor outline width. Use `0.0` for an edge-to-edge editor.
+    pub fn border_width(mut self, width: f32) -> Self {
+        if let Some(color) = self.inner.border_color {
+            self.inner = self.inner.border(color, width);
+        }
+        self
+    }
+}
+
+impl Widget for TextArea {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
+        self.inner
+            .paint_focused_overlay(painter, rect, caret_visible)
     }
 }
 
@@ -317,6 +405,75 @@ impl Widget for Text {
 /// A themed surface container ("card") with background and rounded corners.
 pub struct View {
     inner: RawView,
+}
+
+/// Shared visual tokens for application menu bars and popovers. Apps can
+/// derive these from a theme and override individual colors without copying
+/// menu geometry throughout their UI.
+#[derive(Clone, Copy)]
+pub struct MenuColors {
+    pub bar: creamui_theme::Color,
+    pub popup: creamui_theme::Color,
+    pub active: creamui_theme::Color,
+    pub border: creamui_theme::Color,
+    pub text: creamui_theme::Color,
+    pub muted_text: creamui_theme::Color,
+}
+
+impl MenuColors {
+    pub fn dark(theme: &Theme) -> Self {
+        Self { bar: theme.surface, popup: theme.surface_hover, active: theme.border, border: theme.border_strong, text: theme.text_primary, muted_text: theme.text_secondary }
+    }
+}
+
+/// A reusable application menu-bar surface. It owns only layout and paint;
+/// applications compose [`MenuItem`] children and retain their own menu state.
+pub struct MenuBar { inner: RawView }
+
+impl MenuBar {
+    pub fn new(colors: MenuColors, style: Style) -> Self { Self { inner: RawView::new(style).background(colors.bar) } }
+    pub fn child(mut self, child: BoxedWidget) -> Self { self.inner = self.inner.child(child); self }
+}
+
+impl Widget for MenuBar {
+    fn style(&self) -> Style { self.inner.style() }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
+    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
+}
+
+/// A compact menu popover surface. Give it an absolute-positioned `Style`
+/// when it should float over application content.
+pub struct MenuPopup { inner: RawView }
+
+impl MenuPopup {
+    pub fn new(colors: MenuColors, style: Style) -> Self { Self { inner: RawView::new(style).background(colors.border).corner_radius(4.0) } }
+    pub fn child(mut self, child: BoxedWidget) -> Self { self.inner = self.inner.child(child); self }
+}
+
+impl Widget for MenuPopup {
+    fn style(&self) -> Style { self.inner.style() }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
+    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
+}
+
+/// A controlled clickable menu entry. `active` is supplied by the app so a
+/// menu can be rebuilt reactively without hidden widget state.
+pub struct MenuItem { inner: RawButton }
+
+impl MenuItem {
+    pub fn new(colors: MenuColors, style: Style, label: impl Into<String>, active: bool, on_click: impl Fn() + 'static) -> Self {
+        let color = if active { colors.active } else { colors.popup };
+        let text = RawText::new(label, if active { colors.text } else { colors.muted_text }, 13.0).align(TextAlign::Start).layout_style(style.clone());
+        Self { inner: RawButton::new(style, on_click).background(color).corner_radius(3.0).child(Box::new(text)) }
+    }
+}
+
+impl Widget for MenuItem {
+    fn style(&self) -> Style { self.inner.style() }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
+    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> { self.inner.on_click() }
+    fn cursor_icon(&self) -> Option<CursorIcon> { self.inner.cursor_icon() }
 }
 
 impl View {
