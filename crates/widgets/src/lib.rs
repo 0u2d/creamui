@@ -12,5 +12,9 @@ pub mod themed;
 
 pub use raw::{
     RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextArea, RawTextInput, RawView,
+    TextSelection,
 };
-pub use themed::{Button, Checkbox, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Slider, Text, TextArea, TextInput, View};
+pub use themed::{
+    Button, Checkbox, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Slider, Text, TextArea,
+    TextInput, View,
+};

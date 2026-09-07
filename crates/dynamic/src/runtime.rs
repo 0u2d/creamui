@@ -41,6 +41,7 @@ pub(crate) type TextInputSetPlaceholderFn =
     unsafe extern "C" fn(CTheme, *mut c_void, *const c_char);
 pub(crate) type TextAreaNewFn = TextInputNewFn;
 pub(crate) type TextAreaSetPlaceholderFn = TextInputSetPlaceholderFn;
+pub(crate) type TextAreaSetSelectionColorsFn = unsafe extern "C" fn(*mut c_void, CColor, CColor);
 pub(crate) type SliderNewFn = unsafe extern "C" fn(
     CTheme,
     CStyle,
@@ -109,6 +110,7 @@ pub(crate) struct Symbols {
     pub(crate) text_input_set_placeholder: TextInputSetPlaceholderFn,
     pub(crate) text_area_new: TextAreaNewFn,
     pub(crate) text_area_set_placeholder: TextAreaSetPlaceholderFn,
+    pub(crate) text_area_set_selection_colors: TextAreaSetSelectionColorsFn,
     pub(crate) slider_new: SliderNewFn,
     pub(crate) scroll_view_new: ScrollViewNewFn,
     pub(crate) widget_free: WidgetFreeFn,
@@ -185,6 +187,10 @@ impl Symbols {
                 text_input_set_placeholder: resolve!(lib, "creamui_text_input_set_placeholder"),
                 text_area_new: resolve!(lib, "creamui_text_area_new"),
                 text_area_set_placeholder: resolve!(lib, "creamui_text_area_set_placeholder"),
+                text_area_set_selection_colors: resolve!(
+                    lib,
+                    "creamui_text_area_set_selection_colors"
+                ),
                 slider_new: resolve!(lib, "creamui_slider_new"),
                 scroll_view_new: resolve!(lib, "creamui_scroll_view_new"),
                 widget_free: resolve!(lib, "creamui_widget_free"),

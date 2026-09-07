@@ -69,6 +69,13 @@ impl Widget {
         unsafe { (self.rt.sym.text_area_set_placeholder)(theme, self.ptr, c_text.as_ptr()) };
         self
     }
+
+    /// Sets the background and foreground design tokens for selected text in
+    /// a dynamically-created textarea. No-op for other widget kinds.
+    pub fn area_selection_colors(self, background: Color, text: Color) -> Self {
+        unsafe { (self.rt.sym.text_area_set_selection_colors)(self.ptr, background, text) };
+        self
+    }
 }
 
 impl Drop for Widget {

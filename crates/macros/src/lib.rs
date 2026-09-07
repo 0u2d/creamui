@@ -442,12 +442,19 @@ impl Element {
                     "on_change",
                     "style",
                     "placeholder",
+                    "selection_background",
+                    "selection_text_color",
                     "alternating_line_background",
                     "active_line_background",
                     "corner_radius",
                     "border_width",
                     "cursor",
                     "on_cursor_change",
+                    "selection",
+                    "on_selection_change",
+                    "selection_background",
+                    "selection_text_color",
+                    "on_ctrl_o",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -479,9 +486,37 @@ impl Element {
                     output = quote!(#output.border_width(#width));
                 }
                 match (self.prop("cursor")?, self.prop("on_cursor_change")?) {
-                    (Some(cursor), Some(on_change)) => output = quote!(#output.cursor(#cursor, #on_change)),
-                    (None, None) => {},
-                    _ => return Err(Error::new_spanned(&self.tag, "`TextArea` requires both `cursor` and `on_cursor_change`")),
+                    (Some(cursor), Some(on_change)) => {
+                        output = quote!(#output.cursor(#cursor, #on_change))
+                    }
+                    (None, None) => {}
+                    _ => {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`TextArea` requires both `cursor` and `on_cursor_change`",
+                        ))
+                    }
+                }
+                match (self.prop("selection")?, self.prop("on_selection_change")?) {
+                    (Some(selection), Some(on_change)) => {
+                        output = quote!(#output.selection(#selection, #on_change))
+                    }
+                    (None, None) => {}
+                    _ => {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`TextArea` requires both `selection` and `on_selection_change`",
+                        ))
+                    }
+                }
+                if let Some(color) = self.prop("selection_background")? {
+                    output = quote!(#output.selection_background(#color));
+                }
+                if let Some(color) = self.prop("selection_text_color")? {
+                    output = quote!(#output.selection_text_color(#color));
+                }
+                if let Some(callback) = self.prop("on_ctrl_o")? {
+                    output = quote!(#output.on_ctrl_o(#callback));
                 }
                 Ok(output)
             }
@@ -708,6 +743,16 @@ impl Element {
                 let mut output = quote!(::creamui_dynamic::text_area(#ctx, #theme, #style, &(#value), #on_change));
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.area_placeholder(#theme, &(#placeholder)));
+                }
+                match (
+                    self.prop("selection_background")?,
+                    self.prop("selection_text_color")?,
+                ) {
+                    (Some(background), Some(text)) => {
+                        output = quote!(#output.area_selection_colors(#background, #text));
+                    }
+                    (None, None) => {}
+                    _ => return Err(Error::new_spanned(&self.tag, "dynamic `TextArea` requires both `selection_background` and `selection_text_color`")),
                 }
                 Ok(output)
             }

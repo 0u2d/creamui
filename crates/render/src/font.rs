@@ -5,7 +5,10 @@
 //! installed on the target machine. See `assets/fonts/DejaVuSans-LICENSE.txt`
 //! for the bundled font's license (Bitstream Vera, permissive/redistributable).
 
-use fontdue::layout::{CoordinateSystem, GlyphRasterConfig, HorizontalAlign, Layout, LayoutSettings, TextStyle, VerticalAlign};
+use fontdue::layout::{
+    CoordinateSystem, GlyphRasterConfig, HorizontalAlign, Layout, LayoutSettings, TextStyle,
+    VerticalAlign,
+};
 use fontdue::Font as FontdueFont;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -30,6 +33,7 @@ pub struct Font {
 /// One rasterized glyph, positioned in the coordinate space passed to
 /// [`Font::layout_text`].
 pub struct PositionedGlyph {
+    pub byte_offset: usize,
     pub x: i32,
     pub y: i32,
     pub width: usize,
@@ -91,6 +95,7 @@ impl Font {
                     })
                     .clone();
                 PositionedGlyph {
+                    byte_offset: g.byte_offset,
                     x: g.x as i32,
                     y: g.y as i32,
                     width: metrics.width,

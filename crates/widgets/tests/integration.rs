@@ -4,11 +4,12 @@
 
 use creamui_core::layout::{AlignItems, JustifyContent, Style};
 use creamui_core::{
-    render_frame, CursorIcon, Key, KeyInput, Painter, Point, Rect, Renderer, Size, TextAlign,
+    render_frame, CursorIcon, Key, KeyInput, Modifiers, Painter, Point, Rect, Renderer, Size,
+    TextAlign,
 };
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
-use creamui_widgets::raw::{RawButton, RawView};
+use creamui_widgets::raw::{RawButton, RawView, TextSelection};
 use creamui_widgets::themed::{Button, Checkbox, ScrollView, Slider, Text, TextArea, TextInput};
 
 #[derive(Default)]
@@ -239,6 +240,7 @@ fn text_input_is_focusable_and_types_and_deletes_characters() {
 
     scene.on_key_at(index).unwrap().clone()(KeyInput {
         key: Key::Char('h'),
+        modifiers: Default::default(),
     });
     assert_eq!(value.get(), "h");
 
@@ -249,6 +251,7 @@ fn text_input_is_focusable_and_types_and_deletes_characters() {
     );
     scene.on_key_at(index).unwrap().clone()(KeyInput {
         key: Key::Char('i'),
+        modifiers: Default::default(),
     });
     assert_eq!(value.get(), "hi");
 
@@ -259,6 +262,7 @@ fn text_input_is_focusable_and_types_and_deletes_characters() {
     );
     scene.on_key_at(index).unwrap().clone()(KeyInput {
         key: Key::Backspace,
+        modifiers: Default::default(),
     });
     assert_eq!(value.get(), "h");
 }
@@ -287,7 +291,10 @@ fn text_area_accepts_newlines_and_backspace() {
     let index = scene
         .focus_hit_test(Point { x: 30.0, y: 30.0 })
         .expect("text area should be focusable");
-    scene.on_key_at(index).unwrap().clone()(KeyInput { key: Key::Enter });
+    scene.on_key_at(index).unwrap().clone()(KeyInput {
+        key: Key::Enter,
+        modifiers: Default::default(),
+    });
     assert_eq!(value.get(), "first\n");
     let scene = render_frame(
         Box::new(build(value.clone())),
@@ -296,6 +303,7 @@ fn text_area_accepts_newlines_and_backspace() {
     );
     scene.on_key_at(index).unwrap().clone()(KeyInput {
         key: Key::Char('x'),
+        modifiers: Default::default(),
     });
     assert_eq!(value.get(), "first\nx");
     let scene = render_frame(
@@ -305,20 +313,104 @@ fn text_area_accepts_newlines_and_backspace() {
     );
     scene.on_key_at(index).unwrap().clone()(KeyInput {
         key: Key::Backspace,
+        modifiers: Default::default(),
     });
     assert_eq!(value.get(), "first\n");
 }
 
 #[test]
+fn text_area_drag_and_shift_arrows_update_controlled_selection() {
+    let theme = Theme::dark();
+    let value = Signal::new(String::from("first\nsecond"));
+    let cursor = Signal::new(0usize);
+    let selection = Signal::new(TextSelection::default());
+    let build = |value: Signal<String>, cursor: Signal<usize>, selection: Signal<TextSelection>| {
+        let value_for_change = value.clone();
+        let cursor_for_change = cursor.clone();
+        let selection_for_change = selection.clone();
+        RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(
+            TextArea::new(&theme, value.get(), move |next| value_for_change.set(next))
+                .cursor(cursor.get(), move |next| cursor_for_change.set(next))
+                .selection(selection.get(), move |next| selection_for_change.set(next))
+                .selection_background(Color::rgb(0x20, 0x55, 0x88)),
+        ))
+    };
+    let size = Size {
+        width: 500.0,
+        height: 300.0,
+    };
+    let scene = render_frame(
+        Box::new(build(value.clone(), cursor.clone(), selection.clone())),
+        size,
+        &mut RecordingPainter::default(),
+    );
+    let (_, start) = scene
+        .drag_start_at(Point { x: 14.0, y: 14.0 })
+        .expect("textarea drag start");
+    start(
+        Point { x: 14.0, y: 14.0 },
+        Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 240.0,
+        },
+    );
+    let scene = render_frame(
+        Box::new(build(value.clone(), cursor.clone(), selection.clone())),
+        size,
+        &mut RecordingPainter::default(),
+    );
+    let index = scene
+        .drag_hit_test(Point { x: 48.0, y: 14.0 })
+        .expect("textarea draggable");
+    let (rect, drag) = scene.draggable_at(index).unwrap();
+    drag.clone()(
+        Point {
+            x: 48.0 - rect.x,
+            y: 14.0 - rect.y,
+        },
+        rect,
+    );
+    assert!(
+        selection.get().focus > selection.get().anchor,
+        "drag should extend selection"
+    );
+
+    let scene = render_frame(
+        Box::new(build(value.clone(), cursor.clone(), selection.clone())),
+        size,
+        &mut RecordingPainter::default(),
+    );
+    let focused = scene.focus_hit_test(Point { x: 30.0, y: 30.0 }).unwrap();
+    scene.on_key_at(focused).unwrap().clone()(KeyInput {
+        key: Key::Right,
+        modifiers: Modifiers {
+            ctrl: false,
+            shift: true,
+        },
+    });
+    assert!(
+        !selection.get().is_empty(),
+        "Shift+Right should retain a selection"
+    );
+}
+
+#[test]
 fn text_area_paints_each_source_line_at_its_own_baseline() {
     let theme = Theme::dark();
-    let root = RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(
-        TextArea::new(&theme, "first\nsecond", |_| {}),
-    ));
+    let root = RawView::new(creamui_widgets::layout::row(0.0)).child(Box::new(TextArea::new(
+        &theme,
+        "first\nsecond",
+        |_| {},
+    )));
     let mut painter = RecordingPainter::default();
     render_frame(
         Box::new(root),
-        Size { width: 500.0, height: 300.0 },
+        Size {
+            width: 500.0,
+            height: 300.0,
+        },
         &mut painter,
     );
     assert!(painter.texts.iter().any(|text| text == "first"));

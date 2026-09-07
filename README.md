@@ -196,7 +196,9 @@ that must be attached through the loaded ABI. `#[component]` works with both;
 its return type decides which tree it belongs to.
 
 `TextArea` follows the same controlled `value` / `on_change` contract as
-`TextInput`, but accepts Return as a newline. It is exposed natively as
+`TextInput`, but accepts Return as a newline. The native API additionally
+supports controlled caret/selection state, drag selection, Shift+arrow
+extension, and configurable selection foreground/background tokens. It is exposed natively as
 `creamui_widgets::TextArea`, dynamically as `creamui_dynamic::text_area`,
 and through both JSX macros. See `examples/text-editor` for a complete editor
 with a reactive line-number gutter and document statistics.

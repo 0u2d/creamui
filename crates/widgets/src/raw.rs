@@ -10,6 +10,25 @@ use creamui_core::{
 use creamui_theme::Color;
 use std::rc::Rc;
 
+/// A controlled text selection represented as byte offsets into a UTF-8
+/// document. `anchor` stays at the point where selection began while `focus`
+/// follows the caret or pointer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TextSelection {
+    pub anchor: usize,
+    pub focus: usize,
+}
+
+impl TextSelection {
+    pub fn range(self) -> std::ops::Range<usize> {
+        self.anchor.min(self.focus)..self.anchor.max(self.focus)
+    }
+
+    pub fn is_empty(self) -> bool {
+        self.anchor == self.focus
+    }
+}
+
 /// An unstyled rectangular container that lays out its children.
 pub struct RawView {
     pub style: Style,
@@ -248,8 +267,13 @@ pub struct RawTextArea {
     pub cursor: usize,
     pub alternating_line_background: Option<Color>,
     pub active_line_background: Option<Color>,
+    pub selection: TextSelection,
+    pub selection_background: Option<Color>,
+    pub selection_text_color: Option<Color>,
     pub on_change: Rc<dyn Fn(String)>,
     pub on_cursor_change: Rc<dyn Fn(usize)>,
+    pub on_selection_change: Rc<dyn Fn(TextSelection)>,
+    pub on_ctrl_o: Rc<dyn Fn()>,
 }
 
 impl RawTextArea {
@@ -276,8 +300,16 @@ impl RawTextArea {
             cursor,
             alternating_line_background: None,
             active_line_background: None,
+            selection: TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            },
+            selection_background: None,
+            selection_text_color: None,
             on_change: Rc::new(on_change),
             on_cursor_change: Rc::new(|_| {}),
+            on_selection_change: Rc::new(|_| {}),
+            on_ctrl_o: Rc::new(|| {}),
         }
     }
 
@@ -286,6 +318,44 @@ impl RawTextArea {
     pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
         self.cursor = cursor.min(self.value.len());
         self.on_cursor_change = Rc::new(on_change);
+        self
+    }
+
+    /// Supplies a controlled selection. The application owns it just like it
+    /// owns `value` and `cursor`, allowing selection appearance/state to be
+    /// coordinated across native, JSX and ABI-built UIs.
+    pub fn selection(
+        mut self,
+        selection: TextSelection,
+        on_change: impl Fn(TextSelection) + 'static,
+    ) -> Self {
+        self.selection = TextSelection {
+            anchor: selection.anchor.min(self.value.len()),
+            focus: selection.focus.min(self.value.len()),
+        };
+        self.on_selection_change = Rc::new(on_change);
+        self
+    }
+
+    /// Visual token for selected text. The text itself remains in the
+    /// editor's normal color until rich text spans land in the renderer.
+    pub fn selection_background(mut self, color: Color) -> Self {
+        self.selection_background = Some(color);
+        self
+    }
+
+    /// Foreground token used for the selected text. Pair it with
+    /// [`Self::selection_background`] to make an editor's selection fully
+    /// match its design system.
+    pub fn selection_text_color(mut self, color: Color) -> Self {
+        self.selection_text_color = Some(color);
+        self
+    }
+
+    /// Invoked by the conventional Ctrl/Cmd+O command while this editor has
+    /// focus. The app decides what opening a document means.
+    pub fn on_ctrl_o(mut self, callback: impl Fn() + 'static) -> Self {
+        self.on_ctrl_o = Rc::new(callback);
         self
     }
 
@@ -355,6 +425,8 @@ impl Widget for RawTextArea {
             .matches('\n')
             .count();
         painter.push_clip(text_rect);
+        let selected = self.selection.range();
+        let mut source_offset = 0;
         for (index, line) in text.split('\n').enumerate() {
             let line_rect = Rect {
                 y: text_rect.y + index as f32 * line_height,
@@ -369,6 +441,48 @@ impl Widget for RawTextArea {
                 if let Some(background) = self.alternating_line_background {
                     painter.fill_rect(line_rect, background, 0.0);
                 }
+            }
+            if !self.value.is_empty() {
+                let line_end = source_offset + line.len();
+                let start = selected.start.max(source_offset).min(line_end);
+                let end = selected.end.max(source_offset).min(line_end);
+                if start < end {
+                    if let Some(background) = self.selection_background {
+                        let prefix = &line[..start - source_offset];
+                        let selected_text = &line[start - source_offset..end - source_offset];
+                        let (x, _) = crate::text_metrics::measure(
+                            prefix,
+                            self.font_size,
+                            crate::text_metrics::unbounded_width(),
+                        );
+                        let (width, _) = crate::text_metrics::measure(
+                            selected_text,
+                            self.font_size,
+                            crate::text_metrics::unbounded_width(),
+                        );
+                        painter.fill_rect(
+                            Rect {
+                                x: line_rect.x + x,
+                                width,
+                                ..line_rect
+                            },
+                            background,
+                            2.0,
+                        );
+                    }
+                    painter.fill_text_selected(
+                        line_rect,
+                        line,
+                        color,
+                        self.selection_text_color.unwrap_or(color),
+                        start - source_offset..end - source_offset,
+                        self.font_size,
+                        TextAlign::Start,
+                    );
+                    source_offset = line_end + 1;
+                    continue;
+                }
+                source_offset = line_end + 1;
             }
             painter.fill_text(line_rect, line, color, self.font_size, TextAlign::Start);
         }
@@ -414,36 +528,142 @@ impl Widget for RawTextArea {
         let on_change = self.on_change.clone();
         let cursor = self.cursor;
         let on_cursor_change = self.on_cursor_change.clone();
+        let selection = self.selection;
+        let on_selection_change = self.on_selection_change.clone();
+        let on_ctrl_o = self.on_ctrl_o.clone();
         Some(Rc::new(move |input| {
+            if input.modifiers.ctrl && matches!(input.key, Key::Char('o') | Key::Char('O')) {
+                on_ctrl_o();
+                return;
+            }
             let mut next = value.clone();
             let mut next_cursor = cursor.min(next.len());
+            let selected = selection.range();
+            let mut edited = false;
+            let mut replace_selection = |replacement: &str| {
+                if !selected.is_empty() {
+                    next.replace_range(selected.clone(), replacement);
+                    next_cursor = selected.start + replacement.len();
+                    edited = true;
+                } else {
+                    next.insert_str(next_cursor, replacement);
+                    next_cursor += replacement.len();
+                    edited = true;
+                }
+            };
             match input.key {
-                Key::Char(c) => { next.insert(next_cursor, c); next_cursor += c.len_utf8(); }
-                Key::Enter => { next.insert(next_cursor, '\n'); next_cursor += 1; }
+                Key::Char(c) => {
+                    replace_selection(&c.to_string());
+                }
+                Key::Enter => {
+                    replace_selection("\n");
+                }
                 Key::Backspace => {
-                    if let Some(previous) = next[..next_cursor].char_indices().last().map(|(index, _)| index) {
-                        next.drain(previous..next_cursor); next_cursor = previous;
+                    if !selected.is_empty() {
+                        next.replace_range(selected.clone(), "");
+                        next_cursor = selected.start;
+                        edited = true;
+                    } else if let Some(previous) = next[..next_cursor]
+                        .char_indices()
+                        .last()
+                        .map(|(index, _)| index)
+                    {
+                        next.drain(previous..next_cursor);
+                        next_cursor = previous;
+                        edited = true;
                     }
                 }
-                Key::Left => { if let Some(previous) = next[..next_cursor].char_indices().last().map(|(index, _)| index) { next_cursor = previous; } }
-                Key::Right => { if let Some(character) = next[next_cursor..].chars().next() { next_cursor += character.len_utf8(); } }
-                Key::Home => { next_cursor = next[..next_cursor].rfind('\n').map_or(0, |index| index + 1); }
-                Key::End => { next_cursor = next[next_cursor..].find('\n').map_or(next.len(), |index| next_cursor + index); }
+                Key::Left => {
+                    if let Some(previous) = next[..next_cursor]
+                        .char_indices()
+                        .last()
+                        .map(|(index, _)| index)
+                    {
+                        next_cursor = previous;
+                    }
+                }
+                Key::Right => {
+                    if let Some(character) = next[next_cursor..].chars().next() {
+                        next_cursor += character.len_utf8();
+                    }
+                }
+                Key::Home => {
+                    next_cursor = next[..next_cursor].rfind('\n').map_or(0, |index| index + 1);
+                }
+                Key::End => {
+                    next_cursor = next[next_cursor..]
+                        .find('\n')
+                        .map_or(next.len(), |index| next_cursor + index);
+                }
                 Key::Up | Key::Down => {
                     let line_start = next[..next_cursor].rfind('\n').map_or(0, |index| index + 1);
                     let column = next[line_start..next_cursor].chars().count();
                     let lines: Vec<&str> = next.split('\n').collect();
                     let line = next[..next_cursor].matches('\n').count();
-                    let target = if input.key == Key::Up { line.checked_sub(1) } else { (line + 1 < lines.len()).then_some(line + 1) };
+                    let target = if input.key == Key::Up {
+                        line.checked_sub(1)
+                    } else {
+                        (line + 1 < lines.len()).then_some(line + 1)
+                    };
                     if let Some(target) = target {
-                        let start = lines.iter().take(target).map(|line| line.len() + 1).sum::<usize>();
-                        next_cursor = start + lines[target].char_indices().nth(column).map_or(lines[target].len(), |(index, _)| index);
+                        let start = lines
+                            .iter()
+                            .take(target)
+                            .map(|line| line.len() + 1)
+                            .sum::<usize>();
+                        next_cursor = start
+                            + lines[target]
+                                .char_indices()
+                                .nth(column)
+                                .map_or(lines[target].len(), |(index, _)| index);
                     }
                 }
                 _ => return,
             }
-            if next != value { on_change(next); }
-            on_cursor_change(next_cursor);
+            let extend = input.modifiers.shift
+                && matches!(
+                    input.key,
+                    Key::Left | Key::Right | Key::Up | Key::Down | Key::Home | Key::End
+                );
+            let next_selection = if extend {
+                TextSelection {
+                    anchor: if selection.is_empty() {
+                        cursor
+                    } else {
+                        selection.anchor
+                    },
+                    focus: next_cursor,
+                }
+            } else {
+                TextSelection {
+                    anchor: next_cursor,
+                    focus: next_cursor,
+                }
+            };
+            creamui_reactive::batch(|| {
+                if edited {
+                    on_change(next);
+                }
+                on_cursor_change(next_cursor);
+                on_selection_change(next_selection);
+            });
+        }))
+    }
+
+    fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        let value = self.value.clone();
+        let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone();
+        let on_selection_change = self.on_selection_change.clone();
+        Some(Rc::new(move |point, _| {
+            let cursor = cursor_at_point(&value, font_size, point);
+            creamui_reactive::batch(|| {
+                on_cursor_change(cursor);
+                on_selection_change(TextSelection {
+                    anchor: cursor,
+                    focus: cursor,
+                });
+            });
         }))
     }
 
@@ -451,20 +671,33 @@ impl Widget for RawTextArea {
         let value = self.value.clone();
         let font_size = self.font_size;
         let on_cursor_change = self.on_cursor_change.clone();
+        let selection = self.selection;
+        let on_selection_change = self.on_selection_change.clone();
         Some(Rc::new(move |point, _| {
-            let line = ((point.y - 12.0) / (font_size * 1.4)).floor().max(0.0) as usize;
-            let lines: Vec<&str> = value.split('\n').collect();
-            let line = line.min(lines.len().saturating_sub(1));
-            let start = lines.iter().take(line).map(|line| line.len() + 1).sum::<usize>();
-            let target_x = (point.x - 12.0).max(0.0);
-            let mut cursor = lines[line].len();
-            for (index, _) in lines[line].char_indices() {
-                let (width, _) = crate::text_metrics::measure(&lines[line][..index], font_size, crate::text_metrics::unbounded_width());
-                if width >= target_x { cursor = index; break; }
+            let cursor = cursor_at_point(&value, font_size, point);
+            if cursor != selection.focus {
+                creamui_reactive::batch(|| {
+                    on_cursor_change(cursor);
+                    on_selection_change(TextSelection {
+                        anchor: selection.anchor,
+                        focus: cursor,
+                    });
+                });
             }
-            on_cursor_change(start + cursor);
         }))
     }
+}
+
+fn cursor_at_point(value: &str, font_size: f32, point: Point) -> usize {
+    let line = ((point.y - 12.0) / (font_size * 1.4)).floor().max(0.0) as usize;
+    let lines: Vec<&str> = value.split('\n').collect();
+    let line = line.min(lines.len().saturating_sub(1));
+    let start = lines
+        .iter()
+        .take(line)
+        .map(|line| line.len() + 1)
+        .sum::<usize>();
+    start + crate::text_metrics::byte_offset_at_x(lines[line], font_size, (point.x - 12.0).max(0.0))
 }
 
 impl RawTextInput {

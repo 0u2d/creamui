@@ -63,6 +63,27 @@ pub fn unbounded_width() -> f32 {
     UNBOUNDED_WIDTH
 }
 
+/// Returns the closest UTF-8 insertion boundary for a horizontal point in a
+/// single source line. Unlike repeatedly measuring every prefix, this builds
+/// one font layout, which keeps pointer selection responsive on long lines.
+pub fn byte_offset_at_x(text: &str, font_size: f32, x: f32) -> usize {
+    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+    layout.reset(&LayoutSettings {
+        max_width: Some(UNBOUNDED_WIDTH),
+        horizontal_align: HorizontalAlign::Left,
+        ..LayoutSettings::default()
+    });
+    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    let mut offset = 0;
+    for glyph in layout.glyphs() {
+        if x < glyph.x + glyph.width as f32 / 2.0 {
+            return glyph.byte_offset;
+        }
+        offset = glyph.byte_offset + glyph.parent.len_utf8();
+    }
+    offset.min(text.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

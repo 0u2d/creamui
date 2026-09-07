@@ -168,7 +168,6 @@ impl TextInput {
         self.inner = self.inner.placeholder(text, theme.text_disabled);
         self
     }
-
 }
 
 impl Widget for TextInput {
@@ -266,6 +265,30 @@ impl TextArea {
         self.inner = self.inner.cursor(cursor, on_change);
         self
     }
+
+    pub fn selection(
+        mut self,
+        selection: crate::raw::TextSelection,
+        on_change: impl Fn(crate::raw::TextSelection) + 'static,
+    ) -> Self {
+        self.inner = self.inner.selection(selection, on_change);
+        self
+    }
+
+    pub fn selection_background(mut self, color: creamui_theme::Color) -> Self {
+        self.inner = self.inner.selection_background(color);
+        self
+    }
+
+    pub fn selection_text_color(mut self, color: creamui_theme::Color) -> Self {
+        self.inner = self.inner.selection_text_color(color);
+        self
+    }
+
+    pub fn on_ctrl_o(mut self, callback: impl Fn() + 'static) -> Self {
+        self.inner = self.inner.on_ctrl_o(callback);
+        self
+    }
 }
 
 impl Widget for TextArea {
@@ -283,6 +306,9 @@ impl Widget for TextArea {
     }
     fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
         self.inner.on_drag()
+    }
+    fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        self.inner.on_drag_start()
     }
     fn cursor_icon(&self) -> Option<CursorIcon> {
         self.inner.cursor_icon()
@@ -430,58 +456,130 @@ pub struct MenuColors {
 
 impl MenuColors {
     pub fn dark(theme: &Theme) -> Self {
-        Self { bar: theme.surface, popup: theme.surface_hover, active: theme.border, border: theme.border_strong, text: theme.text_primary, muted_text: theme.text_secondary }
+        Self {
+            bar: theme.surface,
+            popup: theme.surface_hover,
+            active: theme.border,
+            border: theme.border_strong,
+            text: theme.text_primary,
+            muted_text: theme.text_secondary,
+        }
     }
 }
 
 /// A reusable application menu-bar surface. It owns only layout and paint;
 /// applications compose [`MenuItem`] children and retain their own menu state.
-pub struct MenuBar { inner: RawView }
+pub struct MenuBar {
+    inner: RawView,
+}
 
 impl MenuBar {
-    pub fn new(colors: MenuColors, style: Style) -> Self { Self { inner: RawView::new(style).background(colors.bar) } }
-    pub fn child(mut self, child: BoxedWidget) -> Self { self.inner = self.inner.child(child); self }
+    pub fn new(colors: MenuColors, style: Style) -> Self {
+        Self {
+            inner: RawView::new(style).background(colors.bar),
+        }
+    }
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.inner = self.inner.child(child);
+        self
+    }
 }
 
 impl Widget for MenuBar {
-    fn style(&self) -> Style { self.inner.style() }
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
-    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
 }
 
 /// A compact menu popover surface. Give it an absolute-positioned `Style`
 /// when it should float over application content.
-pub struct MenuPopup { inner: RawView }
+pub struct MenuPopup {
+    inner: RawView,
+}
 
 impl MenuPopup {
-    pub fn new(colors: MenuColors, style: Style) -> Self { Self { inner: RawView::new(style).background(colors.border).corner_radius(4.0) } }
-    pub fn child(mut self, child: BoxedWidget) -> Self { self.inner = self.inner.child(child); self }
+    pub fn new(colors: MenuColors, style: Style) -> Self {
+        Self {
+            inner: RawView::new(style)
+                .background(colors.border)
+                .corner_radius(4.0),
+        }
+    }
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.inner = self.inner.child(child);
+        self
+    }
 }
 
 impl Widget for MenuPopup {
-    fn style(&self) -> Style { self.inner.style() }
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
-    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
 }
 
 /// A controlled clickable menu entry. `active` is supplied by the app so a
 /// menu can be rebuilt reactively without hidden widget state.
-pub struct MenuItem { inner: RawButton }
+pub struct MenuItem {
+    inner: RawButton,
+}
 
 impl MenuItem {
-    pub fn new(colors: MenuColors, style: Style, label: impl Into<String>, active: bool, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(
+        colors: MenuColors,
+        style: Style,
+        label: impl Into<String>,
+        active: bool,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
         let color = if active { colors.active } else { colors.popup };
-        let text = RawText::new(label, if active { colors.text } else { colors.muted_text }, 13.0).align(TextAlign::Start).layout_style(style.clone());
-        Self { inner: RawButton::new(style, on_click).background(color).corner_radius(3.0).child(Box::new(text)) }
+        let text = RawText::new(
+            label,
+            if active {
+                colors.text
+            } else {
+                colors.muted_text
+            },
+            13.0,
+        )
+        .align(TextAlign::Start)
+        .layout_style(style.clone());
+        Self {
+            inner: RawButton::new(style, on_click)
+                .background(color)
+                .corner_radius(3.0)
+                .child(Box::new(text)),
+        }
     }
 }
 
 impl Widget for MenuItem {
-    fn style(&self) -> Style { self.inner.style() }
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) }
-    fn children(&mut self) -> Vec<BoxedWidget> { self.inner.children() }
-    fn on_click(&self) -> Option<Rc<dyn Fn()>> { self.inner.on_click() }
-    fn cursor_icon(&self) -> Option<CursorIcon> { self.inner.cursor_icon() }
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
 }
 
 impl View {

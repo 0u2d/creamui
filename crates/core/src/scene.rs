@@ -98,6 +98,7 @@ struct PaintOutputs {
     /// full (unclipped) rect so e.g. a slider can divide by its own real
     /// width regardless of how much of it a scroll ancestor currently shows.
     draggables: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
+    drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
     cursors: Vec<(Rect, CursorIcon)>,
 }
@@ -150,6 +151,9 @@ fn paint_instance(
         if let Some(on_drag) = instance.widget.on_drag() {
             out.draggables.push((visible, rect, on_drag));
         }
+        if let Some(on_drag_start) = instance.widget.on_drag_start() {
+            out.drag_starts.push((visible, rect, on_drag_start));
+        }
         if let Some(on_scroll) = instance.widget.on_scroll() {
             out.scrollables.push((visible, on_scroll));
         }
@@ -199,6 +203,7 @@ pub struct Scene {
     hits: Vec<(Rect, Rc<dyn Fn()>)>,
     focusables: Vec<(Rect, Rc<dyn Fn(KeyInput)>)>,
     draggables: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
+    drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
     cursors: Vec<(Rect, CursorIcon)>,
 }
@@ -243,6 +248,10 @@ impl Scene {
     /// The drag handler and full (unclipped) rect at `index`, if it still exists this render.
     pub fn draggable_at(&self, index: usize) -> Option<(Rect, &Rc<dyn Fn(Point, Rect)>)> {
         self.draggables.get(index).map(|(_, full, handler)| (*full, handler))
+    }
+
+    pub fn drag_start_at(&self, point: Point) -> Option<(Rect, Rc<dyn Fn(Point, Rect)>)> {
+        self.drag_starts.iter().rev().find(|(visible, _, _)| visible.contains(point)).map(|(_, rect, handler)| (*rect, handler.clone()))
     }
 
     /// Returns the index (into this scene's scrollables) of the topmost
@@ -336,6 +345,7 @@ impl Renderer {
             hits: out.hits,
             focusables: out.focusables,
             draggables: out.draggables,
+            drag_starts: out.drag_starts,
             scrollables: out.scrollables,
             cursors: out.cursors,
         }

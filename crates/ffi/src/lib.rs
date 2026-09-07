@@ -792,6 +792,31 @@ pub unsafe extern "C" fn creamui_text_area_set_placeholder(
     }
 }
 
+/// Sets the visual selection tokens on a text area. These values are kept on
+/// the widget itself, so dynamic and statically linked applications use the
+/// same renderer path.
+///
+/// # Safety
+/// `input` must be a valid, live pointer returned by
+/// [`creamui_text_area_new`].
+#[no_mangle]
+pub unsafe extern "C" fn creamui_text_area_set_selection_colors(
+    input: *mut CWidget,
+    background: CColor,
+    text: CColor,
+) {
+    if input.is_null() {
+        return;
+    }
+    if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
+        let theme = Theme::dark();
+        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
+        *w = taken
+            .selection_background(color_from_c(background))
+            .selection_text_color(color_from_c(text));
+    }
+}
+
 /// Creates a themed horizontal slider with a caller-supplied [`CStyle`].
 /// `on_change(value, userdata)` fires with the new `0.0..=1.0` value as the
 /// handle is dragged.

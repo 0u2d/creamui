@@ -377,6 +377,7 @@ impl WindowState {
                         .draggable_at(index)
                         .map(|(rect, handler)| (index, rect, handler.clone()))
                 });
+                let drag_anchor = scene.drag_start_at(self.pointer_pos);
                 drop(frame);
 
                 if focus_changed {
@@ -395,6 +396,9 @@ impl WindowState {
                         y: self.pointer_pos.y - rect.y,
                     };
                     handler(local, rect);
+                }
+                if let Some((rect, handler)) = drag_anchor {
+                    handler(Point { x: self.pointer_pos.x - rect.x, y: self.pointer_pos.y - rect.y }, rect);
                 }
                 if let Some(handler) = click_handler {
                     log::debug!("creamui-render: click hit at {:?}", self.pointer_pos);

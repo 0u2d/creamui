@@ -43,7 +43,16 @@ impl SkiaPainter {
 
     /// `width`/`height` are physical pixels.
     pub fn resize(&mut self, width: u32, height: u32) {
-        self.pixmap = Pixmap::new(width.max(1), height.max(1)).expect("non-zero pixmap size");
+        let width = width.max(1);
+        let height = height.max(1);
+        // Reallocating a full window-sized pixel buffer for every reactive
+        // frame dominated pointer-drag time. Most frames are not resizes;
+        // retain and clear the existing buffer in that overwhelmingly common
+        // case.
+        if self.pixmap.width() == width && self.pixmap.height() == height {
+            return;
+        }
+        self.pixmap = Pixmap::new(width, height).expect("non-zero pixmap size");
         // A resize mid-clip-stack shouldn't happen (push/pop are balanced
         // within one frame, and resize only ever runs between frames), but
         // clear defensively rather than risk stale masks sized for the old pixmap.
@@ -54,6 +63,77 @@ impl SkiaPainter {
         let [r, g, b, a] = color.to_f32();
         self.pixmap
             .fill(tiny_skia::Color::from_rgba(r, g, b, a).expect("valid color"));
+    }
+
+    fn draw_text(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        selected: Option<(std::ops::Range<usize>, Color)>,
+        font_size: f32,
+        align: TextAlign,
+    ) {
+        let horizontal_align = match align {
+            TextAlign::Start => HorizontalAlign::Left,
+            TextAlign::Center => HorizontalAlign::Center,
+            TextAlign::End => HorizontalAlign::Right,
+        };
+        let rect = scale_rect(rect, self.scale);
+        let glyphs = self.font.layout_text(
+            text,
+            font_size * self.scale,
+            rect.x,
+            rect.y,
+            rect.width,
+            rect.height,
+            horizontal_align,
+        );
+        let pixmap_width = self.pixmap.width() as i32;
+        let pixmap_height = self.pixmap.height() as i32;
+        let clip_mask = self.clip_stack.last();
+        let pixels = self.pixmap.pixels_mut();
+        for glyph in glyphs {
+            let glyph_color = selected
+                .as_ref()
+                .filter(|(range, _)| range.contains(&glyph.byte_offset))
+                .map_or(color, |(_, selected_color)| *selected_color);
+            let text_alpha = glyph_color.a as f32 / 255.0;
+            for gy in 0..glyph.height {
+                let py = glyph.y + gy as i32;
+                if py < 0 || py >= pixmap_height {
+                    continue;
+                }
+                for gx in 0..glyph.width {
+                    let px = glyph.x + gx as i32;
+                    if px < 0 || px >= pixmap_width {
+                        continue;
+                    }
+                    let coverage = glyph.coverage[gy * glyph.width + gx] as f32 / 255.0;
+                    let idx = (py * pixmap_width + px) as usize;
+                    let clip = clip_mask
+                        .map(|mask| mask.data()[idx] as f32 / 255.0)
+                        .unwrap_or(1.0);
+                    let src_alpha = coverage * text_alpha * clip;
+                    if src_alpha <= 0.0 {
+                        continue;
+                    }
+                    let dst = pixels[idx];
+                    let inv = 1.0 - src_alpha;
+                    let out_r = (glyph_color.r as f32 * src_alpha) + (dst.red() as f32 * inv);
+                    let out_g = (glyph_color.g as f32 * src_alpha) + (dst.green() as f32 * inv);
+                    let out_b = (glyph_color.b as f32 * src_alpha) + (dst.blue() as f32 * inv);
+                    let out_a = (255.0 * src_alpha) + (dst.alpha() as f32 * inv);
+                    pixels[idx] = tiny_skia::PremultipliedColorU8::from_rgba(
+                        out_r.round() as u8,
+                        out_g.round() as u8,
+                        out_b.round() as u8,
+                        out_a.round() as u8,
+                    )
+                    .unwrap_or(dst);
+                }
+            }
+        }
     }
 
     fn rounded_rect_path(rect: Rect, radius: f32) -> Option<tiny_skia::Path> {
@@ -69,7 +149,14 @@ impl SkiaPainter {
             pb.line_to(x + w - r, y);
             pb.cubic_to(x + w - r + r * K, y, x + w, y + r - r * K, x + w, y + r);
             pb.line_to(x + w, y + h - r);
-            pb.cubic_to(x + w, y + h - r + r * K, x + w - r + r * K, y + h, x + w - r, y + h);
+            pb.cubic_to(
+                x + w,
+                y + h - r + r * K,
+                x + w - r + r * K,
+                y + h,
+                x + w - r,
+                y + h,
+            );
             pb.line_to(x + r, y + h);
             pb.cubic_to(x + r - r * K, y + h, x, y + h - r + r * K, x, y + h - r);
             pb.line_to(x, y + r);
@@ -91,7 +178,9 @@ fn scale_rect(rect: Rect, scale: f32) -> Rect {
 
 impl Painter for SkiaPainter {
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
-        let Some(path) = Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale) else {
+        let Some(path) =
+            Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale)
+        else {
             return;
         };
         let [r, g, b, a] = color.to_f32();
@@ -113,7 +202,9 @@ impl Painter for SkiaPainter {
     }
 
     fn stroke_rect(&mut self, rect: Rect, color: Color, width: f32, corner_radius: f32) {
-        let Some(path) = Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale) else {
+        let Some(path) =
+            Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale)
+        else {
             return;
         };
         let [r, g, b, a] = color.to_f32();
@@ -129,8 +220,13 @@ impl Painter for SkiaPainter {
             width: width * self.scale,
             ..Default::default()
         };
-        self.pixmap
-            .stroke_path(&path, &paint, &stroke, Transform::identity(), self.clip_stack.last());
+        self.pixmap.stroke_path(
+            &path,
+            &paint,
+            &stroke,
+            Transform::identity(),
+            self.clip_stack.last(),
+        );
     }
 
     fn push_clip(&mut self, rect: Rect) {
@@ -150,12 +246,22 @@ impl Painter for SkiaPainter {
         let mask = match self.clip_stack.last() {
             Some(parent) => {
                 let mut mask = parent.clone();
-                mask.intersect_path(&path, tiny_skia::FillRule::Winding, true, Transform::identity());
+                mask.intersect_path(
+                    &path,
+                    tiny_skia::FillRule::Winding,
+                    true,
+                    Transform::identity(),
+                );
                 mask
             }
             None => {
                 let mut mask = Mask::new(width, height).expect("non-zero pixmap size");
-                mask.fill_path(&path, tiny_skia::FillRule::Winding, true, Transform::identity());
+                mask.fill_path(
+                    &path,
+                    tiny_skia::FillRule::Winding,
+                    true,
+                    Transform::identity(),
+                );
                 mask
             }
         };
@@ -166,63 +272,34 @@ impl Painter for SkiaPainter {
         self.clip_stack.pop();
     }
 
-    fn fill_text(&mut self, rect: Rect, text: &str, color: Color, font_size: f32, align: TextAlign) {
-        let horizontal_align = match align {
-            TextAlign::Start => HorizontalAlign::Left,
-            TextAlign::Center => HorizontalAlign::Center,
-            TextAlign::End => HorizontalAlign::Right,
-        };
-        let rect = scale_rect(rect, self.scale);
-        let font_size = font_size * self.scale;
-        let glyphs = self
-            .font
-            .layout_text(text, font_size, rect.x, rect.y, rect.width, rect.height, horizontal_align);
+    fn fill_text(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        font_size: f32,
+        align: TextAlign,
+    ) {
+        self.draw_text(rect, text, color, None, font_size, align);
+    }
 
-        let pixmap_width = self.pixmap.width() as i32;
-        let pixmap_height = self.pixmap.height() as i32;
-        let clip_mask = self.clip_stack.last();
-        let pixels = self.pixmap.pixels_mut();
-        let text_alpha = color.a as f32 / 255.0;
-
-        for glyph in glyphs {
-            for gy in 0..glyph.height {
-                let py = glyph.y + gy as i32;
-                if py < 0 || py >= pixmap_height {
-                    continue;
-                }
-                for gx in 0..glyph.width {
-                    let px = glyph.x + gx as i32;
-                    if px < 0 || px >= pixmap_width {
-                        continue;
-                    }
-                    let coverage = glyph.coverage[gy * glyph.width + gx] as f32 / 255.0;
-                    let idx = (py * pixmap_width + px) as usize;
-                    let clip = clip_mask.map(|mask| mask.data()[idx] as f32 / 255.0).unwrap_or(1.0);
-                    let src_alpha = coverage * text_alpha * clip;
-                    if src_alpha <= 0.0 {
-                        continue;
-                    }
-
-                    let dst = pixels[idx];
-                    let inv = 1.0 - src_alpha;
-
-                    // Premultiplied src-over: dst channels are already
-                    // premultiplied, and `color.r/g/b * src_alpha` is the
-                    // premultiplied source contribution.
-                    let out_r = (color.r as f32 * src_alpha) + (dst.red() as f32 * inv);
-                    let out_g = (color.g as f32 * src_alpha) + (dst.green() as f32 * inv);
-                    let out_b = (color.b as f32 * src_alpha) + (dst.blue() as f32 * inv);
-                    let out_a = (255.0 * src_alpha) + (dst.alpha() as f32 * inv);
-
-                    pixels[idx] = tiny_skia::PremultipliedColorU8::from_rgba(
-                        out_r.min(255.0) as u8,
-                        out_g.min(255.0) as u8,
-                        out_b.min(255.0) as u8,
-                        out_a.min(255.0) as u8,
-                    )
-                    .unwrap_or(dst);
-                }
-            }
-        }
+    fn fill_text_selected(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        selected_color: Color,
+        selected: std::ops::Range<usize>,
+        font_size: f32,
+        align: TextAlign,
+    ) {
+        self.draw_text(
+            rect,
+            text,
+            color,
+            Some((selected, selected_color)),
+            font_size,
+            align,
+        );
     }
 }

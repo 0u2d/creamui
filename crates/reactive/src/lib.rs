@@ -4,11 +4,13 @@
 //! intentionally small (no schedulers, no async) since it only needs to
 //! drive synchronous UI re-renders on the main thread.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 thread_local! {
     static EFFECT_STACK: RefCell<Vec<Rc<EffectState>>> = const { RefCell::new(Vec::new()) };
+    static BATCH_DEPTH: Cell<usize> = const { Cell::new(0) };
+    static PENDING_EFFECTS: RefCell<Vec<Rc<EffectState>>> = const { RefCell::new(Vec::new()) };
 }
 
 struct EffectState {
@@ -40,6 +42,24 @@ fn run_effect(state: &Rc<EffectState>) {
     EFFECT_STACK.with(|stack| {
         stack.borrow_mut().pop();
     });
+}
+
+/// Groups synchronous signal writes into one effect run per subscriber.
+/// This is particularly important for compound input updates such as a text
+/// editor moving both its caret and selection during one mouse event.
+pub fn batch(f: impl FnOnce()) {
+    BATCH_DEPTH.with(|depth| depth.set(depth.get() + 1));
+    f();
+    let flush = BATCH_DEPTH.with(|depth| {
+        depth.set(depth.get() - 1);
+        depth.get() == 0
+    });
+    if flush {
+        let pending = PENDING_EFFECTS.with(|effects| std::mem::take(&mut *effects.borrow_mut()));
+        for state in pending {
+            run_effect(&state);
+        }
+    }
 }
 
 struct SignalInner<T> {
@@ -116,8 +136,20 @@ impl<T: Clone + 'static> Signal<T> {
             subs.retain(|w| w.strong_count() > 0);
             subs.iter().filter_map(|w| w.upgrade()).collect()
         };
-        for state in subs {
-            run_effect(&state);
+        let batching = BATCH_DEPTH.with(|depth| depth.get() > 0);
+        if batching {
+            PENDING_EFFECTS.with(|pending| {
+                let mut pending = pending.borrow_mut();
+                for state in subs {
+                    if !pending.iter().any(|queued| Rc::ptr_eq(queued, &state)) {
+                        pending.push(state);
+                    }
+                }
+            });
+        } else {
+            for state in subs {
+                run_effect(&state);
+            }
         }
     }
 }
@@ -166,6 +198,25 @@ mod tests {
         assert_eq!(runs.get(), 1);
         b.set(99);
         assert_eq!(runs.get(), 1, "unrelated signal must not trigger a re-run");
+    }
+
+    #[test]
+    fn batch_coalesces_multiple_signal_writes_into_one_effect_run() {
+        let first = Signal::new(0);
+        let second = Signal::new(0);
+        let runs = Rc::new(Cell::new(0));
+        let observed_first = first.clone();
+        let observed_second = second.clone();
+        let observed_runs = runs.clone();
+        let _effect = create_effect(move || {
+            let _ = (observed_first.get(), observed_second.get());
+            observed_runs.set(observed_runs.get() + 1);
+        });
+        batch(|| {
+            first.set(1);
+            second.set(1);
+        });
+        assert_eq!(runs.get(), 2, "initial render plus one batched update");
     }
 
     #[test]

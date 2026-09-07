@@ -1,4 +1,5 @@
 use crate::geometry::{Point, Rect};
+use std::ops::Range;
 use std::rc::Rc;
 use taffy::geometry::Size;
 use taffy::style::AvailableSpace;
@@ -69,8 +70,38 @@ pub enum CursorIcon {
 /// backend in `creamui-render`); widgets never depend on a specific backend.
 pub trait Painter {
     fn fill_rect(&mut self, rect: Rect, color: creamui_theme::Color, corner_radius: f32);
-    fn stroke_rect(&mut self, rect: Rect, color: creamui_theme::Color, width: f32, corner_radius: f32);
-    fn fill_text(&mut self, rect: Rect, text: &str, color: creamui_theme::Color, font_size: f32, align: TextAlign);
+    fn stroke_rect(
+        &mut self,
+        rect: Rect,
+        color: creamui_theme::Color,
+        width: f32,
+        corner_radius: f32,
+    );
+    fn fill_text(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: creamui_theme::Color,
+        font_size: f32,
+        align: TextAlign,
+    );
+
+    /// Draws a text run whose glyph layout stays intact while a byte range
+    /// receives a different foreground color. Backends that do not support
+    /// per-glyph coloring may use the stable normal-color fallback.
+    fn fill_text_selected(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: creamui_theme::Color,
+        selected_color: creamui_theme::Color,
+        selected: Range<usize>,
+        font_size: f32,
+        align: TextAlign,
+    ) {
+        let _ = (selected_color, selected);
+        self.fill_text(rect, text, color, font_size, align);
+    }
 
     /// Restricts all subsequent drawing (until the matching [`Painter::pop_clip`])
     /// to `rect`, intersected with any already-active clip. Used by
@@ -145,6 +176,13 @@ pub trait Widget {
         None
     }
 
+    /// Optional handler for the initial pointer press of a drag gesture.
+    /// Kept separate from [`Widget::on_drag`] so text editors can record a
+    /// selection anchor before subsequent pointer moves extend the focus.
+    fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        None
+    }
+
     /// Optional scroll-wheel handler, called with the vertical scroll delta
     /// (in logical pixels; positive scrolls content up, i.e. reveals
     /// content further down) when the pointer is over this widget's rect.
@@ -180,7 +218,8 @@ pub trait Widget {
     /// output, called only on the frame's currently focused widget (see
     /// [`Widget::focusable`]). Used for a text input's blinking caret.
     /// `caret_visible` is the current blink phase. Default: a no-op.
-    fn paint_focused_overlay(&self, _painter: &mut dyn Painter, _rect: Rect, _caret_visible: bool) {}
+    fn paint_focused_overlay(&self, _painter: &mut dyn Painter, _rect: Rect, _caret_visible: bool) {
+    }
 }
 
 pub type BoxedWidget = Box<dyn Widget>;
