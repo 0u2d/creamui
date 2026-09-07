@@ -7,8 +7,10 @@ members = [
     "crates/widgets",
     "crates/render",
     "crates/ffi",
+    "crates/macros",
     "examples/hello_world",
     "examples/hello_world_dynamic",
+    "examples/jsx_hello_world",
 ]
 
 [workspace.package]
@@ -23,6 +25,7 @@ creamui-core = { path = "crates/core" }
 creamui-theme = { path = "crates/theme" }
 creamui-widgets = { path = "crates/widgets" }
 creamui-render = { path = "crates/render" }
+creamui-macros = { path = "crates/macros" }
 
 taffy = "0.7"
 wgpu = "22"

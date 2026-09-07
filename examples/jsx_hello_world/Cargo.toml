@@ -1,0 +1,13 @@
+[package]
+name = "jsx_hello_world"
+publish = false
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-macros = { workspace = true }
+creamui-reactive = { workspace = true }
+creamui-render = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-widgets = { workspace = true }

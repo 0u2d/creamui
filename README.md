@@ -41,12 +41,14 @@ done and what's next.
 | `creamui-widgets` | Headless (`raw`) and themed (`themed`) widgets, layout helpers |
 | `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu` presentation |
 | `creamui-ffi` | `#[no_mangle] extern "C"` ABI, built as a `cdylib`, for dynamic linking |
+| `creamui-macros` | `jsx!` syntax for the Rust widget builders |
 
 ## Running the examples
 
 ```sh
 cargo run -p hello_world           # static: links the Rust crates directly
 cargo run -p hello_world_dynamic   # dynamic: dlopens the built cdylib, zero CreamUI crate deps
+cargo run -p jsx_hello_world       # static counter expressed with jsx!
 ```
 
 Both are the same themed counter with a runtime theme-toggle button (the
@@ -82,6 +84,46 @@ GPU-driven vector renderer is on the roadmap.
 Text layout uses a real `taffy` measure function (`creamui_core::Widget::measure`)
 backed by `fontdue`'s own line-width calculation, not a hand-rolled estimate —
 see `creamui-widgets::text_metrics`.
+
+## JSX
+
+`creamui-macros::jsx!` expands directly to the existing Rust widget
+constructors. It owns no runtime state and has no special rendering path, so
+`Signal` reads and callback closures keep exactly their usual behavior.
+
+```rust
+use creamui_macros::jsx;
+
+let tree = jsx! {
+    <View theme={&theme} style={creamui_widgets::layout::column(8.0)}>
+        <Text theme={&theme} font_size={20.0}>"Settings"</Text>
+        <Button theme={&theme} on_click={move || save()}>"Save"</Button>
+    </View>
+};
+```
+
+Every prop is a Rust expression inside braces. `style` is therefore a normal
+`creamui_core::layout::Style`, including values built with
+`creamui_widgets::layout::{row, column, grid, fixed}`. This keeps the JSX
+surface aligned with Taffy's complete style API instead of introducing a
+second, partial CSS object syntax. `RawView` accepts `style`, `background`,
+and `corner_radius`; `View` accepts `theme` and `style`; `Text` accepts
+`theme`, `font_size`, and `secondary`; and `Button` accepts `theme` and
+`on_click`. `Checkbox`, `TextInput`, `Slider`, and `ScrollView` map one to
+one to their themed constructors: their required state/callback props retain
+the constructor names (`checked`/`on_click`, `value`/`on_change`, or
+`scroll_y`/`on_scroll`). Containers accept nested components; dynamic child
+widgets can be supplied as a `{BoxedWidget}` expression.
+
+Text content is either a Rust string expression (`{format!(...)}`) or a Rust
+string literal (`"Save"`). This is intentional: it preserves Rust's normal
+string and formatting semantics without a separate JSX text lexer.
+
+There is one macro crate, not an `abi_macros` crate. Proc macros expand in a
+Rust crate and produce Rust widget builders; the C ABI is a runtime boundary
+whose consumers cannot invoke Rust proc macros. If a future Rust-facing ABI
+adapter needs a declarative API, it should use this macro and expose a
+purpose-built Rust wrapper, rather than duplicate parser and prop rules.
 
 ## Credits
 

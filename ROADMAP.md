@@ -138,16 +138,18 @@ fine-grained reactivity, not React hooks/fiber semantics); `jsx!` is a
 syntax layer over the existing `Widget` builder pattern, not a new
 reactivity model.
 
-- [ ] `jsx!{ ... }` proc-macro: parses JSX-like syntax
-      (`<View style={...}><Text>...</Text></View>`) and expands to the
-      existing `creamui_widgets` builder calls — pure syntax sugar, no
-      engine changes required
-- [ ] `examples/jsx_hello_world` (or extend the existing hello-world):
+- [x] `jsx!{ ... }` proc-macro (`creamui-macros`): parses JSX-like syntax
+      (`<View theme={&theme} style={...}><Text theme={&theme}>"..."</Text></View>`)
+      and expands to the existing `creamui_widgets` builder calls — pure
+      syntax sugar, no engine changes required; its integration test renders
+      the output and dispatches a click through the resulting scene
+- [x] `examples/jsx_hello_world`:
       the same counter app rewritten with `jsx!` instead of hand-written
       builders, to prove the macro output matches hand-written trees
-- [ ] Document the mapping from JSX attributes/props to `Style`/theme
-      tokens (e.g. `style={{ bg: "#ff0000" }}`) so the macro's prop
-      surface is predictable
+- [x] Document the mapping from JSX attributes/props to `Style`/theme
+      tokens in `README.md`: `style` is an ordinary Rust `Style` expression,
+      while themed component props take an explicit `theme={&theme}`; this
+      retains the full Taffy API without inventing a second style language
 - [ ] (Exploratory, not required for the above) a React-hooks-semantics
       compatibility shim on top of `Signal`, only if a future need for
       literal `useState`/`useEffect` dependency-array semantics comes up —
