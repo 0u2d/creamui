@@ -1,6 +1,6 @@
 use creamui_core::layout::Style;
 use creamui_core::{render_frame, BoxedWidget, Painter, Rect, Size, TextAlign};
-use creamui_macros::{component, jsx};
+use creamui_macros::{abi_jsx, component, jsx};
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
 
@@ -15,6 +15,23 @@ fn CounterLabel(theme: Theme, value: i32) -> BoxedWidget {
 #[component]
 fn Panel(children: Vec<BoxedWidget>) -> BoxedWidget {
     Box::new(creamui_widgets::raw::RawView::new(Style::default()).with_children(children))
+}
+
+#[component]
+fn AbiLabel(
+    ctx: creamui_dynamic::Context,
+    theme: creamui_dynamic::Theme,
+    label: String,
+) -> creamui_dynamic::Widget {
+    abi_jsx! { <Text ctx={&ctx} theme={theme}>{label}</Text> }
+}
+
+#[allow(dead_code)]
+fn build_abi_component(
+    ctx: &creamui_dynamic::Context,
+    theme: creamui_dynamic::Theme,
+) -> creamui_dynamic::Widget {
+    abi_jsx! { <AbiLabel ctx={ctx.clone()} theme={theme} label={"from ABI".to_string()} /> }
 }
 
 impl Painter for TextPainter {
@@ -99,4 +116,49 @@ fn application_components_can_receive_nested_jsx_children() {
         &mut painter,
     );
     assert_eq!(painter.0, ["Nested"]);
+}
+
+#[test]
+fn jsx_exposes_headless_text_and_buttons_with_layout_props() {
+    let theme = Theme::dark();
+    let root: BoxedWidget = Box::new(jsx! {
+        <RawView style={Style::default()}>
+            <RawButton style={Style::default()} background={Color::rgb(20, 20, 20)} corner_radius={12.0} on_click={|| {}}>
+                <RawText color={Color::rgb(255, 200, 0)} font_size={18.0} align={TextAlign::End} style={Style::default()}>"Raw label"</RawText>
+            </RawButton>
+            <Text theme={&theme} color={Color::rgb(120, 220, 255)} align={TextAlign::Start} style={Style::default()}>"Themed label"</Text>
+        </RawView>
+    });
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 200.0,
+            height: 80.0,
+        },
+        &mut painter,
+    );
+    assert_eq!(painter.0, ["Raw label", "Themed label"]);
+}
+
+#[test]
+fn raw_view_accepts_a_generated_children_list() {
+    let children: Vec<BoxedWidget> = vec![Box::new(creamui_widgets::raw::RawText::new(
+        "Generated",
+        Color::rgb(255, 255, 255),
+        14.0,
+    ))];
+    let root: BoxedWidget = Box::new(jsx! {
+        <RawView style={Style::default()} children={children} />
+    });
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 200.0,
+            height: 80.0,
+        },
+        &mut painter,
+    );
+    assert_eq!(painter.0, ["Generated"]);
 }

@@ -16,6 +16,7 @@ syn = { version = "2", features = ["full"] }
 
 [dev-dependencies]
 creamui-core = { workspace = true }
+creamui-dynamic = { workspace = true }
 creamui-jsx = { workspace = true }
 creamui-reactive = { workspace = true }
 creamui-theme = { workspace = true }

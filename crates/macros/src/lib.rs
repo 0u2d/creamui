@@ -23,6 +23,18 @@ pub fn jsx(input: TokenStream) -> TokenStream {
     }
 }
 
+/// Builds a widget tree through `creamui-dynamic`, the `dlopen`-backed ABI
+/// client. It accepts the same tags as [`jsx`], but every intrinsic requires
+/// `ctx={...}` and expands to ABI calls instead of native widget builders.
+#[proc_macro]
+pub fn abi_jsx(input: TokenStream) -> TokenStream {
+    let element = parse_macro_input!(input as Element);
+    match element.expand_dynamic() {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.into_compile_error().into(),
+    }
+}
+
 /// Turns a normal Rust function into a JSX component.
 ///
 /// The function's named arguments become fields in a generated `NameProps`
@@ -171,6 +183,22 @@ fn is_closing_tag(input: ParseStream<'_>) -> bool {
 }
 
 impl Element {
+    fn is_native_intrinsic(&self) -> bool {
+        matches!(
+            self.tag.to_string().as_str(),
+            "RawView"
+                | "RawText"
+                | "RawButton"
+                | "View"
+                | "ScrollView"
+                | "Text"
+                | "Button"
+                | "Checkbox"
+                | "TextInput"
+                | "Slider"
+        )
+    }
+
     fn prop(&self, name: &str) -> Result<Option<Expr>> {
         let mut result = None;
         for attribute in &self.attributes {
@@ -234,7 +262,11 @@ impl Element {
             let child = match child {
                 Child::Element(element) => {
                     let expanded = element.expand()?;
-                    quote!(::creamui_jsx::IntoWidget::into_widget(#expanded))
+                    if element.is_native_intrinsic() {
+                        quote!(::std::boxed::Box::new(#expanded))
+                    } else {
+                        quote!(::creamui_jsx::IntoWidget::into_widget(#expanded))
+                    }
                 }
                 Child::Expression(expression) => {
                     quote!(::creamui_jsx::IntoWidget::into_widget(#expression))
@@ -254,9 +286,47 @@ impl Element {
     fn expand(&self) -> Result<TokenStream2> {
         match self.tag.to_string().as_str() {
             "RawView" => {
-                self.reject_unknown_props(&["style", "background", "corner_radius"])?;
+                self.reject_unknown_props(&["style", "background", "corner_radius", "children"])?;
                 let style = self.required_prop("style")?;
                 let mut output = quote!(::creamui_widgets::raw::RawView::new(#style));
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "RawText" => {
+                self.reject_unknown_props(&["color", "font_size", "align", "style"])?;
+                let color = self.required_prop("color")?;
+                let font_size = self.required_prop("font_size")?;
+                let text = self.text_child()?;
+                let mut output =
+                    quote!(::creamui_widgets::raw::RawText::new(#text, #color, #font_size));
+                if let Some(align) = self.prop("align")? {
+                    output = quote!(#output.align(#align));
+                }
+                if let Some(style) = self.prop("style")? {
+                    output = quote!(#output.layout_style(#style));
+                }
+                Ok(output)
+            }
+            "RawButton" => {
+                self.reject_unknown_props(&["style", "on_click", "background", "corner_radius"])?;
+                let style = self.required_prop("style")?;
+                let on_click = self.required_prop("on_click")?;
+                let mut output = quote!(::creamui_widgets::raw::RawButton::new(#style, #on_click));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }
@@ -282,7 +352,14 @@ impl Element {
                 self.container_children(quote!(::creamui_widgets::themed::ScrollView::new(#theme, #style, #scroll_y, #on_scroll)))
             }
             "Text" => {
-                self.reject_unknown_props(&["theme", "font_size", "secondary"])?;
+                self.reject_unknown_props(&[
+                    "theme",
+                    "font_size",
+                    "secondary",
+                    "align",
+                    "color",
+                    "style",
+                ])?;
                 let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(secondary) = self.prop("secondary")? {
@@ -293,14 +370,29 @@ impl Element {
                 if let Some(font_size) = self.prop("font_size")? {
                     output = quote!(#output.font_size(#font_size));
                 }
+                if let Some(align) = self.prop("align")? {
+                    output = quote!(#output.align(#align));
+                }
+                if let Some(color) = self.prop("color")? {
+                    output = quote!(#output.color(#color));
+                }
+                if let Some(style) = self.prop("style")? {
+                    output = quote!(#output.style(#style));
+                }
                 Ok(output)
             }
             "Button" => {
-                self.reject_unknown_props(&["theme", "on_click"])?;
+                self.reject_unknown_props(&["theme", "on_click", "style"])?;
                 let theme = self.required_prop("theme")?;
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
-                Ok(quote!(::creamui_widgets::themed::Button::new(#theme, #label, #on_click)))
+                if let Some(style) = self.prop("style")? {
+                    Ok(
+                        quote!(::creamui_widgets::themed::Button::with_style(#theme, #style, #label, #on_click)),
+                    )
+                } else {
+                    Ok(quote!(::creamui_widgets::themed::Button::new(#theme, #label, #on_click)))
+                }
             }
             "Checkbox" => {
                 self.reject_unknown_props(&["theme", "checked", "on_click"])?;
@@ -373,7 +465,11 @@ impl Element {
             .map(|child| match child {
                 Child::Element(element) => {
                     let expanded = element.expand()?;
-                    Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expanded)))
+                    if element.is_native_intrinsic() {
+                        Ok(quote!(::std::boxed::Box::new(#expanded)))
+                    } else {
+                        Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expanded)))
+                    }
                 }
                 Child::Expression(expression) => {
                     Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expression)))
@@ -397,6 +493,193 @@ impl Element {
                 return Err(Error::new_spanned(
                     &self.tag,
                     "`props` cannot be combined with JSX children; put `children` in the explicit props value",
+                ));
+            }
+            let props = &self.attributes[0].value;
+            return Ok(quote!(#tag(#props)));
+        }
+        if self
+            .attributes
+            .iter()
+            .any(|attribute| attribute.name == "props")
+        {
+            return Err(Error::new_spanned(
+                &self.tag,
+                "`props` cannot be combined with named component props",
+            ));
+        }
+        let props_name = format_ident!("{}Props", tag);
+        let fields = self.attributes.iter().map(|attribute| {
+            let name = &attribute.name;
+            let value = &attribute.value;
+            quote!(#name: #value)
+        });
+        if children.is_empty() {
+            Ok(quote!(#tag(#props_name { #( #fields, )* })))
+        } else {
+            Ok(quote!(#tag(#props_name { #( #fields, )* children: vec![ #( #children, )* ] })))
+        }
+    }
+
+    fn dynamic_container_children(&self, initial: TokenStream2) -> Result<TokenStream2> {
+        let mut output = initial;
+        for child in &self.children {
+            let child = match child {
+                Child::Element(element) => element.expand_dynamic()?,
+                Child::Expression(expression) => quote!(#expression),
+                Child::Text(text) => {
+                    return Err(Error::new_spanned(
+                        text,
+                        format!("`{}` cannot contain bare text; use `<Text>`", self.tag),
+                    ))
+                }
+            };
+            output = quote!(#output.child(#child));
+        }
+        Ok(output)
+    }
+
+    fn expand_dynamic(&self) -> Result<TokenStream2> {
+        match self.tag.to_string().as_str() {
+            "RawView" | "View" => {
+                self.reject_unknown_props(&["ctx", "style", "background", "corner_radius"])?;
+                let ctx = self.required_prop("ctx")?;
+                let style = self.required_prop("style")?;
+                let mut output = quote!(::creamui_dynamic::view_styled(#ctx, #style));
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                self.dynamic_container_children(output)
+            }
+            "ScrollView" => {
+                self.reject_unknown_props(&["ctx", "theme", "style", "scroll_y", "on_scroll"])?;
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let style = self.required_prop("style")?;
+                let scroll_y = self.required_prop("scroll_y")?;
+                let on_scroll = self.required_prop("on_scroll")?;
+                self.dynamic_container_children(quote!(::creamui_dynamic::scroll_view(#ctx, #theme, #style, #scroll_y, #on_scroll)))
+            }
+            "Text" => {
+                self.reject_unknown_props(&["ctx", "theme", "font_size", "secondary"])?;
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let text = self.text_child()?;
+                let secondary = self.prop("secondary")?;
+                let font_size = self.prop("font_size")?;
+                match (secondary, font_size) {
+                    (Some(_), Some(_)) => Err(Error::new_spanned(
+                        &self.tag,
+                        "the ABI Text component cannot combine `secondary` and `font_size` yet",
+                    )),
+                    (Some(secondary), None) => Ok(
+                        quote!(if #secondary { ::creamui_dynamic::themed_text_secondary(#ctx, #theme, &(#text)) } else { ::creamui_dynamic::themed_text(#ctx, #theme, &(#text)) }),
+                    ),
+                    (None, Some(font_size)) => Ok(
+                        quote!(::creamui_dynamic::themed_text_sized(#ctx, #theme, &(#text), #font_size)),
+                    ),
+                    (None, None) => {
+                        Ok(quote!(::creamui_dynamic::themed_text(#ctx, #theme, &(#text))))
+                    }
+                }
+            }
+            "Button" => {
+                self.reject_unknown_props(&["ctx", "theme", "on_click"])?;
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let on_click = self.required_prop("on_click")?;
+                let label = self.text_child()?;
+                Ok(quote!(::creamui_dynamic::button(#ctx, #theme, &(#label), #on_click)))
+            }
+            "Checkbox" => {
+                self.reject_unknown_props(&["ctx", "theme", "checked", "on_click"])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`Checkbox` cannot have children",
+                    ));
+                }
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let checked = self.required_prop("checked")?;
+                let on_click = self.required_prop("on_click")?;
+                Ok(quote!(::creamui_dynamic::checkbox(#ctx, #theme, #checked, #on_click)))
+            }
+            "TextInput" => {
+                self.reject_unknown_props(&[
+                    "ctx",
+                    "theme",
+                    "style",
+                    "value",
+                    "on_change",
+                    "placeholder",
+                ])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`TextInput` cannot have children",
+                    ));
+                }
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let style = self.required_prop("style")?;
+                let value = self.required_prop("value")?;
+                let on_change = self.required_prop("on_change")?;
+                let mut output = quote!(::creamui_dynamic::text_input(#ctx, #theme, #style, &(#value), #on_change));
+                if let Some(placeholder) = self.prop("placeholder")? {
+                    output = quote!(#output.placeholder(#theme, &(#placeholder)));
+                }
+                Ok(output)
+            }
+            "Slider" => {
+                self.reject_unknown_props(&["ctx", "theme", "style", "value", "on_change"])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`Slider` cannot have children",
+                    ));
+                }
+                let ctx = self.required_prop("ctx")?;
+                let theme = self.required_prop("theme")?;
+                let style = self.required_prop("style")?;
+                let value = self.required_prop("value")?;
+                let on_change = self.required_prop("on_change")?;
+                Ok(quote!(::creamui_dynamic::slider(#ctx, #theme, #style, #value, #on_change)))
+            }
+            _ => self.expand_dynamic_user_component(),
+        }
+    }
+
+    fn expand_dynamic_user_component(&self) -> Result<TokenStream2> {
+        let tag = &self.tag;
+        let children = self
+            .children
+            .iter()
+            .map(|child| match child {
+                Child::Element(element) => element.expand_dynamic(),
+                Child::Expression(expression) => Ok(quote!(#expression)),
+                Child::Text(text) => Err(Error::new_spanned(
+                    text,
+                    "custom ABI components cannot contain bare text; use `<Text>`",
+                )),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if self.attributes.is_empty() {
+            return if children.is_empty() {
+                Ok(quote!(#tag()))
+            } else {
+                let props_name = format_ident!("{}Props", tag);
+                Ok(quote!(#tag(#props_name { children: vec![ #( #children, )* ] })))
+            };
+        }
+        if self.attributes.len() == 1 && self.attributes[0].name == "props" {
+            if !children.is_empty() {
+                return Err(Error::new_spanned(
+                    &self.tag,
+                    "`props` cannot be combined with JSX children",
                 ));
             }
             let props = &self.attributes[0].value;

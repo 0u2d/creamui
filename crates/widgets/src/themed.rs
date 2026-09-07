@@ -9,8 +9,12 @@
 //! so writing a derived component (e.g. a `DangerButton`) is just writing a
 //! new constructor function in the same shape.
 
-use crate::raw::{RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextInput, RawView};
-use creamui_core::layout::{AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style};
+use crate::raw::{
+    RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextInput, RawView,
+};
+use creamui_core::layout::{
+    AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
+};
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
 use creamui_theme::Theme;
 use std::rc::Rc;
@@ -36,8 +40,26 @@ pub struct Button {
 
 impl Button {
     pub fn new(theme: &Theme, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+        Self::with_style(
+            theme,
+            centered_box_style(theme.spacing_medium * 2.0),
+            label,
+            on_click,
+        )
+    }
+
+    /// A themed button with caller-controlled layout. Its colors and radius
+    /// still come from `theme`, so an application-wide theme change remains
+    /// consistent while each button can choose its own size, margin, or flex
+    /// placement.
+    pub fn with_style(
+        theme: &Theme,
+        style: Style,
+        label: impl Into<String>,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
         let text = RawText::new(label, theme.text_primary, 16.0);
-        let inner = RawButton::new(centered_box_style(theme.spacing_medium * 2.0), on_click)
+        let inner = RawButton::new(style, on_click)
             .background(theme.accent)
             .corner_radius(theme.radius_medium)
             .child(Box::new(text));
@@ -75,7 +97,8 @@ pub struct Checkbox {
 
 impl Checkbox {
     pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
-        let mut inner = RawCheckbox::new(20.0, checked, theme.accent, theme.border_strong, on_click);
+        let mut inner =
+            RawCheckbox::new(20.0, checked, theme.accent, theme.border_strong, on_click);
         inner = inner.corner_radius(theme.radius_small);
         Checkbox { inner }
     }
@@ -117,13 +140,22 @@ impl TextInput {
         }
     }
 
-    pub fn new(theme: &Theme, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+    pub fn new(
+        theme: &Theme,
+        value: impl Into<String>,
+        on_change: impl Fn(String) + 'static,
+    ) -> Self {
         Self::with_style(theme, Self::default_style(), value, on_change)
     }
 
     /// Same as [`TextInput::new`], but with full control over layout
     /// instead of the fixed 200x36 default.
-    pub fn with_style(theme: &Theme, style: Style, value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+    pub fn with_style(
+        theme: &Theme,
+        style: Style,
+        value: impl Into<String>,
+        on_change: impl Fn(String) + 'static,
+    ) -> Self {
         let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
             .background(theme.surface_elevated)
             .border(theme.border, 1.0)
@@ -160,7 +192,8 @@ impl Widget for TextInput {
     }
 
     fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
-        self.inner.paint_focused_overlay(painter, rect, caret_visible);
+        self.inner
+            .paint_focused_overlay(painter, rect, caret_visible);
     }
 }
 
@@ -188,8 +221,20 @@ impl Slider {
 
     /// Same as [`Slider::new`], but with full control over layout instead
     /// of the fixed 160x20 default.
-    pub fn with_style(theme: &Theme, style: Style, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
-        let inner = RawSlider::new(style, value, theme.border_strong, theme.accent, theme.accent, on_change);
+    pub fn with_style(
+        theme: &Theme,
+        style: Style,
+        value: f32,
+        on_change: impl Fn(f32) + 'static,
+    ) -> Self {
+        let inner = RawSlider::new(
+            style,
+            value,
+            theme.border_strong,
+            theme.accent,
+            theme.accent,
+            on_change,
+        );
         Slider { inner }
     }
 }
@@ -238,6 +283,19 @@ impl Text {
 
     pub fn align(mut self, align: TextAlign) -> Self {
         self.inner.align = align;
+        self
+    }
+
+    /// Overrides the semantic primary/secondary color for cases such as a
+    /// brand mark or a status value.
+    pub fn color(mut self, color: creamui_theme::Color) -> Self {
+        self.inner.color = color;
+        self
+    }
+
+    /// Gives text a layout style for width, margin, flex/grid placement, etc.
+    pub fn style(mut self, style: Style) -> Self {
+        self.inner.style = style;
         self
     }
 }
@@ -301,7 +359,12 @@ pub struct ScrollView {
 }
 
 impl ScrollView {
-    pub fn new(theme: &Theme, style: Style, scroll_y: f32, on_scroll: impl Fn(f32) + 'static) -> Self {
+    pub fn new(
+        theme: &Theme,
+        style: Style,
+        scroll_y: f32,
+        on_scroll: impl Fn(f32) + 'static,
+    ) -> Self {
         let inner = RawScrollView::new(style, scroll_y, on_scroll)
             .background(theme.surface)
             .corner_radius(theme.radius_medium);

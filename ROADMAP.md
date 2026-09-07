@@ -185,10 +185,16 @@ reactivity model.
       registry. `#[component] fn MyComponent(...) -> BoxedWidget` generates
       `MyComponentProps`, so an imported `<MyComponent prop={...}/>` becomes
       a statically checked Rust call; `creamui-jsx::IntoWidget` accepts both
-      native widgets and component-function results as children
-- [x] `examples/jsx_hello_world`:
-      the same counter app rewritten with `jsx!` instead of hand-written
-      builders, to prove the macro output matches hand-written trees
+      component-function results as children while the macro boxes native
+      widget intrinsics directly
+- [x] ABI JSX integration: `abi_jsx!` reuses the JSX parser but emits the
+      safe `creamui-dynamic` `dlopen` calls and ABI-owned widgets, keeping
+      dynamic apps free of native engine dependencies and preserving ABI
+      ownership rules
+- [x] Static JSX examples: `examples/hello-world` is the reactive counter
+      and `examples/calculator` is a composed custom UI. They keep the
+      public example surface small while exercising both themed and
+      headless JSX components.
 - [x] Document the mapping from JSX attributes/props to `Style`/theme
       tokens in `README.md`: `style` is an ordinary Rust `Style` expression,
       while themed component props take an explicit `theme={&theme}`; this

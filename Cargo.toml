@@ -11,9 +11,8 @@ members = [
     "crates/jsx",
     "crates/macros",
     "crates/dynamic",
-    "examples/hello_world",
-    "examples/hello_world_dynamic",
-    "examples/jsx_hello_world",
+    "examples/hello-world",
+    "examples/calculator",
 ]
 
 [workspace.package]

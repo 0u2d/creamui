@@ -1,5 +1,5 @@
 [package]
-name = "jsx_hello_world"
+name = "calculator"
 publish = false
 version.workspace = true
 edition.workspace = true

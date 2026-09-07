@@ -1,0 +1,39 @@
+use creamui_core::layout::{AlignItems, Dimension, FlexDirection, JustifyContent, Style};
+use creamui_core::{BoxedWidget, Size};
+use creamui_macros::jsx;
+use creamui_reactive::Signal;
+use creamui_render::{run, WindowOptions};
+use creamui_theme::Theme;
+
+fn main() {
+    let count = Signal::new(0_i32);
+    run(
+        WindowOptions {
+            title: "CreamUI — Hello World".into(),
+            width: 480,
+            height: 320,
+            ..Default::default()
+        },
+        Theme::dark().surface,
+        |_| {},
+        move |size: Size| -> BoxedWidget {
+            let theme = Theme::dark();
+            let click_count = count.clone();
+            let style = Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(size.width),
+                    height: Dimension::Length(size.height),
+                },
+                flex_direction: FlexDirection::Column,
+                justify_content: Some(JustifyContent::Center),
+                align_items: Some(AlignItems::Center),
+                ..Default::default()
+            };
+            Box::new(jsx! { <RawView style={style} background={theme.surface}>
+                <Text theme={&theme} font_size={28.0}>"Hello, CreamUI!"</Text>
+                <Text theme={&theme}>{format!("Clicked {} times", count.get())}</Text>
+                <Button theme={&theme} on_click={move || click_count.update(|value| *value += 1)}>"Click me"</Button>
+            </RawView> })
+        },
+    );
+}

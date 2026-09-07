@@ -4,7 +4,9 @@
 //! want a completely custom look can use these directly instead.
 
 use creamui_core::layout::Style;
-use creamui_core::{BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget};
+use creamui_core::{
+    BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
+};
 use creamui_theme::Color;
 use std::rc::Rc;
 
@@ -33,6 +35,13 @@ impl RawView {
 
     pub fn corner_radius(mut self, radius: f32) -> Self {
         self.corner_radius = radius;
+        self
+    }
+
+    /// Replaces the layout style. Useful when a base style is refined by a
+    /// reusable component before it is returned.
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
         self
     }
 
@@ -82,6 +91,26 @@ impl RawText {
             style: Style::default(),
         }
     }
+
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub fn font_size(mut self, font_size: f32) -> Self {
+        self.font_size = font_size;
+        self
+    }
+
+    pub fn align(mut self, align: TextAlign) -> Self {
+        self.align = align;
+        self
+    }
+
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
 }
 
 impl Widget for RawText {
@@ -102,7 +131,8 @@ impl Widget for RawText {
                 (None, creamui_core::layout::AvailableSpace::Definite(w)) => w,
                 (None, _) => crate::text_metrics::unbounded_width(),
             };
-            let (natural_width, natural_height) = crate::text_metrics::measure(&text, font_size, max_width);
+            let (natural_width, natural_height) =
+                crate::text_metrics::measure(&text, font_size, max_width);
             creamui_core::layout::Size {
                 width: known_dimensions.width.unwrap_or(natural_width),
                 height: known_dimensions.height.unwrap_or(natural_height),
@@ -142,8 +172,18 @@ impl RawButton {
         self
     }
 
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
     pub fn child(mut self, widget: BoxedWidget) -> Self {
         self.children.push(widget);
+        self
+    }
+
+    pub fn with_children(mut self, widgets: Vec<BoxedWidget>) -> Self {
+        self.children = widgets;
         self
     }
 }
@@ -258,10 +298,22 @@ impl Widget for RawTextInput {
         };
         if self.value.is_empty() {
             if !self.placeholder.is_empty() {
-                painter.fill_text(text_rect, &self.placeholder, self.placeholder_color, self.font_size, TextAlign::Start);
+                painter.fill_text(
+                    text_rect,
+                    &self.placeholder,
+                    self.placeholder_color,
+                    self.font_size,
+                    TextAlign::Start,
+                );
             }
         } else {
-            painter.fill_text(text_rect, &self.value, self.text_color, self.font_size, TextAlign::Start);
+            painter.fill_text(
+                text_rect,
+                &self.value,
+                self.text_color,
+                self.font_size,
+                TextAlign::Start,
+            );
         }
     }
 
@@ -278,9 +330,19 @@ impl Widget for RawTextInput {
             return;
         }
         let padding = 8.0;
-        let (text_width, _) = crate::text_metrics::measure(&self.value, self.font_size, crate::text_metrics::unbounded_width());
-        let text_width = if self.value.is_empty() { 0.0 } else { text_width };
-        let caret_x = (rect.x + padding + text_width).min(rect.x + rect.width - 1.0).max(rect.x);
+        let (text_width, _) = crate::text_metrics::measure(
+            &self.value,
+            self.font_size,
+            crate::text_metrics::unbounded_width(),
+        );
+        let text_width = if self.value.is_empty() {
+            0.0
+        } else {
+            text_width
+        };
+        let caret_x = (rect.x + padding + text_width)
+            .min(rect.x + rect.width - 1.0)
+            .max(rect.x);
         let caret_height = (self.font_size * 1.2).min(rect.height);
         let caret_rect = Rect {
             x: caret_x,
@@ -323,7 +385,13 @@ pub struct RawCheckbox {
 }
 
 impl RawCheckbox {
-    pub fn new(box_size: f32, checked: bool, fill_color: Color, border_color: Color, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(
+        box_size: f32,
+        checked: bool,
+        fill_color: Color,
+        border_color: Color,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
         RawCheckbox {
             box_size,
             checked,
@@ -356,7 +424,12 @@ impl Widget for RawCheckbox {
         if self.checked {
             painter.fill_rect(rect, self.fill_color, self.corner_radius);
         } else {
-            painter.stroke_rect(rect, self.border_color, self.border_width, self.corner_radius);
+            painter.stroke_rect(
+                rect,
+                self.border_color,
+                self.border_width,
+                self.corner_radius,
+            );
         }
     }
 
@@ -417,7 +490,12 @@ impl Widget for RawSlider {
         let handle_center_x = rect.x + self.handle_size / 2.0 + usable_width * self.value;
 
         painter.fill_rect(
-            Rect { x: rect.x, y: track_y, width: rect.width, height: self.track_height },
+            Rect {
+                x: rect.x,
+                y: track_y,
+                width: rect.width,
+                height: self.track_height,
+            },
             self.track_color,
             self.track_height / 2.0,
         );
@@ -549,7 +627,10 @@ impl Widget for RawScrollView {
     }
 
     fn scroll_offset(&self) -> Point {
-        Point { x: 0.0, y: self.scroll_y }
+        Point {
+            x: 0.0,
+            y: self.scroll_y,
+        }
     }
 
     fn on_scroll(&self) -> Option<Rc<dyn Fn(f32)>> {

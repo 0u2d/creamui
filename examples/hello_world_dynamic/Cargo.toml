@@ -1,8 +1,0 @@
-[package]
-name = "hello_world_dynamic"
-publish = false
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-creamui-dynamic = { workspace = true }

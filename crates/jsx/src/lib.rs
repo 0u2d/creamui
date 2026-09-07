@@ -1,16 +1,14 @@
 //! Runtime component protocol used by CreamUI JSX.
 
-use creamui_core::{BoxedWidget, Widget};
+use creamui_core::BoxedWidget;
 
-/// Converts native widgets and component-function results into a child node.
+/// Converts a component-function result into a native JSX child node.
+///
+/// Native JSX intrinsics are boxed by the macro itself. Application
+/// components return `BoxedWidget`, which avoids a blanket implementation
+/// that would overlap with future `Widget for Box<dyn Widget>` impls.
 pub trait IntoWidget {
     fn into_widget(self) -> BoxedWidget;
-}
-
-impl<T: Widget + 'static> IntoWidget for T {
-    fn into_widget(self) -> BoxedWidget {
-        Box::new(self)
-    }
 }
 
 impl IntoWidget for BoxedWidget {

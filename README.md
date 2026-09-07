@@ -49,18 +49,13 @@ done and what's next.
 ## Running the examples
 
 ```sh
-cargo run -p hello_world           # static: links the Rust crates directly
-cargo run -p hello_world_dynamic   # dynamic: dlopens the built cdylib, zero CreamUI crate deps
-cargo run -p jsx_hello_world       # static counter expressed with jsx!
+cargo run -p hello-world
+cargo run -p calculator
 ```
 
-Both are the same themed counter with a runtime theme-toggle button.
-`hello_world_dynamic` depends only on `creamui-dynamic` (which itself only
-depends on `creamui-abi` + `libloading`) — no engine crate compiled in.
-Compare `target/release/hello_world` against `target/release/hello_world_dynamic`
-to see the difference linking mode makes to binary size: the dynamic build
-carries none of `wgpu`/`winit`/`taffy` itself — that all lives in
-`libcreamui.so`.
+Both examples are static Rust applications using `jsx!`. The calculator is
+also a composition example: its screen and keys are custom components built
+from the headless widgets, without adding a calculator-specific crate.
 
 Set `CUI_DEBUG=1` for verbose logging, or `CUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
@@ -116,9 +111,9 @@ see `creamui-widgets::text_metrics`.
 
 `creamui-macros::jsx!` expands directly to existing Rust widget constructors
 and ordinary component function calls. `creamui-jsx` is its small runtime
-companion: it converts either kind of result into a child widget. Neither
-crate owns state or rendering, so `Signal` reads and callback closures keep
-exactly their usual behavior.
+companion for component results; the macro boxes native intrinsics directly.
+Neither crate owns state or rendering, so `Signal` reads and callback
+closures keep exactly their usual behavior.
 
 ```rust
 use creamui_macros::jsx;
@@ -133,12 +128,15 @@ let tree = jsx! {
 
 Every prop is a Rust expression inside braces. `style` is therefore a normal
 `creamui_core::layout::Style`, including values built with
-`creamui_widgets::layout::{row, column, grid, fixed}`. This keeps the JSX
+`creamui_widgets::layout::{row, column, grid, fixed, padding, margin, centered}`. This keeps the JSX
 surface aligned with Taffy's complete style API instead of introducing a
 second, partial CSS object syntax. `RawView` accepts `style`, `background`,
-and `corner_radius`; `View` accepts `theme` and `style`; `Text` accepts
-`theme`, `font_size`, and `secondary`; and `Button` accepts `theme` and
-`on_click`. `Checkbox`, `TextInput`, `Slider`, and `ScrollView` map one to
+`corner_radius`, and `children={Vec<BoxedWidget>}` for generated lists;
+`RawText` and `RawButton` are JSX intrinsics for a
+fully headless design system. `View` accepts `theme` and `style`; `Text`
+accepts `theme`, `font_size`, `secondary`, `style`, `align`, and `color`; and
+`Button` accepts `theme`, `on_click`, and an optional `style`. `Checkbox`,
+`TextInput`, `Slider`, and `ScrollView` map one to
 one to their themed constructors: their required state/callback props retain
 the constructor names (`checked`/`on_click`, `value`/`on_change`, or
 `scroll_y`/`on_scroll`). Containers accept nested components; dynamic child
@@ -173,9 +171,29 @@ converted child widgets.
 
 The workspace has one proc-macro crate and one small runtime crate, not an
 `abi_macros` crate or a macro registry. Proc macros expand in Rust source;
-the C ABI is a runtime boundary whose C consumers cannot invoke them. A
-future Rust-facing ABI adapter can implement the same `IntoWidget` protocol
-without duplicating parser or prop rules.
+the C ABI is a runtime boundary whose C consumers cannot invoke them.
+
+`abi_jsx!` is the corresponding syntax layer for a Rust app using
+`creamui-dynamic` to `dlopen` the ABI. It uses the same tags, but requires a
+`ctx` prop and emits `creamui_dynamic` calls and ABI-owned `Widget` handles:
+
+```rust
+use creamui_macros::abi_jsx;
+
+let ui = abi_jsx! {
+    <View ctx={ctx} style={style}>
+        <Text ctx={ctx} theme={theme}>"Loaded through the ABI"</Text>
+        <Button ctx={ctx} theme={theme} on_click={move || count.set(count.get() + 1)}>
+            "Increment"
+        </Button>
+    </View>
+};
+```
+
+Native `jsx!` and `abi_jsx!` deliberately do not share children: native
+widgets are Rust trait objects, while dynamic widgets own opaque C handles
+that must be attached through the loaded ABI. `#[component]` works with both;
+its return type decides which tree it belongs to.
 
 ## Credits
 
