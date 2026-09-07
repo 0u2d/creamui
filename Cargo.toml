@@ -7,6 +7,7 @@ members = [
     "crates/widgets",
     "crates/render",
     "crates/ffi",
+    "crates/jsx",
     "crates/macros",
     "examples/hello_world",
     "examples/hello_world_dynamic",
@@ -25,6 +26,7 @@ creamui-core = { path = "crates/core" }
 creamui-theme = { path = "crates/theme" }
 creamui-widgets = { path = "crates/widgets" }
 creamui-render = { path = "crates/render" }
+creamui-jsx = { path = "crates/jsx" }
 creamui-macros = { path = "crates/macros" }
 
 taffy = "0.7"

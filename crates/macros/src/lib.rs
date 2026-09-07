@@ -5,10 +5,10 @@
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{
-    braced, parse::Parse, parse::ParseStream, parse_macro_input, Error, Expr, Ident, LitStr,
-    Result, Token,
+    braced, parse::Parse, parse::ParseStream, parse_macro_input, Error, Expr, FnArg, Ident, ItemFn,
+    LitStr, Pat, Result, Token,
 };
 
 /// Builds a CreamUI widget using JSX-like syntax.
@@ -21,6 +21,66 @@ pub fn jsx(input: TokenStream) -> TokenStream {
         Ok(tokens) => tokens.into(),
         Err(error) => error.into_compile_error().into(),
     }
+}
+
+/// Turns a normal Rust function into a JSX component.
+///
+/// The function's named arguments become fields in a generated `NameProps`
+/// struct. `<Name value={...}/>` then expands to `Name(NameProps { value })`.
+#[proc_macro_attribute]
+pub fn component(_attribute: TokenStream, input: TokenStream) -> TokenStream {
+    let function = parse_macro_input!(input as ItemFn);
+    match expand_component(function) {
+        Ok(tokens) => tokens.into(),
+        Err(error) => error.into_compile_error().into(),
+    }
+}
+
+fn expand_component(function: ItemFn) -> Result<TokenStream2> {
+    if function.sig.receiver().is_some() {
+        return Err(Error::new_spanned(
+            function.sig,
+            "`#[component]` only supports free functions",
+        ));
+    }
+    if function.sig.inputs.is_empty() {
+        return Err(Error::new_spanned(
+            function.sig,
+            "a JSX component needs at least one named prop",
+        ));
+    }
+    let function_name = &function.sig.ident;
+    let props_name = format_ident!("{}Props", function_name);
+    let visibility = &function.vis;
+    let attributes = &function.attrs;
+    let output = &function.sig.output;
+    let block = &function.block;
+    let mut fields = Vec::new();
+    let mut bindings = Vec::new();
+    for argument in &function.sig.inputs {
+        let FnArg::Typed(argument) = argument else {
+            unreachable!("receiver checked above");
+        };
+        let Pat::Ident(pattern) = argument.pat.as_ref() else {
+            return Err(Error::new_spanned(
+                &argument.pat,
+                "component props must be simple identifiers",
+            ));
+        };
+        let name = &pattern.ident;
+        let ty = &argument.ty;
+        fields.push(quote!(pub #name: #ty));
+        bindings.push(quote!(#name));
+    }
+    Ok(quote! {
+        #visibility struct #props_name { #( #fields, )* }
+        #( #attributes )*
+        #[allow(non_snake_case)]
+        #visibility fn #function_name(props: #props_name) #output {
+            let #props_name { #( #bindings, )* } = props;
+            #block
+        }
+    })
 }
 
 struct Attribute {
@@ -174,9 +234,11 @@ impl Element {
             let child = match child {
                 Child::Element(element) => {
                     let expanded = element.expand()?;
-                    quote!(::std::boxed::Box::new(#expanded))
+                    quote!(::creamui_jsx::IntoWidget::into_widget(#expanded))
                 }
-                Child::Expression(expression) => quote!(#expression),
+                Child::Expression(expression) => {
+                    quote!(::creamui_jsx::IntoWidget::into_widget(#expression))
+                }
                 Child::Text(text) => {
                     return Err(Error::new_spanned(
                         text,
@@ -299,10 +361,67 @@ impl Element {
                     Ok(quote!(::creamui_widgets::themed::Slider::new(#theme, #value, #on_change)))
                 }
             }
-            _ => Err(Error::new_spanned(
+            _ => self.expand_user_component(),
+        }
+    }
+
+    fn expand_user_component(&self) -> Result<TokenStream2> {
+        let tag = &self.tag;
+        let children = self
+            .children
+            .iter()
+            .map(|child| match child {
+                Child::Element(element) => {
+                    let expanded = element.expand()?;
+                    Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expanded)))
+                }
+                Child::Expression(expression) => {
+                    Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expression)))
+                }
+                Child::Text(text) => Err(Error::new_spanned(
+                    text,
+                    "custom components cannot contain bare text; use `<Text>`",
+                )),
+            })
+            .collect::<Result<Vec<_>>>()?;
+        if self.attributes.is_empty() {
+            return if children.is_empty() {
+                Ok(quote!(#tag()))
+            } else {
+                let props_name = format_ident!("{}Props", tag);
+                Ok(quote!(#tag(#props_name { children: vec![ #( #children, )* ] })))
+            };
+        }
+        if self.attributes.len() == 1 && self.attributes[0].name == "props" {
+            if !children.is_empty() {
+                return Err(Error::new_spanned(
+                    &self.tag,
+                    "`props` cannot be combined with JSX children; put `children` in the explicit props value",
+                ));
+            }
+            let props = &self.attributes[0].value;
+            return Ok(quote!(#tag(#props)));
+        }
+        if self
+            .attributes
+            .iter()
+            .any(|attribute| attribute.name == "props")
+        {
+            return Err(Error::new_spanned(
                 &self.tag,
-                "unsupported CreamUI JSX component",
-            )),
+                "`props` cannot be combined with named component props",
+            ));
+        }
+        let props_name = format_ident!("{}Props", tag);
+        let fields = self.attributes.iter().map(|attribute| {
+            let name = &attribute.name;
+            let value = &attribute.value;
+            quote!(#name: #value)
+        });
+        if children.is_empty() {
+            Ok(quote!(#tag(#props_name { #( #fields, )* })))
+        } else {
+            Ok(quote!(#tag(#props_name { #( #fields, )* children: vec![ #( #children, )* ] })))
         }
     }
 }

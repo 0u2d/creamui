@@ -1,11 +1,21 @@
 use creamui_core::layout::Style;
 use creamui_core::{render_frame, BoxedWidget, Painter, Rect, Size, TextAlign};
-use creamui_macros::jsx;
+use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
 
 #[derive(Default)]
 struct TextPainter(Vec<String>);
+
+#[component]
+fn CounterLabel(theme: Theme, value: i32) -> BoxedWidget {
+    Box::new(jsx! { <Text theme={&theme}>{format!("Custom: {value}")}</Text> })
+}
+
+#[component]
+fn Panel(children: Vec<BoxedWidget>) -> BoxedWidget {
+    Box::new(creamui_widgets::raw::RawView::new(Style::default()).with_children(children))
+}
 
 impl Painter for TextPainter {
     fn fill_rect(&mut self, _: Rect, _: Color, _: f32) {}
@@ -49,4 +59,44 @@ fn jsx_expands_to_the_existing_widget_builders() {
         .expect("button hit");
     click();
     assert_eq!(clicks.get(), 1);
+}
+
+#[test]
+fn application_components_are_typed_functions_not_macro_registrations() {
+    let theme = Theme::dark();
+    let root: BoxedWidget = Box::new(jsx! {
+        <View theme={&theme} style={Style::default()}>
+            <CounterLabel theme={theme} value={7} />
+        </View>
+    });
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 200.0,
+            height: 80.0,
+        },
+        &mut painter,
+    );
+    assert_eq!(painter.0, ["Custom: 7"]);
+}
+
+#[test]
+fn application_components_can_receive_nested_jsx_children() {
+    let theme = Theme::dark();
+    let root: BoxedWidget = jsx! {
+        <Panel>
+            <Text theme={&theme}>"Nested"</Text>
+        </Panel>
+    };
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 200.0,
+            height: 80.0,
+        },
+        &mut painter,
+    );
+    assert_eq!(painter.0, ["Nested"]);
 }

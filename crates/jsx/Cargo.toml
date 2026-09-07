@@ -1,0 +1,10 @@
+[package]
+name = "creamui-jsx"
+description = "Runtime component protocol used by creamui-macros"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-core = { workspace = true }

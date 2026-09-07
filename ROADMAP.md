@@ -143,6 +143,11 @@ reactivity model.
       and expands to the existing `creamui_widgets` builder calls — pure
       syntax sugar, no engine changes required; its integration test renders
       the output and dispatches a click through the resulting scene
+- [x] Extensible component protocol: application components need no macro
+      registry. `#[component] fn MyComponent(...) -> BoxedWidget` generates
+      `MyComponentProps`, so an imported `<MyComponent prop={...}/>` becomes
+      a statically checked Rust call; `creamui-jsx::IntoWidget` accepts both
+      native widgets and component-function results as children
 - [x] `examples/jsx_hello_world`:
       the same counter app rewritten with `jsx!` instead of hand-written
       builders, to prove the macro output matches hand-written trees

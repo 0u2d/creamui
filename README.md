@@ -41,6 +41,7 @@ done and what's next.
 | `creamui-widgets` | Headless (`raw`) and themed (`themed`) widgets, layout helpers |
 | `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu` presentation |
 | `creamui-ffi` | `#[no_mangle] extern "C"` ABI, built as a `cdylib`, for dynamic linking |
+| `creamui-jsx` | Runtime bridge from widgets or component results to JSX children |
 | `creamui-macros` | `jsx!` syntax for the Rust widget builders |
 
 ## Running the examples
@@ -87,9 +88,11 @@ see `creamui-widgets::text_metrics`.
 
 ## JSX
 
-`creamui-macros::jsx!` expands directly to the existing Rust widget
-constructors. It owns no runtime state and has no special rendering path, so
-`Signal` reads and callback closures keep exactly their usual behavior.
+`creamui-macros::jsx!` expands directly to existing Rust widget constructors
+and ordinary component function calls. `creamui-jsx` is its small runtime
+companion: it converts either kind of result into a child widget. Neither
+crate owns state or rendering, so `Signal` reads and callback closures keep
+exactly their usual behavior.
 
 ```rust
 use creamui_macros::jsx;
@@ -119,11 +122,34 @@ Text content is either a Rust string expression (`{format!(...)}`) or a Rust
 string literal (`"Save"`). This is intentional: it preserves Rust's normal
 string and formatting semantics without a separate JSX text lexer.
 
-There is one macro crate, not an `abi_macros` crate. Proc macros expand in a
-Rust crate and produce Rust widget builders; the C ABI is a runtime boundary
-whose consumers cannot invoke Rust proc macros. If a future Rust-facing ABI
-adapter needs a declarative API, it should use this macro and expose a
-purpose-built Rust wrapper, rather than duplicate parser and prop rules.
+Application components do not need registering in the macro. Annotate a
+function with `#[component]`; its named parameters become a generated props
+type, and it may return a `BoxedWidget` built with `jsx!`:
+
+```rust
+use creamui_core::BoxedWidget;
+use creamui_macros::{component, jsx};
+
+#[component]
+fn Greeting(theme: Theme, name: String) -> BoxedWidget {
+    Box::new(jsx! { <Text theme={&theme}>{format!("Hello, {name}")}</Text> })
+}
+
+let tree = jsx! { <Greeting theme={theme} name={user_name} /> };
+```
+
+The expansion is `Greeting(GreetingProps { theme, name })`, so imports,
+visibility, missing props, and prop types are checked by Rust. A component
+with a hand-written props type can use `<Greeting props={my_props} />`.
+Declare `children: Vec<BoxedWidget>` as a component argument to receive nested
+JSX nodes (`<Panel><Text ... /></Panel>`); the macro fills that prop with
+converted child widgets.
+
+The workspace has one proc-macro crate and one small runtime crate, not an
+`abi_macros` crate or a macro registry. Proc macros expand in Rust source;
+the C ABI is a runtime boundary whose C consumers cannot invoke them. A
+future Rust-facing ABI adapter can implement the same `IntoWidget` protocol
+without duplicating parser or prop rules.
 
 ## Credits
 
