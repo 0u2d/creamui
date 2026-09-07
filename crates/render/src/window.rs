@@ -8,9 +8,9 @@
 //! window keeps its own reactive state, so a signal change in one never
 //! touches another's frame.
 //!
-//! On startup, and again every time a [`creamui_reactive::Signal`] read
-//! while building a window's UI changes, that window's widget tree is
-//! rebuilt, its layout recomputed, it's repainted via
+//! On startup, and again on the next compositor frame after a
+//! [`creamui_reactive::Signal`] read while building a window's UI changes,
+//! that window's widget tree is rebuilt, its layout recomputed, it's repainted via
 //! [`crate::painter::SkiaPainter`], and a redraw is requested; the actual
 //! `RedrawRequested` handler only uploads the already-painted buffer to that
 //! window's presenter (GPU or CPU — see [`crate::backend::RenderBackend`])
@@ -20,7 +20,9 @@ use crate::backend::RenderBackend;
 use crate::cpu::CpuState;
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
-use creamui_core::{BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size};
+use creamui_core::{
+    BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size,
+};
 use creamui_reactive::{create_effect, Effect, Signal};
 use creamui_theme::Color;
 use std::cell::{Cell, RefCell};
@@ -32,7 +34,9 @@ use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey};
-use winit::window::{CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId, WindowLevel};
+use winit::window::{
+    CursorIcon as WinitCursorIcon, Window, WindowAttributes, WindowId, WindowLevel,
+};
 
 /// How long the text-input caret stays in each visibility phase while
 /// blinking (on, then off, then on again).
@@ -168,7 +172,11 @@ impl WindowHandle {
     /// desktop-shell/widget-overlay behavior.
     pub fn set_always_on_top(&self, enabled: bool) {
         if let Some(window) = self.0.borrow().as_ref() {
-            window.set_window_level(if enabled { WindowLevel::AlwaysOnTop } else { WindowLevel::Normal });
+            window.set_window_level(if enabled {
+                WindowLevel::AlwaysOnTop
+            } else {
+                WindowLevel::Normal
+            });
         }
     }
 }
@@ -179,6 +187,8 @@ struct WindowSpec {
     options: WindowOptions,
     on_window_ready: Box<dyn Fn(WindowHandle)>,
     repaint: Rc<dyn Fn()>,
+    render: Rc<dyn Fn()>,
+    dirty: Rc<Cell<bool>>,
     _effect: Effect,
     viewport: Signal<Size>,
     scale_factor: Signal<f64>,
@@ -286,11 +296,14 @@ struct WindowState {
     /// Index into the current `Scene`'s draggables while the left mouse
     /// button is held down over one, `None` otherwise.
     dragging: Option<usize>,
-    /// Rebuilds this window's UI, recomputes layout, and repaints — the
-    /// same routine `_effect` runs on signal changes, exposed here so caret
-    /// blinking and focus changes (which don't touch any `Signal`) can also
-    /// trigger it.
+    /// Invalidates this window. Signal changes and caret/focus updates are
+    /// coalesced until the next `RedrawRequested` frame.
     repaint: Rc<dyn Fn()>,
+    /// Executes the deferred build/layout/paint pass. Signal writes only
+    /// schedule this; `RedrawRequested` performs it once per compositor
+    /// frame.
+    render: Rc<dyn Fn()>,
+    dirty: Rc<Cell<bool>>,
     _effect: Effect,
     t_run: Instant,
     first_present_logged: bool,
@@ -342,7 +355,8 @@ impl WindowState {
                 };
                 if hovered_cursor != self.current_cursor {
                     self.current_cursor = hovered_cursor;
-                    self.window.set_cursor(translate_cursor_icon(hovered_cursor));
+                    self.window
+                        .set_cursor(translate_cursor_icon(hovered_cursor));
                 }
 
                 if let Some(index) = self.dragging {
@@ -366,7 +380,9 @@ impl WindowState {
                 ..
             } => {
                 let frame = self.frame.borrow();
-                let Some(scene) = frame.scene.as_ref() else { return };
+                let Some(scene) = frame.scene.as_ref() else {
+                    return;
+                };
 
                 let click_handler = scene.hit_test(self.pointer_pos).cloned();
                 let new_focus = scene.focus_hit_test(self.pointer_pos);
@@ -398,7 +414,13 @@ impl WindowState {
                     handler(local, rect);
                 }
                 if let Some((rect, handler)) = drag_anchor {
-                    handler(Point { x: self.pointer_pos.x - rect.x, y: self.pointer_pos.y - rect.y }, rect);
+                    handler(
+                        Point {
+                            x: self.pointer_pos.x - rect.x,
+                            y: self.pointer_pos.y - rect.y,
+                        },
+                        rect,
+                    );
                 }
                 if let Some(handler) = click_handler {
                     log::debug!("creamui-render: click hit at {:?}", self.pointer_pos);
@@ -423,7 +445,9 @@ impl WindowState {
                 };
 
                 let frame = self.frame.borrow();
-                let Some(scene) = frame.scene.as_ref() else { return };
+                let Some(scene) = frame.scene.as_ref() else {
+                    return;
+                };
                 let handler = scene
                     .scroll_hit_test(self.pointer_pos)
                     .and_then(|index| scene.on_scroll_at(index).cloned());
@@ -441,8 +465,12 @@ impl WindowState {
                 if event.state != ElementState::Pressed {
                     return;
                 }
-                let Some(key) = translate_key(&event.logical_key) else { return };
-                let Some(index) = self.focused.get() else { return };
+                let Some(key) = translate_key(&event.logical_key) else {
+                    return;
+                };
+                let Some(index) = self.focused.get() else {
+                    return;
+                };
 
                 let handler = self
                     .frame
@@ -455,17 +483,30 @@ impl WindowState {
                     // possibly toggling off right as the text changes.
                     self.caret_visible.set(true);
                     self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
-                    handler(KeyInput { key, modifiers: Modifiers { ctrl: self.modifiers.control_key(), shift: self.modifiers.shift_key() } });
+                    handler(KeyInput {
+                        key,
+                        modifiers: Modifiers {
+                            ctrl: self.modifiers.control_key(),
+                            shift: self.modifiers.shift_key(),
+                        },
+                    });
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => {
+                if self.dirty.get() {
+                    (self.render)();
+                }
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
-                self.presenter.present(pixmap.data(), pixmap.width(), pixmap.height());
+                self.presenter
+                    .present(pixmap.data(), pixmap.width(), pixmap.height());
                 if !self.first_present_logged {
                     self.first_present_logged = true;
-                    log::debug!("creamui-render: first present done: {:?}", self.t_run.elapsed());
+                    log::debug!(
+                        "creamui-render: first present done: {:?}",
+                        self.t_run.elapsed()
+                    );
                 }
             }
             _ => {}
@@ -496,7 +537,10 @@ impl ApplicationHandler for AppHandler {
             let t0 = Instant::now();
             let attrs = WindowAttributes::default()
                 .with_title(spec.options.title.clone())
-                .with_inner_size(winit::dpi::LogicalSize::new(spec.options.width, spec.options.height))
+                .with_inner_size(winit::dpi::LogicalSize::new(
+                    spec.options.width,
+                    spec.options.height,
+                ))
                 .with_resizable(spec.options.resizable)
                 .with_decorations(spec.options.decorations)
                 .with_transparent(spec.options.transparent);
@@ -514,7 +558,10 @@ impl ApplicationHandler for AppHandler {
             // shown underneath gets replaced by the real first frame a
             // moment later.
             window.set_visible(true);
-            log::debug!("creamui-render: window created and shown: {:?}", t0.elapsed());
+            log::debug!(
+                "creamui-render: window created and shown: {:?}",
+                t0.elapsed()
+            );
             log::debug!(
                 "creamui-render: window created ({}x{} logical, scale factor {})",
                 spec.options.width,
@@ -542,7 +589,11 @@ impl ApplicationHandler for AppHandler {
                 }
                 RenderBackend::Cpu => Presenter::Cpu(CpuState::new(window.clone())),
             };
-            log::debug!("creamui-render: {:?} presenter ready: {:?}", spec.options.backend, t0.elapsed());
+            log::debug!(
+                "creamui-render: {:?} presenter ready: {:?}",
+                spec.options.backend,
+                t0.elapsed()
+            );
 
             // Present the already-painted first frame (built by the initial
             // `create_effect` run in `run_windows`, before this window
@@ -574,6 +625,8 @@ impl ApplicationHandler for AppHandler {
                     current_cursor: CursorIcon::Default,
                     dragging: None,
                     repaint: spec.repaint,
+                    render: spec.render,
+                    dirty: spec.dirty,
                     _effect: spec._effect,
                     t_run: t0,
                     first_present_logged: false,
@@ -582,7 +635,12 @@ impl ApplicationHandler for AppHandler {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
         if matches!(event, WindowEvent::CloseRequested) {
             log::debug!("creamui-render: close requested for window {window_id:?}");
             self.windows.remove(&window_id);
@@ -637,11 +695,16 @@ pub fn run(
     on_window_ready: impl Fn(WindowHandle) + 'static,
     build_ui: impl Fn(Size) -> BoxedWidget + 'static,
 ) {
-    AppBuilder::new().window(options, clear_color, on_window_ready, build_ui).run();
+    AppBuilder::new()
+        .window(options, clear_color, on_window_ready, build_ui)
+        .run();
 }
 
 fn run_windows(specs: Vec<PendingWindow>) {
-    assert!(!specs.is_empty(), "creamui-render: AppBuilder::run() called with no windows queued");
+    assert!(
+        !specs.is_empty(),
+        "creamui-render: AppBuilder::run() called with no windows queued"
+    );
 
     init_logging();
     let t_run = Instant::now();
@@ -655,7 +718,9 @@ fn run_windows(specs: Vec<PendingWindow>) {
     for spec in &mut specs {
         spec.options.backend = RenderBackend::resolve(spec.options.backend);
     }
-    let any_gpu = specs.iter().any(|s| matches!(s.options.backend, RenderBackend::Gpu));
+    let any_gpu = specs
+        .iter()
+        .any(|s| matches!(s.options.backend, RenderBackend::Gpu));
 
     // `wgpu::Instance::new` doesn't depend on any window and costs
     // ~100-200ms on Windows (Vulkan/DX12 loader + ICD enumeration) — kick it
@@ -670,16 +735,23 @@ fn run_windows(specs: Vec<PendingWindow>) {
     let pending: Vec<WindowSpec> = specs
         .into_iter()
         .enumerate()
-        .map(|(index, spec)| build_window_spec(index, spec, dump_frame_path.as_deref(), multiple_windows))
+        .map(|(index, spec)| {
+            build_window_spec(index, spec, dump_frame_path.as_deref(), multiple_windows)
+        })
         .collect();
 
-    log::debug!("creamui-render: before EventLoop::new: {:?}", t_run.elapsed());
+    log::debug!(
+        "creamui-render: before EventLoop::new: {:?}",
+        t_run.elapsed()
+    );
     let event_loop = EventLoop::new().expect("failed to create event loop");
     log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let gpu_instance = gpu_instance_handle.map(|handle| {
-        let instance = handle.join().expect("gpu instance creation thread panicked");
+        let instance = handle
+            .join()
+            .expect("gpu instance creation thread panicked");
         log::debug!("creamui-render: gpu instance ready: {:?}", t_run.elapsed());
         Rc::new(instance)
     });
@@ -689,7 +761,9 @@ fn run_windows(specs: Vec<PendingWindow>) {
         windows: HashMap::new(),
         gpu_instance,
     };
-    event_loop.run_app(&mut handler).expect("event loop exited with an error");
+    event_loop
+        .run_app(&mut handler)
+        .expect("event loop exited with an error");
 }
 
 /// Builds one window's pre-creation state (signals, frame buffer, reactive
@@ -701,7 +775,12 @@ fn build_window_spec(
     dump_frame_path: Option<&str>,
     multiple_windows: bool,
 ) -> WindowSpec {
-    let PendingWindow { options, clear_color, on_window_ready, build_ui } = spec;
+    let PendingWindow {
+        options,
+        clear_color,
+        on_window_ready,
+        build_ui,
+    } = spec;
 
     let viewport = Signal::new(Size {
         width: options.width as f32,
@@ -729,12 +808,12 @@ fn build_window_spec(
         }
     });
 
-    // Rebuilds the UI, recomputes layout, and repaints. Runs both reactively
-    // (wrapped in `create_effect` below, whenever a `Signal` it reads
-    // changes) and manually (on focus changes and caret blink ticks, which
-    // touch `focused`/`caret_visible` — plain `Cell`s, not `Signal`s, so
-    // they need an explicit nudge instead of the reactive system's).
-    let repaint: Rc<dyn Fn()> = Rc::new({
+    let dirty = Rc::new(Cell::new(false));
+
+    // The expensive half of a frame. It is deliberately separate from
+    // `repaint` below: pointer input may invalidate a UI dozens of times
+    // before the compositor is ready for its next frame.
+    let render: Rc<dyn Fn()> = Rc::new({
         let viewport = viewport.clone();
         let scale_factor = scale_factor.clone();
         let frame = frame.clone();
@@ -742,7 +821,9 @@ fn build_window_spec(
         let build_ui = build_ui.clone();
         let focused = focused.clone();
         let caret_visible = caret_visible.clone();
+        let dirty = dirty.clone();
         move || {
+            dirty.set(false);
             // Widgets are laid out in logical pixels; the painter (and the
             // presenter it feeds) is sized in physical pixels so HiDPI
             // displays stay crisp — see `SkiaPainter`'s doc comment.
@@ -751,13 +832,21 @@ fn build_window_spec(
             let root = build_ui(logical_size);
 
             let mut frame = frame.borrow_mut();
-            let FrameState { painter, renderer, .. } = &mut *frame;
+            let FrameState {
+                painter, renderer, ..
+            } = &mut *frame;
             let physical_width = (logical_size.width as f64 * scale).round() as u32;
             let physical_height = (logical_size.height as f64 * scale).round() as u32;
             painter.set_scale(scale as f32);
             painter.resize(physical_width, physical_height);
             painter.clear(clear_color);
-            let scene = renderer.render_focused(root, logical_size, painter, focused.get(), caret_visible.get());
+            let scene = renderer.render_focused(
+                root,
+                logical_size,
+                painter,
+                focused.get(),
+                caret_visible.get(),
+            );
             frame.scene = Some(scene);
 
             // Debug aid: dump each painted frame to a PNG on disk, e.g. for
@@ -775,6 +864,25 @@ fn build_window_spec(
         }
     });
 
+    let repaint: Rc<dyn Fn()> = Rc::new({
+        let render = render.clone();
+        let window = shared_window.clone();
+        let dirty = dirty.clone();
+        move || {
+            // The first reactive run happens before winit has created the
+            // window, so render immediately to provide its initial frame.
+            // Afterwards merely mark dirty and let RedrawRequested coalesce
+            // all input updates into one build/layout/paint pass.
+            if let Some(window) = window.borrow().as_ref() {
+                if !dirty.replace(true) {
+                    window.request_redraw();
+                }
+            } else {
+                render();
+            }
+        }
+    });
+
     let effect_repaint = repaint.clone();
     let effect = create_effect(move || effect_repaint());
 
@@ -782,6 +890,8 @@ fn build_window_spec(
         options,
         on_window_ready,
         repaint,
+        render,
+        dirty,
         _effect: effect,
         viewport,
         scale_factor,

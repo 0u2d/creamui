@@ -8,6 +8,7 @@ use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
 use creamui_theme::Color;
+use std::cell::Cell;
 use std::rc::Rc;
 
 /// A controlled text selection represented as byte offsets into a UTF-8
@@ -274,6 +275,11 @@ pub struct RawTextArea {
     pub on_cursor_change: Rc<dyn Fn(usize)>,
     pub on_selection_change: Rc<dyn Fn(TextSelection)>,
     pub on_ctrl_o: Rc<dyn Fn()>,
+    // Pointer interaction can outlive a reactive frame when renders are
+    // coalesced. This tiny ephemeral cell keeps drag selection anchored
+    // without requiring every mouse move to rebuild the widget tree.
+    drag_anchor: Rc<Cell<usize>>,
+    drag_focus: Rc<Cell<usize>>,
 }
 
 impl RawTextArea {
@@ -310,6 +316,8 @@ impl RawTextArea {
             on_cursor_change: Rc::new(|_| {}),
             on_selection_change: Rc::new(|_| {}),
             on_ctrl_o: Rc::new(|| {}),
+            drag_anchor: Rc::new(Cell::new(cursor)),
+            drag_focus: Rc::new(Cell::new(cursor)),
         }
     }
 
@@ -317,6 +325,8 @@ impl RawTextArea {
     /// keyboard navigation or pointer placement.
     pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
         self.cursor = cursor.min(self.value.len());
+        self.drag_anchor.set(self.cursor);
+        self.drag_focus.set(self.cursor);
         self.on_cursor_change = Rc::new(on_change);
         self
     }
@@ -333,6 +343,8 @@ impl RawTextArea {
             anchor: selection.anchor.min(self.value.len()),
             focus: selection.focus.min(self.value.len()),
         };
+        self.drag_anchor.set(self.selection.anchor);
+        self.drag_focus.set(self.selection.focus);
         self.on_selection_change = Rc::new(on_change);
         self
     }
@@ -655,8 +667,12 @@ impl Widget for RawTextArea {
         let font_size = self.font_size;
         let on_cursor_change = self.on_cursor_change.clone();
         let on_selection_change = self.on_selection_change.clone();
+        let drag_anchor = self.drag_anchor.clone();
+        let drag_focus = self.drag_focus.clone();
         Some(Rc::new(move |point, _| {
             let cursor = cursor_at_point(&value, font_size, point);
+            drag_anchor.set(cursor);
+            drag_focus.set(cursor);
             creamui_reactive::batch(|| {
                 on_cursor_change(cursor);
                 on_selection_change(TextSelection {
@@ -671,15 +687,17 @@ impl Widget for RawTextArea {
         let value = self.value.clone();
         let font_size = self.font_size;
         let on_cursor_change = self.on_cursor_change.clone();
-        let selection = self.selection;
         let on_selection_change = self.on_selection_change.clone();
+        let drag_anchor = self.drag_anchor.clone();
+        let drag_focus = self.drag_focus.clone();
         Some(Rc::new(move |point, _| {
             let cursor = cursor_at_point(&value, font_size, point);
-            if cursor != selection.focus {
+            if cursor != drag_focus.get() {
+                drag_focus.set(cursor);
                 creamui_reactive::batch(|| {
                     on_cursor_change(cursor);
                     on_selection_change(TextSelection {
-                        anchor: selection.anchor,
+                        anchor: drag_anchor.get(),
                         focus: cursor,
                     });
                 });

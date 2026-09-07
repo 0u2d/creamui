@@ -374,7 +374,8 @@ fn text_area_drag_and_shift_arrows_update_controlled_selection() {
     );
     assert!(
         selection.get().focus > selection.get().anchor,
-        "drag should extend selection"
+        "drag should extend selection: {:?}",
+        selection.get()
     );
 
     let scene = render_frame(
