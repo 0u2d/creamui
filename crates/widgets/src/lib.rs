@@ -18,7 +18,7 @@ pub use raw::{
     RawSpinner, RawSwitch, RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
 };
 pub use themed::{
-    Button, ButtonSize, ButtonState, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
+    Button, ButtonSize, ButtonState, ButtonVariant, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
     SidebarItem, SidebarSeparator, Slider, Spinner, Switch, Tab, TabColors, Tabs, Text, TextArea, TextInput,
     TextSize, View,
 };

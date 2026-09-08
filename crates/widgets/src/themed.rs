@@ -45,29 +45,46 @@ impl ButtonSize {
     fn padding(self) -> f32 { match self { Self::Xs => 6., Self::Sm => 9., Self::Md => 12., Self::Lg => 16., Self::Xl => 20. } }
     fn font_size(self) -> f32 { match self { Self::Xs => 11., Self::Sm => 12., Self::Md => 14., Self::Lg => 16., Self::Xl => 18. } }
     fn border_width(self) -> f32 { match self { Self::Xs | Self::Sm => 1., Self::Md => 1.25, Self::Lg => 1.5, Self::Xl => 2. } }
+    fn height(self) -> f32 { match self { Self::Xs => 24., Self::Sm => 28., Self::Md => 34., Self::Lg => 40., Self::Xl => 48. } }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ButtonState { Normal, Loading, Success }
+/// Visual hierarchy for native application actions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonVariant { Primary, Secondary, Tertiary, Destructive, Success }
 
 impl Button {
-    /// Sized button with built-in loading and success presentations.
-    pub fn state(theme: &Theme, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
-        let label = match state { ButtonState::Normal | ButtonState::Loading => label.into(), ButtonState::Success => format!("✓ {}", label.into()) };
-        let style = centered_box_style(size.padding());
-        let text = RawText::new(label, theme.selection_text, size.font_size());
+    /// A complete native-control button: variant, size and state are all
+    /// semantic, so apps don't have to hand-pick raw rectangles.
+    pub fn styled(theme: &Theme, variant: ButtonVariant, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
+        let (background, border, foreground) = match variant {
+            ButtonVariant::Primary => (theme.accent, theme.accent_hover, theme.selection_text),
+            ButtonVariant::Secondary => (theme.surface_elevated, theme.border_strong, theme.text_primary),
+            ButtonVariant::Tertiary => (theme.surface_hover, theme.border, theme.text_primary),
+            ButtonVariant::Destructive => (theme.danger, theme.danger, theme.selection_text),
+            ButtonVariant::Success => (theme.success, theme.success, theme.selection_text),
+        };
+        let label = match state { ButtonState::Success => format!("✓ {}", label.into()), _ => label.into() };
+        let mut style = centered_box_style(size.padding());
+        style.size.height = creamui_core::layout::Dimension::Length(size.height());
+        let text = RawText::new(label, foreground, size.font_size());
         let child: BoxedWidget = if state == ButtonState::Loading {
             let content = Style { display: creamui_core::layout::Display::Flex, flex_direction: creamui_core::layout::FlexDirection::Row, align_items: Some(AlignItems::Center), gap: creamui_core::layout::Size { width: LengthPercentage::Length(6.0), height: LengthPercentage::Length(6.0) }, ..Default::default() };
-            Box::new(RawView::new(content).child(Box::new(RawSpinner::new(theme.selection_text).size(size.font_size()))).child(Box::new(text)))
+            Box::new(RawView::new(content).child(Box::new(RawSpinner::new(foreground).size(size.font_size()))).child(Box::new(text)))
         } else { Box::new(text) };
-        let mut button = Self { inner: RawButton::new(style, on_click).background(theme.accent).border(theme.accent_hover, size.border_width()).corner_radius(theme.button_radius).child(child) };
+        let mut button = Self { inner: RawButton::new(style, on_click).background(background).border(border, size.border_width()).corner_radius(theme.button_radius).child(child) };
         if state == ButtonState::Loading { button = button.disabled(true); }
         button
     }
 
+    /// Sized primary button with built-in loading and success presentations.
+    pub fn state(theme: &Theme, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
+        Self::styled(theme, ButtonVariant::Primary, size, label, state, on_click)
+    }
+
     /// A neutral, still-clickable button for secondary actions.
     pub fn secondary(theme: &Theme, size: ButtonSize, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
-        let text = RawText::new(label, theme.text_primary, size.font_size());
-        Self { inner: RawButton::new(centered_box_style(size.padding()), on_click).background(theme.surface_hover).border(theme.border_strong, size.border_width()).corner_radius(theme.button_radius).child(Box::new(text)) }
+        Self::styled(theme, ButtonVariant::Secondary, size, label, ButtonState::Normal, on_click)
     }
     pub fn new(theme: &Theme, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
         Self::with_style(
@@ -88,7 +105,7 @@ impl Button {
         label: impl Into<String>,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        let text = RawText::new(label, theme.text_primary, 16.0);
+        let text = RawText::new(label, theme.selection_text, 16.0);
         let inner = RawButton::new(style, on_click)
             .background(theme.accent)
             .corner_radius(theme.button_radius)
