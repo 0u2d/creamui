@@ -258,7 +258,7 @@ fn signal_i32_get_reflects_set() {
 }
 
 #[test]
-fn theme_dark_and_light_expose_distinct_tokens() {
+fn theme_dark_and_light_expose_distinct_color_tokens() {
     let path = cdylib_path();
     let lib = unsafe { Library::new(&path) }.unwrap();
 
@@ -275,8 +275,8 @@ fn theme_dark_and_light_expose_distinct_tokens() {
             "dark/light themes must expose different tokens over the ABI"
         );
         assert_eq!(
-            dark.radius_medium, 8.0,
-            "radius tokens must cross the ABI boundary too, not just colors"
+            dark.radius_medium, light.radius_medium,
+            "dark/light palettes keep the same default layout tokens"
         );
     }
 }

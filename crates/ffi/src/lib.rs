@@ -270,7 +270,7 @@ fn theme_from_c(t: CTheme) -> Theme {
         warning: color_from_c(t.warning),
         success: color_from_c(t.success),
     };
-    Theme::cream().with_colors(colors)
+    Theme::default().with_colors(colors)
 }
 
 /// Returns the bundled default dark theme's tokens.

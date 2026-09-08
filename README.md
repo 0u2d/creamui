@@ -38,7 +38,6 @@ done and what's next.
 | `creamui-reactive` | `Signal<T>` / `create_effect` reactive primitives |
 | `creamui-core` | `Widget` trait, layout (via `taffy`), `Painter` trait, scene/hit-testing |
 | `creamui-theme` | Colour schemes (`ColorScheme`) and colour-agnostic style metadata (`Theme`) |
-| `creamui-themes` | Bundled visual presets: rounded `Cream` (default) and indicator-based `Square` |
 | `creamui-widgets` | Headless (`raw`) and themed (`themed`) widgets, layout helpers |
 | `creamui-image` | Decoded raster-image widget with opt-in PNG, JPEG, and WebP codecs |
 | `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu`/`softbuffer` presentation |

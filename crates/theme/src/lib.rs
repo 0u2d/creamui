@@ -186,13 +186,11 @@ pub struct Theme {
     pub menu_item_radius: f32,
 }
 impl Theme {
-    /// The soft, rounded Cream style. Built-in presets in `creamui-themes`
-    /// expose this as `Cream`; this definition keeps the core crate cycle-free.
-    pub const fn cream() -> Self {
+    const fn base() -> Self {
         Self {
             typography: Typography::DEFAULT,
             colors: ColorScheme::dark(),
-            name: "Cream",
+            name: "Default",
             radius_small: 8.,
             radius_medium: 12.,
             radius_large: 20.,
@@ -222,50 +220,15 @@ impl Theme {
             menu_item_radius: 7.,
         }
     }
-    /// The original restrained, square-ish indicator treatment.
-    pub const fn square() -> Self {
-        Self {
-            typography: Typography::DEFAULT,
-            colors: ColorScheme::dark(),
-            name: "Square",
-            radius_small: 4.,
-            radius_medium: 8.,
-            radius_large: 16.,
-            spacing_small: 4.,
-            spacing_medium: 8.,
-            spacing_large: 16.,
-            button_radius: 8.,
-            checkbox_radius: 4.,
-            input_radius: 4.,
-            textarea_radius: 8.,
-            input_border_width: 1.,
-            card_radius: 8.,
-            scroll_radius: 8.,
-            tabs_radius: 0.,
-            tab_radius: 0.,
-            tab_selection: SelectionStyle::Indicator,
-            sidebar_radius: 0.,
-            sidebar_item_radius: 0.,
-            sidebar_selection: SelectionStyle::Indicator,
-            indicator_thickness: 3.,
-            tab_gap: 16.,
-            sidebar_gap: 2.,
-            sidebar_icon_size: 14.,
-            sidebar_icon_radius: 2.,
-            sidebar_item_gap: 8.,
-            menu_radius: 4.,
-            menu_item_radius: 3.,
-        }
-    }
     pub const fn with_colors(mut self, colors: ColorScheme) -> Self {
         self.colors = colors;
         self
     }
     pub const fn dark() -> Self {
-        Self::cream().with_colors(ColorScheme::dark())
+        Self::base().with_colors(ColorScheme::dark())
     }
     pub const fn light() -> Self {
-        Self::cream().with_colors(ColorScheme::light())
+        Self::base().with_colors(ColorScheme::light())
     }
 }
 impl std::ops::Deref for Theme {
@@ -276,7 +239,7 @@ impl std::ops::Deref for Theme {
 }
 impl Default for Theme {
     fn default() -> Self {
-        Self::cream()
+        Self::dark()
     }
 }
 
@@ -333,20 +296,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_style_is_rounded_cream() {
+    fn default_style_is_rounded() {
         let theme = Theme::default();
-        assert_eq!(theme.name, "Cream");
+        assert_eq!(theme.name, "Default");
         assert_eq!(theme.tab_selection, SelectionStyle::Filled);
         assert_eq!(theme.sidebar_selection, SelectionStyle::Filled);
-        assert!(theme.input_radius > Theme::square().input_radius);
+        assert!(theme.input_radius > 0.0);
     }
 
     #[test]
     fn palette_can_change_without_changing_style() {
-        let cream = Theme::cream();
-        let light = cream.with_colors(ColorScheme::light());
-        assert_eq!(cream.name, light.name);
-        assert_eq!(cream.tab_radius, light.tab_radius);
-        assert_ne!(cream.colors, light.colors);
+        let dark = Theme::default();
+        let light = dark.with_colors(ColorScheme::light());
+        assert_eq!(dark.name, light.name);
+        assert_eq!(dark.tab_radius, light.tab_radius);
+        assert_ne!(dark.colors, light.colors);
     }
 }

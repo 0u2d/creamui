@@ -4,7 +4,6 @@ members = [
     "crates/reactive",
     "crates/core",
     "crates/theme",
-    "crates/themes",
     "crates/widgets",
     "crates/image",
     "crates/render",
@@ -34,7 +33,6 @@ repository = "https://github.com/creamui-rs/creamui"
 creamui-reactive = { path = "crates/reactive" }
 creamui-core = { path = "crates/core" }
 creamui-theme = { path = "crates/theme" }
-creamui-themes = { path = "crates/themes" }
 creamui-widgets = { path = "crates/widgets" }
 creamui-render = { path = "crates/render" }
 creamui-jsx = { path = "crates/jsx" }
