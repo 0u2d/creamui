@@ -86,18 +86,29 @@ fn label_style() -> Style {
 
 /// The showcase category rail.
 #[component]
-fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) -> BoxedWidget {
-    let mut nav = RawView::new(padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Length(212.),
-                height: Dimension::Percent(1.),
-            },
-            flex_shrink: 0.,
-            ..column(5.)
+fn Nav(
+    theme: Theme,
+    active: Signal<usize>,
+    content_scroll: ScrollController,
+    nav_scroll: ScrollController,
+) -> BoxedWidget {
+    // Wider than before, and padded almost only on the left: the card gap
+    // to its right already separates it from the content panel, so giving
+    // it a matching right pad on top of that would just waste width.
+    let mut nav = RawView::new(Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(232.),
+            height: Dimension::Percent(1.),
         },
-        16.,
-    ));
+        flex_shrink: 0.,
+        padding: creamui_core::layout::Rect {
+            left: creamui_core::layout::LengthPercentage::Length(16.),
+            right: creamui_core::layout::LengthPercentage::Length(6.),
+            top: creamui_core::layout::LengthPercentage::Length(16.),
+            bottom: creamui_core::layout::LengthPercentage::Length(16.),
+        },
+        ..column(5.)
+    });
     nav = nav.child(Box::new(
         RawView::new(padding(row(8.), 8.))
             .child(Box::new(
@@ -123,9 +134,10 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
         Symbol::Folder,
         Symbol::Grid,
     ];
+    let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
         if i == 0 || i == 1 || i == 5 || i == 7 || i == 10 {
-            nav = nav.child(Box::new(
+            items.push(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
                         if i == 0 {
@@ -148,7 +160,7 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
         }
         let select = active.clone();
         let reset_scroll = content_scroll.clone();
-        nav = nav.child(Box::new(NavigationItem::new(
+        items.push(Box::new(NavigationItem::new(
             &theme,
             symbols[i],
             *label,
@@ -159,11 +171,26 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
             },
         )));
     }
+    // Grows to fill whatever space is left between the logo and the footer
+    // below, same as the plain spacer `RawView` this replaces — the only
+    // difference is that once the item list is taller than that space, it
+    // scrolls (draggable thumb included) instead of pushing the footer off
+    // the bottom of the window.
+    let items_style = Style {
+        flex_grow: 1.,
+        size: creamui_core::layout::Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
+        ..Default::default()
+    };
     nav = nav
-        .child(Box::new(RawView::new(Style {
-            flex_grow: 1.,
-            ..Default::default()
-        })))
+        .child(Box::new(
+            RawScrollView::controlled(items_style, nav_scroll)
+                .content_gap(5.)
+                .scrollbar_gap(6.)
+                .with_children(items),
+        ))
         .child(Box::new(
             RawView::new(padding(column(5.), 8.))
                 .child(Box::new(
@@ -1049,6 +1076,7 @@ fn main() {
     let tabs_indicator = TabController::new(2);
     let tabs_content = TabController::default();
     let content_scroll = ScrollController::default();
+    let nav_scroll = ScrollController::default();
     let themed_scroll_demo = ScrollController::default();
     let custom_scroll_demo = ScrollController::default();
     let list_scroll_demo = ScrollController::default();
@@ -1206,7 +1234,7 @@ fn main() {
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Nav theme={theme} active={active_section.clone()} content_scroll={content_scroll.clone()} />
+                    <Nav theme={theme} active={active_section.clone()} content_scroll={content_scroll.clone()} nav_scroll={nav_scroll.clone()} />
                     <RawView style={content_outer_style} background={theme.surface}>
                         {Box::new(content) as BoxedWidget}
                     </RawView>

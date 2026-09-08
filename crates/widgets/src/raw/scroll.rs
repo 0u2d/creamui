@@ -34,6 +34,8 @@ pub struct RawScrollView {
     pub scrollbar_hover_color: Option<Color>,
     pub scrollbar_pressed_color: Option<Color>,
     pub scrollbar_track_color: Option<Color>,
+    pub content_gap: f32,
+    pub scrollbar_gap: f32,
 }
 
 impl RawScrollView {
@@ -48,12 +50,17 @@ impl RawScrollView {
             on_scroll: Rc::new(on_scroll),
             on_scroll_bounded: None,
             scrollbar: true,
-            scrollbar_width: 10.0,
+            scrollbar_width: 6.0,
             scrollbar_margin: 2.0,
-            scrollbar_color: Color::rgba(128, 128, 128, 140),
-            scrollbar_hover_color: None,
-            scrollbar_pressed_color: None,
+            // Faint at rest so it reads as a hint rather than competing
+            // with full-width row content; brightens on hover/press so it's
+            // still easy to find and grab.
+            scrollbar_color: Color::rgba(128, 128, 128, 80),
+            scrollbar_hover_color: Some(Color::rgba(128, 128, 128, 170)),
+            scrollbar_pressed_color: Some(Color::rgba(128, 128, 128, 220)),
             scrollbar_track_color: None,
+            content_gap: 0.0,
+            scrollbar_gap: 0.0,
         }
     }
 
@@ -137,6 +144,22 @@ impl RawScrollView {
         self.scrollbar_track_color = Some(color);
         self
     }
+
+    /// Fixed pixel gap between consecutive children, applied the same way
+    /// [`crate::layout::column`]'s `gap` is. Default: `0.0`.
+    pub fn content_gap(mut self, gap: f32) -> Self {
+        self.content_gap = gap.max(0.0);
+        self
+    }
+
+    /// Extra space between content's reserved right edge and the scrollbar
+    /// track itself (on top of [`RawScrollView::scrollbar_margin`], which
+    /// only separates the track from the viewport's outer edge). Default:
+    /// `0.0` — content and track sit flush.
+    pub fn scrollbar_gap(mut self, gap: f32) -> Self {
+        self.scrollbar_gap = gap.max(0.0);
+        self
+    }
 }
 
 impl Widget for RawScrollView {
@@ -148,9 +171,28 @@ impl Widget for RawScrollView {
         // whatever the caller asked for — the combination that makes "as
         // wide as the viewport, as tall as the caller wants" happen. Row
         // direction would stretch the wrong axis instead.
+        // A caller that gives this a `flex_grow` (rather than an explicit
+        // size) — e.g. a sidebar's item list filling whatever room is left
+        // between a header and a footer — hits the same CSS "min-height:
+        // auto" trap `ScrollClip` already works around: without an explicit
+        // `min_size`, this would still refuse to shrink below its own
+        // content's height, so `flex_grow` could only ever grow it, never
+        // let it actually shrink to fit and scroll. Left alone (`Auto`)
+        // unless the caller set one explicitly.
+        let min_size = creamui_core::layout::Size {
+            width: match self.style.min_size.width {
+                creamui_core::layout::Dimension::Auto => creamui_core::layout::Dimension::Length(0.0),
+                explicit => explicit,
+            },
+            height: match self.style.min_size.height {
+                creamui_core::layout::Dimension::Auto => creamui_core::layout::Dimension::Length(0.0),
+                explicit => explicit,
+            },
+        };
         Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: creamui_core::layout::FlexDirection::Column,
+            min_size,
             ..self.style.clone()
         }
     }
@@ -162,10 +204,26 @@ impl Widget for RawScrollView {
     }
 
     fn children(&mut self) -> Vec<BoxedWidget> {
+        // Keeps full-width row backgrounds from sitting under the thumb.
+        let scrollbar_gutter = if self.scrollbar && self.controller.is_some() {
+            self.scrollbar_gap + self.scrollbar_width + self.scrollbar_margin
+        } else {
+            0.0
+        };
         let content_style = Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: creamui_core::layout::FlexDirection::Column,
             flex_shrink: 0.0,
+            gap: creamui_core::layout::Size {
+                width: creamui_core::layout::LengthPercentage::Length(self.content_gap),
+                height: creamui_core::layout::LengthPercentage::Length(self.content_gap),
+            },
+            padding: creamui_core::layout::Rect {
+                left: creamui_core::layout::LengthPercentage::Length(0.0),
+                right: creamui_core::layout::LengthPercentage::Length(scrollbar_gutter),
+                top: creamui_core::layout::LengthPercentage::Length(0.0),
+                bottom: creamui_core::layout::LengthPercentage::Length(0.0),
+            },
             ..Default::default()
         };
         let content = RawView::new(content_style).with_children(std::mem::take(&mut self.children));
@@ -318,7 +376,7 @@ impl RawScrollbar {
             hover_color: None,
             pressed_color: None,
             track_color: None,
-            thumb_inset: 2.0,
+            thumb_inset: 1.0,
             thumb_radius: None,
             min_thumb_length: 24.0,
         }

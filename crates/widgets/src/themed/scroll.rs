@@ -30,9 +30,9 @@ impl ScrollView {
         let inner = RawScrollView::controlled(style, controller)
             .background(theme.surface)
             .corner_radius(theme.radius_medium)
-            .scrollbar_color(with_alpha(theme.text_secondary, 110))
+            .scrollbar_color(with_alpha(theme.text_secondary, 80))
             .scrollbar_hover_color(with_alpha(theme.text_secondary, 170))
-            .scrollbar_pressed_color(with_alpha(theme.text_primary, 210));
+            .scrollbar_pressed_color(with_alpha(theme.text_primary, 220));
         ScrollView { inner }
     }
 
