@@ -8,9 +8,12 @@ use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
 use creamui_theme::Color;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
+#[cfg(not(target_arch = "wasm32"))]
+use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     // On X11/Wayland the clipboard owner must remain alive after the write;
     // creating and dropping `arboard::Clipboard` inside a key callback makes
@@ -26,6 +29,7 @@ fn activate_on_key(click: Rc<dyn Fn()>) -> Rc<dyn Fn(KeyInput)> {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_write(text: String) {
     SYSTEM_CLIPBOARD.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -38,6 +42,7 @@ fn clipboard_write(text: String) {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_read() -> Option<String> {
     SYSTEM_CLIPBOARD.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -47,6 +52,18 @@ fn clipboard_read() -> Option<String> {
         slot.as_mut()
             .and_then(|clipboard| clipboard.get_text().ok())
     })
+}
+
+// The browser clipboard API is asynchronous and requires a user gesture.
+// Keep text editing functional on WebAssembly while deliberately making the
+// synchronous Ctrl+C/Ctrl+V hooks no-ops; an embedding can provide a web
+// clipboard bridge later without changing the widget API.
+#[cfg(target_arch = "wasm32")]
+fn clipboard_write(_: String) {}
+
+#[cfg(target_arch = "wasm32")]
+fn clipboard_read() -> Option<String> {
+    None
 }
 
 mod button;

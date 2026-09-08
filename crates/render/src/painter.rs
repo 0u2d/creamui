@@ -11,6 +11,11 @@ use tiny_skia::{
     FilterQuality, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Stroke, Transform,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+type PainterInstant = std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+type PainterInstant = web_time::Instant;
+
 /// Widgets are laid out and painted in logical (DPI-independent) pixels;
 /// `SkiaPainter` scales every coordinate by `scale` (the window's
 /// `scale_factor`) before rasterizing, so the backing `pixmap` — and the
@@ -23,7 +28,7 @@ pub struct SkiaPainter {
     pub pointer: Option<Point>,
     pub press_origin: Option<Point>,
     pub animated: bool,
-    started: std::time::Instant,
+    started: PainterInstant,
     scale: f32,
     /// One [`Mask`] per active [`Painter::push_clip`], each already
     /// intersected with its parent so the top of the stack is always the
@@ -44,7 +49,7 @@ impl SkiaPainter {
             pointer: None,
             press_origin: None,
             animated: false,
-            started: std::time::Instant::now(),
+            started: PainterInstant::now(),
             scale: 1.0,
             clip_stack: Vec::new(),
             mask_pool: Vec::new(),

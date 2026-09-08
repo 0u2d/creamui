@@ -1291,7 +1291,8 @@ Radia Perlman,Engineer,1951";
     })
 }
 
-fn main() {
+/// Starts the native showcase, or the browser canvas when built for WASM.
+pub fn launch() {
     let image_png = ImageData::from_bytes(include_bytes!("../assets/images/iridescent.png"))
         .expect("bundled PNG should decode");
     let image_jpeg = ImageData::from_bytes(include_bytes!("../assets/images/still-life.jpg"))
@@ -1517,4 +1518,9 @@ fn main() {
             })
         },
     );
+}
+
+#[allow(dead_code)] // This source file is also compiled as the showcase library module.
+fn main() {
+    launch();
 }

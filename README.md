@@ -90,6 +90,21 @@ cargo run -p images
 
 The showcase is the fastest way to explore the available controls and theme behavior.
 
+## Web showcase demo
+
+The same showcase can be compiled to WASM and opened in a browser:
+
+```sh
+demo/build.sh          # builds every demo under demo/ to demo/<name>/pkg/
+demo/serve.sh          # serves demo/ statically at http://localhost:8080
+```
+
+Open <http://localhost:8080/showcase/>. Its canvas fills the whole page and
+takes mouse/keyboard input like a native window. See
+[`demo/showcase`](demo/showcase) for the browser-specific limitations of
+native file dialogs and clipboard access, and `demo/build.sh --dev` for a
+faster, unoptimized build while iterating.
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md)

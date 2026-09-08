@@ -5,10 +5,14 @@
 //! MVP's rendering code simple while still presenting through the GPU.
 
 mod backend;
+#[cfg(not(target_arch = "wasm32"))]
 mod cpu;
 mod font;
+#[cfg(not(target_arch = "wasm32"))]
 mod gpu;
 mod painter;
+#[cfg(target_arch = "wasm32")]
+mod web;
 mod window;
 
 pub use backend::RenderBackend;

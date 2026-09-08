@@ -23,6 +23,7 @@ members = [
     "examples/pickers",
     "examples/images",
     "examples/facade",
+    "demo/showcase",
 ]
 
 [workspace.package]

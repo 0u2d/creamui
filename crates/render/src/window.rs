@@ -17,9 +17,13 @@
 //! and presents it.
 
 use crate::backend::RenderBackend;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::cpu::CpuState;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
+#[cfg(target_arch = "wasm32")]
+use crate::web::WebState;
 use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size,
 };
@@ -29,7 +33,11 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -135,15 +143,23 @@ struct FrameState {
 /// in `resumed` per [`WindowOptions::backend`] (as resolved by
 /// [`RenderBackend::resolve`]).
 enum Presenter {
+    #[cfg(not(target_arch = "wasm32"))]
     Gpu(GpuState),
+    #[cfg(not(target_arch = "wasm32"))]
     Cpu(CpuState),
+    #[cfg(target_arch = "wasm32")]
+    Web(WebState),
 }
 
 impl Presenter {
     fn present(&mut self, rgba: &[u8], width: u32, height: u32) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Presenter::Gpu(gpu) => gpu.present(rgba, width, height),
+            #[cfg(not(target_arch = "wasm32"))]
             Presenter::Cpu(cpu) => cpu.present(rgba, width, height),
+            #[cfg(target_arch = "wasm32")]
+            Presenter::Web(web) => web.present(rgba, width, height),
         }
     }
 }
@@ -642,6 +658,7 @@ struct AppHandler {
     /// its ~100-200ms Windows loader/ICD cost and driver memory footprint
     /// are the whole reason multi-window-in-one-process is worth doing.
     /// `None` if no queued window resolved to the GPU backend.
+    #[cfg(not(target_arch = "wasm32"))]
     gpu_instance: Option<Rc<wgpu::Instance>>,
 }
 
@@ -658,6 +675,11 @@ impl ApplicationHandler for AppHandler {
                 .with_resizable(spec.options.resizable)
                 .with_decorations(spec.options.decorations)
                 .with_transparent(spec.options.transparent);
+            #[cfg(target_arch = "wasm32")]
+            let attrs = {
+                use winit::platform::web::WindowAttributesExtWebSys;
+                attrs.with_append(true)
+            };
 
             let window = Arc::new(
                 event_loop
@@ -694,6 +716,7 @@ impl ApplicationHandler for AppHandler {
             }
             (spec.repaint)();
 
+            #[cfg(not(target_arch = "wasm32"))]
             let mut presenter = match spec.options.backend {
                 RenderBackend::Gpu => {
                     let instance = self
@@ -704,6 +727,8 @@ impl ApplicationHandler for AppHandler {
                 }
                 RenderBackend::Cpu => Presenter::Cpu(CpuState::new(window.clone())),
             };
+            #[cfg(target_arch = "wasm32")]
+            let mut presenter = Presenter::Web(WebState::new(window.clone()));
             log::debug!(
                 "creamui-render: {:?} presenter ready: {:?}",
                 spec.options.backend,
@@ -857,9 +882,17 @@ fn run_windows(specs: Vec<PendingWindow>) {
     // every later decision (whether to pay GPU init cost at all, which
     // presenter `resumed` builds for that window) uses the same value.
     let mut specs = specs;
+    #[cfg(not(target_arch = "wasm32"))]
     for spec in &mut specs {
         spec.options.backend = RenderBackend::resolve(spec.options.backend);
     }
+    #[cfg(target_arch = "wasm32")]
+    for spec in &mut specs {
+        // The web demo presents directly to its canvas; it has no desktop
+        // GPU/softbuffer choice, so keep the public option harmless here.
+        spec.options.backend = RenderBackend::Gpu;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     let any_gpu = specs
         .iter()
         .any(|s| matches!(s.options.backend, RenderBackend::Gpu));
@@ -869,6 +902,7 @@ fn run_windows(specs: Vec<PendingWindow>) {
     // off now so it overlaps with the initial UI builds below instead of
     // sitting on `resumed`'s critical path. One instance is shared by every
     // GPU-backend window; skipped entirely if none of them need it.
+    #[cfg(not(target_arch = "wasm32"))]
     let gpu_instance_handle = any_gpu.then(|| std::thread::spawn(GpuState::create_instance));
 
     let dump_frame_path = std::env::var("CUI_DUMP_FRAME").ok();
@@ -890,6 +924,7 @@ fn run_windows(specs: Vec<PendingWindow>) {
     log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
+    #[cfg(not(target_arch = "wasm32"))]
     let gpu_instance = gpu_instance_handle.map(|handle| {
         let instance = handle
             .join()
@@ -898,14 +933,23 @@ fn run_windows(specs: Vec<PendingWindow>) {
         Rc::new(instance)
     });
 
-    let mut handler = AppHandler {
+    let handler = AppHandler {
         pending,
         windows: HashMap::new(),
+        #[cfg(not(target_arch = "wasm32"))]
         gpu_instance,
     };
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut handler = handler;
+    #[cfg(not(target_arch = "wasm32"))]
     event_loop
         .run_app(&mut handler)
         .expect("event loop exited with an error");
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::platform::web::EventLoopExtWebSys;
+        event_loop.spawn_app(handler);
+    }
 }
 
 /// Builds one window's pre-creation state (signals, frame buffer, reactive
