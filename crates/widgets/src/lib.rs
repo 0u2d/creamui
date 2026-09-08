@@ -11,10 +11,10 @@ mod text_metrics;
 pub mod themed;
 
 pub use raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextArea, RawTextInput, RawView,
-    TextSelection,
+    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawTab, RawTabs, RawText,
+    RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
 };
 pub use themed::{
-    Button, Checkbox, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Slider, Text, TextArea,
-    TextInput, View,
+    Button, Checkbox, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar, SidebarItem,
+    Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput, View,
 };

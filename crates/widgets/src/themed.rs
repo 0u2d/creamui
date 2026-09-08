@@ -10,7 +10,8 @@
 //! new constructor function in the same shape.
 
 use crate::raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSlider, RawText, RawTextArea, RawTextInput, RawView,
+    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawTab, RawTabs, RawText,
+    RawTextArea, RawTextInput, RawView, TabIndicatorSide,
 };
 use creamui_core::layout::{
     AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
@@ -625,6 +626,201 @@ impl Widget for View {
 
     fn children(&mut self) -> Vec<BoxedWidget> {
         Widget::children(&mut self.inner)
+    }
+}
+
+/// Shared visual tokens for [`Tabs`]/[`Tab`] and [`Sidebar`]/[`SidebarItem`],
+/// the same pattern as [`MenuColors`]: derive from a theme, override
+/// individual colors if needed.
+#[derive(Clone, Copy)]
+pub struct TabColors {
+    pub background: creamui_theme::Color,
+    pub active_background: creamui_theme::Color,
+    pub indicator: creamui_theme::Color,
+    pub text: creamui_theme::Color,
+    pub muted_text: creamui_theme::Color,
+    pub radius: f32,
+}
+
+impl TabColors {
+    pub fn dark(theme: &Theme) -> Self {
+        Self {
+            background: theme.surface,
+            active_background: theme.surface_hover,
+            indicator: theme.accent,
+            text: theme.text_primary,
+            muted_text: theme.text_secondary,
+            radius: theme.radius_small,
+        }
+    }
+}
+
+/// A themed horizontal tab bar. Like [`MenuBar`], it owns only layout and
+/// paint; applications compose [`Tab`] children and keep the selected index
+/// in their own `Signal`. For a vertical rail, use [`Sidebar`] instead.
+pub struct Tabs {
+    inner: RawTabs,
+}
+
+impl Tabs {
+    pub fn new(colors: TabColors, style: Style) -> Self {
+        Self {
+            inner: RawTabs::new(style).background(colors.background),
+        }
+    }
+
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.inner = self.inner.child(child);
+        self
+    }
+
+    pub fn with_children(mut self, widgets: Vec<BoxedWidget>) -> Self {
+        self.inner = self.inner.with_children(widgets);
+        self
+    }
+}
+
+impl Widget for Tabs {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+}
+
+/// A controlled, themed tab entry for [`Tabs`]: an accent indicator bar along
+/// the bottom edge while `active`, muted text otherwise. `active` is supplied
+/// by the app so a tab bar can be rebuilt reactively with no hidden widget
+/// state — the same pattern as [`MenuItem`].
+pub struct Tab {
+    inner: RawTab,
+}
+
+impl Tab {
+    pub fn new(
+        colors: TabColors,
+        style: Style,
+        label: impl Into<String>,
+        active: bool,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        let text_color = if active { colors.indicator } else { colors.muted_text };
+        let text = RawText::new(label, text_color, 14.0)
+            .align(TextAlign::Center)
+            .layout_style(style.clone());
+        Self {
+            inner: RawTab::new(style, active, on_click)
+                .indicator(TabIndicatorSide::Bottom, colors.indicator, 2.5)
+                .child(Box::new(text)),
+        }
+    }
+}
+
+impl Widget for Tab {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+}
+
+/// A themed vertical nav rail. Same shape as [`Tabs`], but for the "sidebar
+/// switches the visible view" pattern: applications compose [`SidebarItem`]
+/// children and keep the selected index in their own `Signal`.
+pub struct Sidebar {
+    inner: RawSidebar,
+}
+
+impl Sidebar {
+    pub fn new(colors: TabColors, style: Style) -> Self {
+        Self {
+            inner: RawSidebar::new(style).background(colors.background),
+        }
+    }
+
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.inner = self.inner.child(child);
+        self
+    }
+
+    pub fn with_children(mut self, widgets: Vec<BoxedWidget>) -> Self {
+        self.inner = self.inner.with_children(widgets);
+        self
+    }
+}
+
+impl Widget for Sidebar {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+}
+
+/// A controlled, themed entry for [`Sidebar`]: an accent indicator bar along
+/// the left edge while `active`, muted text otherwise — the vertical
+/// counterpart of [`Tab`].
+pub struct SidebarItem {
+    inner: RawTab,
+}
+
+impl SidebarItem {
+    pub fn new(
+        colors: TabColors,
+        style: Style,
+        label: impl Into<String>,
+        active: bool,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        // No background fill: a full-row block popping in and out on every
+        // click reads as the whole row changing size, not just selection.
+        // Only the text color and a thin indicator bar change, the same
+        // restrained treatment as `Tab`'s underline.
+        let text_color = if active { colors.text } else { colors.muted_text };
+        let text = RawText::new(label, text_color, 14.0)
+            .align(TextAlign::Start)
+            .layout_style(style.clone());
+        let mut inner = RawTab::new(style, active, on_click).child(Box::new(text));
+        if active {
+            inner = inner.indicator(TabIndicatorSide::Left, colors.indicator, 3.0);
+        }
+        Self { inner }
+    }
+}
+
+impl Widget for SidebarItem {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
     }
 }
 
