@@ -9,7 +9,7 @@ use creamui_core::{
 };
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
-use creamui_widgets::raw::{RawButton, RawView, TextSelection};
+use creamui_widgets::raw::{RawButton, RawCheckbox, RawSlider, RawSwitch, RawView, TextSelection};
 use creamui_widgets::themed::{
     tab_styles, Button, Checkbox, ScrollView, Slider, TabColors, TabSizing, Tabs, Text, TextArea,
     TextInput,
@@ -160,6 +160,51 @@ fn tabs_preserve_the_callers_layout_style() {
     let style = creamui_widgets::layout::row(13.0);
     let tabs = Tabs::new(TabColors::dark(&theme), style.clone());
     assert_eq!(tabs.style().gap, style.gap);
+}
+
+#[test]
+fn raw_controls_preserve_tokens_and_disabled_state() {
+    let style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(28.0),
+            height: Dimension::Length(28.0),
+        },
+        ..Default::default()
+    };
+    let checkbox = RawCheckbox::new(18.0, false, Color::rgb(1, 2, 3), Color::rgb(4, 5, 6), || {})
+        .layout_style(style.clone())
+        .background(Color::rgb(7, 8, 9))
+        .disabled(true);
+    assert_eq!(checkbox.style().size, style.size);
+    assert!(!checkbox.focusable());
+    assert!(checkbox.on_click().is_none());
+
+    let switch = RawSwitch::new(
+        false,
+        Color::rgb(1, 2, 3),
+        Color::rgb(4, 5, 6),
+        Color::rgb(255, 255, 255),
+        || {},
+    )
+    .layout_style(style.clone())
+    .disabled(true);
+    assert_eq!(switch.style().size, style.size);
+    assert!(switch.on_key().is_none());
+
+    let slider = RawSlider::new(
+        style,
+        0.5,
+        Color::rgb(0, 0, 0),
+        Color::rgb(255, 255, 255),
+        Color::rgb(255, 255, 255),
+        |_| {},
+    )
+    .track(6.0, 3.0)
+    .handle(20.0, 4.0)
+    .disabled(true);
+    assert_eq!(slider.track_height, 6.0);
+    assert_eq!(slider.handle_size, 20.0);
+    assert!(slider.on_drag().is_none());
 }
 
 #[test]

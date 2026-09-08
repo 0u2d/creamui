@@ -79,6 +79,9 @@ visible content from `controller.selected()` during the reactive build.
 `Raw*` widgets expose their layout and paint tokens directly. The themed layer
 is a small theme-derived recipe, not a catalog of prescribed app designs; for
 example, `TabColors` remains public so each app can define its own treatment.
+The implementation follows the same boundary in `src/raw/` and `src/themed/`,
+with modules grouped by component domain while the `raw` and `themed` imports
+remain stable.
 `Tabs::new(colors, style)` preserves its `Style` exactly: set `width`,
 `align_self`, `margin`, `padding`, and `gap` just as you would for any layout
 node. `tab_styles(labels, TabSizing::Content | Equal | Fill, height, padding)`
