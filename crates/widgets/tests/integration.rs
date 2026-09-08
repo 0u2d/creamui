@@ -13,10 +13,10 @@ use creamui_widgets::raw::{
     RawButton, RawCheckbox, RawScrollView, RawSlider, RawSwitch, RawView, TextSelection,
 };
 use creamui_widgets::themed::{
-    tab_styles, Button, Checkbox, ScrollView, Slider, TabColors, TabSizing, Tabs, Text, TextArea,
-    TextInput,
+    tab_styles, Button, Checkbox, Overlay, Popover, ProgressBar, ProgressRing, ScrollView, Select,
+    Slider, TabColors, TabSizing, Tabs, Text, TextArea, TextInput,
 };
-use creamui_widgets::ScrollController;
+use creamui_widgets::{ScrollController, SelectController};
 
 #[derive(Default)]
 struct RecordingPainter {
@@ -163,6 +163,100 @@ fn tabs_preserve_the_callers_layout_style() {
     let style = creamui_widgets::layout::row(13.0);
     let tabs = Tabs::new(TabColors::dark(&theme), style.clone());
     assert_eq!(tabs.style().gap, style.gap);
+}
+
+#[test]
+fn select_is_controlled_and_its_popup_options_are_clickable() {
+    let theme = Theme::dark();
+    let controller = SelectController::default();
+    let build = || {
+        Box::new(Select::controlled(
+            &theme,
+            &["System", "Light", "Dark"],
+            controller.clone(),
+        )) as creamui_core::BoxedWidget
+    };
+    let size = Size {
+        width: 320.0,
+        height: 200.0,
+    };
+    let mut painter = RecordingPainter::default();
+    let closed = render_frame(build(), size, &mut painter);
+    closed.on_key_at(0).unwrap()(KeyInput {
+        key: Key::Down,
+        modifiers: Modifiers::default(),
+    });
+    assert_eq!(
+        controller.selected(),
+        1,
+        "arrow keys select an adjacent option"
+    );
+    controller.select(0);
+    closed.on_key_at(0).unwrap()(KeyInput {
+        key: Key::Enter,
+        modifiers: Modifiers::default(),
+    });
+    assert!(controller.is_open());
+
+    painter.texts.clear();
+    let open = render_frame(build(), size, &mut painter);
+    assert!(painter.texts.iter().any(|text| text == "Dark"));
+    // Popup starts at y=40; its second 34px option occupies roughly y=77..111.
+    open.hit_test(Point { x: 20.0, y: 92.0 }).unwrap()();
+    assert_eq!(
+        controller.selected(),
+        1,
+        "clicking an option must not fall through to content behind it"
+    );
+    assert!(!controller.is_open());
+}
+
+#[test]
+fn overlay_dismisses_outside_but_popover_shields_inside_clicks() {
+    let theme = Theme::dark();
+    let dismisses = Signal::new(0);
+    let count = dismisses.clone();
+    let popover_style = Style {
+        size: creamui_widgets::layout::fixed(100.0, 50.0),
+        ..Default::default()
+    };
+    let root = Overlay::fullscreen(&theme, move || dismisses.update(|n| *n += 1))
+        .child(Box::new(Popover::new(&theme, popover_style)));
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(root),
+        Size {
+            width: 300.0,
+            height: 200.0,
+        },
+        &mut painter,
+    );
+    scene.hit_test(Point { x: 10.0, y: 10.0 }).unwrap()();
+    assert_eq!(count.get(), 1);
+    // The centered popover consumes this click instead of dismissing.
+    scene.hit_test(Point { x: 150.0, y: 100.0 }).unwrap()();
+    assert_eq!(count.get(), 1);
+}
+
+#[test]
+fn progress_indicators_paint_accent_fill() {
+    let theme = Theme::dark();
+    let root = RawView::new(creamui_widgets::layout::row(10.0))
+        .child(Box::new(ProgressBar::new(&theme, 0.5)))
+        .child(Box::new(ProgressRing::new(&theme, 0.5)));
+    let mut painter = RecordingPainter::default();
+    render_frame(
+        Box::new(root),
+        Size {
+            width: 320.0,
+            height: 80.0,
+        },
+        &mut painter,
+    );
+    assert!(painter
+        .filled_rects
+        .iter()
+        .any(|(_, color)| *color == theme.accent));
 }
 
 #[test]

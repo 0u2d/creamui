@@ -26,7 +26,9 @@ pub(crate) struct ClosureArena {
 
 impl ClosureArena {
     pub(crate) fn new() -> Self {
-        ClosureArena { generations: RefCell::new(VecDeque::new()) }
+        ClosureArena {
+            generations: RefCell::new(VecDeque::new()),
+        }
     }
 
     pub(crate) fn begin_frame(&self) {

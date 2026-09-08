@@ -1,0 +1,454 @@
+use super::*;
+use crate::layout::{column, fixed, padding, row};
+use creamui_core::layout::{AlignItems, Dimension, LengthPercentageAuto, Position, Style};
+use creamui_core::Key;
+
+/// A controlled, non-editable combo box. Its popup is an absolute child, so
+/// it floats over following content instead of making the surrounding form
+/// jump. Keep a [`crate::SelectController`] alive in the application.
+pub struct Select {
+    theme: Theme,
+    options: Vec<String>,
+    controller: crate::SelectController,
+    style: Style,
+}
+
+impl Select {
+    pub fn controlled(
+        theme: &Theme,
+        options: &[&str],
+        controller: crate::SelectController,
+    ) -> Self {
+        Self {
+            theme: *theme,
+            options: options.iter().map(|option| (*option).to_owned()).collect(),
+            controller,
+            style: Self::default_style(),
+        }
+    }
+
+    pub fn default_style() -> Style {
+        Style {
+            size: fixed(220.0, 36.0),
+            flex_shrink: 0.0,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    fn selected_label(&self) -> &str {
+        self.options
+            .get(
+                self.controller
+                    .selected()
+                    .min(self.options.len().saturating_sub(1)),
+            )
+            .map(String::as_str)
+            .unwrap_or("Select…")
+    }
+}
+
+impl Widget for Select {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        let hovered = painter.hovered(rect);
+        painter.fill_rect(
+            rect,
+            if hovered {
+                self.theme.surface_hover
+            } else {
+                self.theme.surface_elevated
+            },
+            self.theme.input_radius,
+        );
+        painter.stroke_rect(
+            rect,
+            self.theme.border_strong,
+            self.theme.input_border_width,
+            self.theme.input_radius,
+        );
+        painter.fill_text(
+            Rect {
+                x: rect.x + 11.0,
+                y: rect.y,
+                width: (rect.width - 34.0).max(0.0),
+                height: rect.height,
+            },
+            self.selected_label(),
+            self.theme.text_primary,
+            self.theme.typography.body,
+            TextAlign::Start,
+        );
+        let cx = rect.x + rect.width - 17.0;
+        let cy = rect.y + rect.height / 2.0;
+        let down = self.controller.is_open();
+        let (a, b, c) = if down {
+            (
+                Point {
+                    x: cx - 5.0,
+                    y: cy + 2.0,
+                },
+                Point {
+                    x: cx + 5.0,
+                    y: cy + 2.0,
+                },
+                Point { x: cx, y: cy - 3.0 },
+            )
+        } else {
+            (
+                Point {
+                    x: cx - 5.0,
+                    y: cy - 2.0,
+                },
+                Point {
+                    x: cx + 5.0,
+                    y: cy - 2.0,
+                },
+                Point { x: cx, y: cy + 3.0 },
+            )
+        };
+        painter.stroke_line(a, b, self.theme.text_secondary, 1.5);
+        painter.stroke_line(b, c, self.theme.text_secondary, 1.5);
+        painter.stroke_line(c, a, self.theme.text_secondary, 1.5);
+    }
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        if !self.controller.is_open() || self.options.is_empty() {
+            return Vec::new();
+        }
+        let option_height = 34.0;
+        let popup_style = padding(
+            Style {
+                position: Position::Absolute,
+                inset: creamui_core::layout::Rect {
+                    left: LengthPercentageAuto::Length(0.0),
+                    right: LengthPercentageAuto::Auto,
+                    top: LengthPercentageAuto::Length(40.0),
+                    bottom: LengthPercentageAuto::Auto,
+                },
+                size: creamui_core::layout::Size {
+                    width: match self.style.size.width {
+                        Dimension::Length(width) => Dimension::Length(width),
+                        _ => Dimension::Length(220.0),
+                    },
+                    // Keep the popup's opaque surface and hit region
+                    // deterministic across absolute-layout parents.
+                    height: Dimension::Length(self.options.len() as f32 * option_height + 6.0),
+                },
+                ..column(2.0)
+            },
+            3.0,
+        );
+        let mut popup = Popover::new(&self.theme, popup_style);
+        for (index, label) in self.options.iter().enumerate() {
+            let selected = self.controller.selected() == index;
+            let controller = self.controller.clone();
+            let label = label.clone();
+            let item_style = Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Percent(1.0),
+                    height: Dimension::Length(option_height),
+                },
+                padding: creamui_core::layout::Rect {
+                    left: creamui_core::layout::LengthPercentage::Length(9.0),
+                    right: creamui_core::layout::LengthPercentage::Length(9.0),
+                    top: creamui_core::layout::LengthPercentage::Length(0.0),
+                    bottom: creamui_core::layout::LengthPercentage::Length(0.0),
+                },
+                align_items: Some(AlignItems::Center),
+                ..Default::default()
+            };
+            let background = if selected {
+                self.theme.accent
+            } else {
+                self.theme.surface_elevated
+            };
+            let foreground = if selected {
+                self.theme.selection_text
+            } else {
+                self.theme.text_primary
+            };
+            let mut item = RawButton::new(item_style, move || controller.select(index))
+                .background(background)
+                .corner_radius(self.theme.menu_item_radius)
+                .child(Box::new(
+                    RawText::new(label, foreground, self.theme.typography.body)
+                        .align(TextAlign::Start),
+                ));
+            item.hover_background = Some(if selected {
+                self.theme.accent_hover
+            } else {
+                self.theme.surface_hover
+            });
+            item.focus_color = Some(self.theme.accent);
+            popup = popup.child(Box::new(item));
+        }
+        vec![Box::new(popup)]
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        let controller = self.controller.clone();
+        Some(Rc::new(move || controller.toggle()))
+    }
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        let controller = self.controller.clone();
+        let len = self.options.len();
+        Some(Rc::new(move |input| match input.key {
+            Key::Enter | Key::Char(' ') => controller.toggle(),
+            Key::Escape => controller.set_open(false),
+            Key::Down if len > 0 => {
+                controller.select((controller.peek_selected() + 1).min(len - 1))
+            }
+            Key::Up if len > 0 => controller.select(controller.peek_selected().saturating_sub(1)),
+            _ => {}
+        }))
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, _: bool) {
+        painter.stroke_rect(
+            Rect {
+                x: rect.x - 2.0,
+                y: rect.y - 2.0,
+                width: rect.width + 4.0,
+                height: rect.height + 4.0,
+            },
+            self.theme.accent,
+            2.0,
+            self.theme.input_radius + 2.0,
+        );
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        Some(CursorIcon::Pointer)
+    }
+}
+
+/// Alias for [`Select`]. The current version is a non-editable combo box;
+/// searchable text entry can be layered on it without changing controller
+/// ownership or popup behaviour.
+pub type ComboBox = Select;
+
+/// One accessible-looking radio option, controlled by its parent state.
+pub struct Radio {
+    theme: Theme,
+    label: String,
+    selected: bool,
+    style: Style,
+    on_click: Rc<dyn Fn()>,
+}
+
+impl Radio {
+    pub fn new(
+        theme: &Theme,
+        label: impl Into<String>,
+        selected: bool,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self {
+            theme: *theme,
+            label: label.into(),
+            selected,
+            style: Self::default_style(),
+            on_click: Rc::new(on_click),
+        }
+    }
+    pub fn default_style() -> Style {
+        Style {
+            size: fixed(200.0, 30.0),
+            ..Default::default()
+        }
+    }
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for Radio {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        let diameter = 18.0;
+        let ring = Rect {
+            x: rect.x,
+            y: rect.y + (rect.height - diameter) / 2.0,
+            width: diameter,
+            height: diameter,
+        };
+        painter.fill_rect(ring, self.theme.surface_elevated, diameter / 2.0);
+        painter.stroke_rect(
+            ring,
+            if self.selected {
+                self.theme.accent
+            } else {
+                self.theme.border_strong
+            },
+            1.5,
+            diameter / 2.0,
+        );
+        if self.selected {
+            painter.fill_rect(
+                Rect {
+                    x: ring.x + 5.0,
+                    y: ring.y + 5.0,
+                    width: 8.0,
+                    height: 8.0,
+                },
+                self.theme.accent,
+                4.0,
+            );
+        }
+        painter.fill_text(
+            Rect {
+                x: rect.x + 27.0,
+                y: rect.y,
+                width: (rect.width - 27.0).max(0.0),
+                height: rect.height,
+            },
+            &self.label,
+            self.theme.text_primary,
+            self.theme.typography.body,
+            TextAlign::Start,
+        );
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        Some(self.on_click.clone())
+    }
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        let on_click = self.on_click.clone();
+        Some(Rc::new(move |input| {
+            if matches!(input.key, Key::Enter | Key::Char(' ')) {
+                on_click()
+            }
+        }))
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, _: bool) {
+        painter.stroke_rect(
+            Rect {
+                x: rect.x - 2.0,
+                y: rect.y - 2.0,
+                width: rect.width + 4.0,
+                height: rect.height + 4.0,
+            },
+            self.theme.accent,
+            2.0,
+            self.theme.checkbox_radius + 2.0,
+        );
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        Some(CursorIcon::Pointer)
+    }
+}
+
+/// A vertical group of mutually exclusive [`Radio`] controls.
+pub struct RadioGroup {
+    theme: Theme,
+    selected: usize,
+    on_change: Rc<dyn Fn(usize)>,
+    options: Vec<String>,
+    style: Style,
+}
+
+impl RadioGroup {
+    pub fn new(theme: &Theme, selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        Self {
+            theme: *theme,
+            selected,
+            on_change: Rc::new(on_change),
+            options: Vec::new(),
+            style: column(theme.spacing_small),
+        }
+    }
+    pub fn option(mut self, label: impl Into<String>) -> Self {
+        self.options.push(label.into());
+        self
+    }
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for RadioGroup {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, _: &mut dyn Painter, _: Rect) {}
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let on_change = self.on_change.clone();
+                Box::new(Radio::new(
+                    &self.theme,
+                    label.clone(),
+                    self.selected == index,
+                    move || on_change(index),
+                )) as BoxedWidget
+            })
+            .collect()
+    }
+}
+
+/// A compact horizontal exclusive-choice control built from the existing
+/// `Choice` primitive. Use it when each option is short and immediately
+/// comparable; use [`RadioGroup`] for explanatory labels.
+pub struct SegmentedControl {
+    theme: Theme,
+    selected: usize,
+    on_change: Rc<dyn Fn(usize)>,
+    options: Vec<String>,
+    style: Style,
+}
+
+impl SegmentedControl {
+    pub fn new(theme: &Theme, selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        Self {
+            theme: *theme,
+            selected,
+            on_change: Rc::new(on_change),
+            options: Vec::new(),
+            style: row(theme.spacing_small),
+        }
+    }
+    pub fn option(mut self, label: impl Into<String>) -> Self {
+        self.options.push(label.into());
+        self
+    }
+    pub fn with_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for SegmentedControl {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, _: &mut dyn Painter, _: Rect) {}
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let on_change = self.on_change.clone();
+                Box::new(crate::Choice::new(
+                    &self.theme,
+                    label.clone(),
+                    self.selected == index,
+                    move || on_change(index),
+                )) as BoxedWidget
+            })
+            .collect()
+    }
+}

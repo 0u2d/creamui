@@ -5,6 +5,14 @@ use taffy::prelude::{AvailableSpace, TaffyTree};
 
 type Tree = TaffyTree<MeasureFn>;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PaintMode {
+    /// Paint ordinary flow nodes, deferring every absolutely positioned node.
+    Flow,
+    /// Walk the tree looking for deferred absolute layers and paint them last.
+    Absolute,
+}
+
 struct Instance {
     widget: BoxedWidget,
     children: Vec<Instance>,
@@ -127,6 +135,7 @@ fn paint_instance(
     clip: Rect,
     focus: &mut FocusContext,
     out: &mut PaintOutputs,
+    mode: PaintMode,
 ) {
     let layout = tree
         .layout(instance.node_id)
@@ -138,52 +147,69 @@ fn paint_instance(
         height: layout.size.height,
     };
 
-    instance.widget.paint(painter, rect);
+    let absolute = tree
+        .style(instance.node_id)
+        .map(|style| style.position == taffy::style::Position::Absolute)
+        .unwrap_or(false);
+    if mode == PaintMode::Flow && absolute {
+        // Absolute layers are rendered in a second pass, above all flow
+        // siblings. Their subtree is skipped here as one complete layer.
+        return;
+    }
 
-    if let Some(visible) = rect.intersect(clip) {
-        if let Some(handler) = instance.widget.on_click() {
-            out.hits.push((visible, handler));
-        }
-        if instance.widget.focusable() {
-            if let Some(on_key) = instance.widget.on_key() {
-                if focus.focused_index == Some(focus.counter) {
-                    instance
-                        .widget
-                        .paint_focused_overlay(painter, rect, focus.caret_visible);
+    // During the absolute pass, ordinary ancestors are traversal-only nodes;
+    // an absolute node and its complete subtree are painted normally.
+    let paint_self = mode == PaintMode::Flow || absolute;
+    if paint_self {
+        instance.widget.paint(painter, rect);
+    }
+
+    if paint_self {
+        if let Some(visible) = rect.intersect(clip) {
+            if let Some(handler) = instance.widget.on_click() {
+                out.hits.push((visible, handler));
+            }
+            if instance.widget.focusable() {
+                if let Some(on_key) = instance.widget.on_key() {
+                    if focus.focused_index == Some(focus.counter) {
+                        instance
+                            .widget
+                            .paint_focused_overlay(painter, rect, focus.caret_visible);
+                    }
+                    focus.counter += 1;
+                    out.focusables.push((visible, on_key));
                 }
-                focus.counter += 1;
-                out.focusables.push((visible, on_key));
             }
-        }
-        if let Some(on_drag) = instance.widget.on_drag() {
-            out.draggables.push((visible, rect, on_drag));
-        }
-        if let Some(on_drag_start) = instance.widget.on_drag_start() {
-            out.drag_starts.push((visible, rect, on_drag_start));
-        }
-        if let Some(on_scroll) = instance.widget.on_scroll_bounded() {
-            let content_bottom = instance
-                .children
-                .iter()
-                .filter_map(|child| tree.layout(child.node_id).ok())
-                .map(|layout| layout.location.y + layout.size.height)
-                .fold(0.0_f32, f32::max);
-            let max_offset = (content_bottom - rect.height).max(0.0);
-            if max_offset > 0.5 {
-                out.scrollables.push((
-                    visible,
-                    Rc::new(move |delta| on_scroll(delta, max_offset)),
-                    true,
-                ));
+            if let Some(on_drag) = instance.widget.on_drag() {
+                out.draggables.push((visible, rect, on_drag));
             }
-        } else if let Some(on_scroll) = instance.widget.on_scroll() {
-            out.scrollables.push((visible, on_scroll, false));
-        }
-        if let Some(cursor) = instance.widget.cursor_icon() {
-            out.cursors.push((visible, cursor));
-        }
-        if let Some(handler) = instance.widget.on_hover() {
-            out.hovers.push((visible, handler));
+            if let Some(on_drag_start) = instance.widget.on_drag_start() {
+                out.drag_starts.push((visible, rect, on_drag_start));
+            }
+            if let Some(on_scroll) = instance.widget.on_scroll_bounded() {
+                let content_bottom = instance
+                    .children
+                    .iter()
+                    .filter_map(|child| tree.layout(child.node_id).ok())
+                    .map(|layout| layout.location.y + layout.size.height)
+                    .fold(0.0_f32, f32::max);
+                let max_offset = (content_bottom - rect.height).max(0.0);
+                if max_offset > 0.5 {
+                    out.scrollables.push((
+                        visible,
+                        Rc::new(move |delta| on_scroll(delta, max_offset)),
+                        true,
+                    ));
+                }
+            } else if let Some(on_scroll) = instance.widget.on_scroll() {
+                out.scrollables.push((visible, on_scroll, false));
+            }
+            if let Some(cursor) = instance.widget.cursor_icon() {
+                out.cursors.push((visible, cursor));
+            }
+            if let Some(handler) = instance.widget.on_hover() {
+                out.hovers.push((visible, handler));
+            }
         }
     }
 
@@ -206,8 +232,22 @@ fn paint_instance(
     if clips {
         painter.push_clip(child_clip);
     }
+    let child_mode = if mode == PaintMode::Absolute && absolute {
+        PaintMode::Flow
+    } else {
+        mode
+    };
     for child in &instance.children {
-        paint_instance(tree, child, painter, child_origin, child_clip, focus, out);
+        paint_instance(
+            tree,
+            child,
+            painter,
+            child_origin,
+            child_clip,
+            focus,
+            out,
+            child_mode,
+        );
     }
     if clips {
         painter.pop_clip();
@@ -416,6 +456,17 @@ impl Renderer {
             UNCLIPPED,
             &mut focus,
             &mut out,
+            PaintMode::Flow,
+        );
+        paint_instance(
+            &self.tree,
+            &instance,
+            painter,
+            Point::default(),
+            UNCLIPPED,
+            &mut focus,
+            &mut out,
+            PaintMode::Absolute,
         );
         self.root = Some(instance);
         Scene {
@@ -452,6 +503,17 @@ impl Renderer {
             UNCLIPPED,
             &mut focus,
             &mut out,
+            PaintMode::Flow,
+        );
+        paint_instance(
+            &self.tree,
+            instance,
+            painter,
+            Point::default(),
+            UNCLIPPED,
+            &mut focus,
+            &mut out,
+            PaintMode::Absolute,
         );
         Some(Scene {
             hits: out.hits,

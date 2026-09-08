@@ -150,7 +150,12 @@ fn CustomTabBar(active: Signal<usize>) -> BoxedWidget {
 /// Fills whatever space its card has left, so a taller window gives it more
 /// room instead of leaving a gap.
 #[component]
-fn SectionPanel(background: Color, text_color: Color, muted_color: Color, active: Signal<usize>) -> BoxedWidget {
+fn SectionPanel(
+    background: Color,
+    text_color: Color,
+    muted_color: Color,
+    active: Signal<usize>,
+) -> BoxedWidget {
     let section = &SECTIONS[active.get()];
     let panel_style = padding(
         Style {
@@ -223,7 +228,11 @@ fn Showcase(theme: Theme, chip: Color, label: String, children: Vec<BoxedWidget>
         </RawView>
     });
     let card = View::new(&theme, card_style).with_children(children);
-    Box::new(RawView::new(outer_style).child(header).child(Box::new(card)))
+    Box::new(
+        RawView::new(outer_style)
+            .child(header)
+            .child(Box::new(card)),
+    )
 }
 
 fn main() {

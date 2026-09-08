@@ -14,13 +14,15 @@ pub mod raw;
 mod text_metrics;
 pub mod themed;
 
-pub use controller::{ScrollController, TabController, TextController};
+pub use controller::{ScrollController, SelectController, TabController, TextController};
 pub use raw::{
     RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab,
     RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
 };
 pub use themed::{
-    tab_styles, Button, ButtonSize, ButtonState, ButtonVariant, Checkbox, Heading, MenuBar,
-    MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar, SidebarItem, SidebarSeparator, Slider,
-    Spinner, Switch, Tab, TabColors, TabSizing, Tabs, Text, TextArea, TextInput, TextSize, View,
+    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ButtonVariant, Checkbox, ComboBox,
+    Dialog, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, Overlay, Popover, ProgressBar,
+    ProgressRing, Radio, RadioGroup, ScrollView, SegmentedControl, Select, Sidebar, SidebarItem,
+    SidebarSeparator, Slider, Spinner, Switch, Tab, TabColors, TabSizing, Tabs, Text, TextArea,
+    TextInput, TextSize, View,
 };

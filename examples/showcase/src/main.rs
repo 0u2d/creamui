@@ -1,6 +1,6 @@
 //! A component showcase: a sidebar switches between a live theme editor
 //! ("Appearance") and a gallery view for every themed control CreamUI ships
-//! with — `Input`, `Button`, `Slider`, `Checkbox`, `Sidebar`, and `Tabs`.
+//! with — inputs, selection controls, feedback, navigation, and overlays.
 //!
 //! The whole window is driven by a handful of small signals — `dark_mode`,
 //! `accent_index`, `active_section`, plus one signal per interactive control
@@ -16,19 +16,22 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
-    tab_styles, Button, ButtonSize, ButtonState, Heading, RawScrollView, RawText, RawView,
-    ScrollController, Sidebar, SidebarItem, Switch, Tab, TabColors, TabController, TabSizing, Tabs,
-    Text, TextController, TextInput, TextSize, View,
+    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, Popover, ProgressBar,
+    ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController, SegmentedControl,
+    Select, SelectController, Sidebar, SidebarItem, Switch, Tab, TabColors, TabController,
+    TabSizing, Tabs, Text, TextController, TextInput, TextSize, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 7] = [
+const NAV_LABELS: [&str; 9] = [
     "Appearance",
     "Input",
     "Button",
     "Slider",
     "Checkbox",
+    "Selection",
+    "Feedback",
     "Sidebar",
     "Tabs",
 ];
@@ -108,11 +111,13 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
         Symbol::Controls,
         Symbol::Sliders,
         Symbol::Check,
+        Symbol::Controls,
+        Symbol::Display,
         Symbol::Folder,
         Symbol::Grid,
     ];
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 1 || i == 5 {
+        if i == 0 || i == 1 || i == 5 || i == 7 {
             nav = nav.child(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
@@ -120,6 +125,8 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
                             "SHOWCASE"
                         } else if i == 1 {
                             "CONTROLS"
+                        } else if i == 5 {
+                            "SELECTION"
                         } else {
                             "NAVIGATION"
                         },
@@ -496,6 +503,107 @@ fn CheckboxPanel(
     })
 }
 
+/// Select, radio, and segmented selection share a page. `SegmentedControl`
+/// owns a row of the lower-level `Choice` items, so the demo does not repeat
+/// the same interaction as two competing controls.
+#[component]
+fn SelectionPanel(
+    theme: Theme,
+    select: SelectController,
+    radio: Signal<usize>,
+    segment: Signal<usize>,
+) -> BoxedWidget {
+    const OPTIONS: [&str; 3] = ["System", "Light", "Dark"];
+    let radio_value = radio.get();
+    let segment_value = segment.get();
+    let set_radio = radio.clone();
+    let set_segment = segment.clone();
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_large)}>
+            <SectionHeader theme={theme} title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, or compact Choice segments.".to_owned()} />
+            <RawView style={column(theme.spacing_small)}>
+                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Select / ComboBox"</Text>
+                {Box::new(Select::controlled(&theme, &OPTIONS, select)) as BoxedWidget}
+            </RawView>
+            <RawView style={row(theme.spacing_large)}>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Radio group"</Text>
+                    {Box::new(RadioGroup::new(&theme, radio_value, move |index| set_radio.set(index))
+                        .option("Keep files on this device")
+                        .option("Sync encrypted copies")
+                        .option("Never sync")) as BoxedWidget}
+                </RawView>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Segmented control"</Text>
+                    {Box::new(SegmentedControl::new(&theme, segment_value, move |index| set_segment.set(index))
+                        .option("Day").option("Week").option("Month")) as BoxedWidget}
+                </RawView>
+            </RawView>
+        </RawView>
+    })
+}
+
+/// Determinate/indeterminate feedback plus a regular floating popover and a
+/// modal alert. The alert itself is attached at the root below.
+#[component]
+fn FeedbackPanel(
+    theme: Theme,
+    progress: Signal<f32>,
+    show_popover: Signal<bool>,
+    show_alert: Signal<bool>,
+) -> BoxedWidget {
+    let value = progress.get();
+    let set_progress = progress.clone();
+    let open_popover = show_popover.clone();
+    let open_alert = show_alert.clone();
+    let popover = if show_popover.get() {
+        Box::new(
+            Popover::new(
+                &theme,
+                padding(column(theme.spacing_small), theme.spacing_medium),
+            )
+            .child(Box::new(
+                RawText::new("Popover", theme.text_primary, 13.).bold(true),
+            ))
+            .child(Box::new(RawText::new(
+                "A floating surface can contain any widget tree.",
+                theme.text_secondary,
+                12.,
+            ))),
+        ) as BoxedWidget
+    } else {
+        Box::new(RawView::new(Style::default())) as BoxedWidget
+    };
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_large)}>
+            <SectionHeader theme={theme} title={"Feedback & overlays".to_owned()} subtitle={"Show work in progress, surface contextual detail, and ask for confirmation without losing context.".to_owned()} />
+            <RawView style={column(theme.spacing_small)}>
+                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{format!("Determinate progress · {:.0}%", value * 100.0)}</Text>
+                {Box::new(ProgressBar::new(&theme, value)) as BoxedWidget}
+                <Slider theme={&theme} value={value} on_change={move |next| set_progress.set(next)} />
+            </RawView>
+            <RawView style={row(theme.spacing_large)}>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Progress ring"</Text>
+                    <RawView style={row(theme.spacing_medium)}>
+                        {Box::new(ProgressRing::new(&theme, value).size(32.0)) as BoxedWidget}
+                        {Box::new(ProgressRing::indeterminate(&theme).size(32.0)) as BoxedWidget}
+                    </RawView>
+                </RawView>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Indeterminate bar"</Text>
+                    {Box::new(ProgressBar::indeterminate(&theme)) as BoxedWidget}
+                </RawView>
+            </RawView>
+            <RawView style={row(theme.spacing_medium)}>
+                {Box::new(Button::secondary(&theme, ButtonSize::Md, "Toggle popover", move || open_popover.update(|open| *open = !*open))) as BoxedWidget}
+                {Box::new(Button::new(&theme, "Open alert dialog", move || open_alert.set(true))) as BoxedWidget}
+            </RawView>
+            {popover}
+        </RawView>
+    })
+}
+
 /// The "Sidebar" panel: a small, self-contained `Sidebar`/`SidebarItem` demo
 /// with its own selection state, next to the panel it controls.
 #[component]
@@ -719,6 +827,13 @@ fn main() {
     let auto_save = Signal::new(false);
     let beta_features = Signal::new(false);
 
+    let select = SelectController::default();
+    let radio = Signal::new(0usize);
+    let segment = Signal::new(1usize);
+    let progress = Signal::new(0.62f32);
+    let show_popover = Signal::new(false);
+    let show_alert = Signal::new(false);
+
     let sidebar_demo_active = Signal::new(0usize);
     let tabs_filled = TabController::default();
     let tabs_pill = TabController::new(1);
@@ -770,61 +885,63 @@ fn main() {
                 28.,
             );
 
-            // Every panel is built on every render, regardless of which one
-            // is currently visible. `Signal::get()` only subscribes the
-            // *currently running* reactive effect, and `build_ui` only ever
-            // runs inside that effect on this very first pass (later
-            // reactive re-renders come from a redraw driven by whichever
-            // signals were subscribed here) — so a panel whose props are
-            // never touched on this first pass would never get a chance to
-            // subscribe its signals, and its controls would silently stop
-            // reacting to clicks/drags/typing. Building all seven up front
-            // keeps every signal subscribed from the start, however deep in
-            // the sidebar its section sits.
-            let panels: [BoxedWidget; 7] = [
-                AppearancePanel(AppearancePanelProps {
+            // Only build the visible page. The reactive runtime removes
+            // dependencies from the prior execution before collecting the
+            // active branch's signals, so a hidden editor or progress demo
+            // cannot invalidate this window or make us lay it out again.
+            let panel = match active_section.get() {
+                0 => AppearancePanel(AppearancePanelProps {
                     theme,
                     dark_mode: dark_mode.clone(),
                     accent_index: accent_index.clone(),
                 }),
-                InputPanel(InputPanelProps {
+                1 => InputPanel(InputPanelProps {
                     theme,
                     plain: plain.clone(),
                     with_placeholder: with_placeholder.clone(),
                     notes: notes.clone(),
                     notes_wrapped: notes_wrapped.clone(),
                 }),
-                ButtonPanel(ButtonPanelProps {
+                2 => ButtonPanel(ButtonPanelProps {
                     theme,
                     clicks: clicks.clone(),
                 }),
-                SliderPanel(SliderPanelProps {
+                3 => SliderPanel(SliderPanelProps {
                     theme,
                     volume: volume.clone(),
                     brightness: brightness.clone(),
                     zoom: zoom.clone(),
                 }),
-                CheckboxPanel(CheckboxPanelProps {
+                4 => CheckboxPanel(CheckboxPanelProps {
                     theme,
                     notifications: notifications.clone(),
                     auto_save: auto_save.clone(),
                     beta_features: beta_features.clone(),
                 }),
-                SidebarPanel(SidebarPanelProps {
+                5 => SelectionPanel(SelectionPanelProps {
+                    theme,
+                    select: select.clone(),
+                    radio: radio.clone(),
+                    segment: segment.clone(),
+                }),
+                6 => FeedbackPanel(FeedbackPanelProps {
+                    theme,
+                    progress: progress.clone(),
+                    show_popover: show_popover.clone(),
+                    show_alert: show_alert.clone(),
+                }),
+                7 => SidebarPanel(SidebarPanelProps {
                     theme,
                     active: sidebar_demo_active.clone(),
                 }),
-                TabsPanel(TabsPanelProps {
+                _ => TabsPanel(TabsPanelProps {
                     theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
-            ];
-            let panel = panels.into_iter().nth(active_section.get()).expect(
-                "active_section is always kept within NAV_LABELS' range by Nav's click handlers",
-            );
+            };
 
             let scroll_style = Style {
                 flex_grow: 1.0,
@@ -837,6 +954,21 @@ fn main() {
             let content = RawScrollView::controlled(scroll_style, content_scroll.clone()).child(
                 Box::new(Surface::new(&theme, SurfaceRole::Panel, content_style).child(panel)),
             );
+            let dialog: BoxedWidget = if show_alert.get() {
+                let dismiss = show_alert.clone();
+                Box::new(
+                    AlertDialog::new(
+                        &theme,
+                        "Delete this draft?",
+                        "This example uses an Overlay backdrop. Clicking outside or Cancel closes it.",
+                        move || dismiss.set(false),
+                    )
+                    .dismiss_button("Cancel")
+                    .confirm("Delete", { let dismiss = show_alert.clone(); move || dismiss.set(false) }),
+                )
+            } else {
+                Box::new(RawView::new(Style::default()))
+            };
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
@@ -844,6 +976,7 @@ fn main() {
                     <RawView style={content_outer_style} background={theme.surface}>
                         {Box::new(content) as BoxedWidget}
                     </RawView>
+                    {dialog}
                 </RawView>
             })
         },

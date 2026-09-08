@@ -36,16 +36,20 @@ fn centered_box_style(padding: f32) -> Style {
 
 mod button;
 mod controls;
+mod feedback;
 mod inputs;
 mod navigation;
 mod scroll;
+mod selection;
 mod surfaces;
 mod text;
 
 pub use button::*;
 pub use controls::*;
+pub use feedback::*;
 pub use inputs::*;
 pub use navigation::*;
 pub use scroll::*;
+pub use selection::*;
 pub use surfaces::*;
 pub use text::*;

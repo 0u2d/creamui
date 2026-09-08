@@ -188,9 +188,17 @@ impl GpuState {
             cache: None,
         });
 
-        let (texture, bind_group) =
-            create_texture_and_bind_group(&device, &bind_group_layout, &sampler, size.width.max(1), size.height.max(1));
-        log::debug!("creamui-render: pipeline+texture created: {:?}", t0.elapsed());
+        let (texture, bind_group) = create_texture_and_bind_group(
+            &device,
+            &bind_group_layout,
+            &sampler,
+            size.width.max(1),
+            size.height.max(1),
+        );
+        log::debug!(
+            "creamui-render: pipeline+texture created: {:?}",
+            t0.elapsed()
+        );
 
         GpuState {
             surface,
@@ -212,8 +220,13 @@ impl GpuState {
         self.config.width = width;
         self.config.height = height;
         self.surface.configure(&self.device, &self.config);
-        let (texture, bind_group) =
-            create_texture_and_bind_group(&self.device, &self.bind_group_layout, &self.sampler, width, height);
+        let (texture, bind_group) = create_texture_and_bind_group(
+            &self.device,
+            &self.bind_group_layout,
+            &self.sampler,
+            width,
+            height,
+        );
         self.texture = texture;
         self.bind_group = bind_group;
         self.tex_width = width;
@@ -258,11 +271,15 @@ impl GpuState {
                 return;
             }
         };
-        let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let view = frame
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("creamui-encoder") });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("creamui-encoder"),
+            });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("creamui-blit-pass"),

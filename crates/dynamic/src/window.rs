@@ -22,7 +22,10 @@ pub struct Context {
 
 impl Context {
     fn new(rt: Rc<Runtime>) -> Self {
-        Context { rt, arena: Rc::new(ClosureArena::new()) }
+        Context {
+            rt,
+            arena: Rc::new(ClosureArena::new()),
+        }
     }
 
     /// The loaded library handle, e.g. for creating a
@@ -128,7 +131,9 @@ pub fn run(
     on_window_ready: impl Fn(WindowHandle) + 'static,
     build_ui: impl Fn(&Context, Size) -> Widget + 'static,
 ) {
-    AppBuilder::new(rt).window(options, background, on_window_ready, build_ui).run();
+    AppBuilder::new(rt)
+        .window(options, background, on_window_ready, build_ui)
+        .run();
 }
 
 /// Builds and runs one or more CreamUI windows sharing a single process and
@@ -142,7 +147,11 @@ pub struct AppBuilder {
 impl AppBuilder {
     pub fn new(rt: &Rc<Runtime>) -> Self {
         let ptr = unsafe { (rt.sym.app_builder_new)() };
-        AppBuilder { rt: rt.clone(), ptr, windows: Vec::new() }
+        AppBuilder {
+            rt: rt.clone(),
+            ptr,
+            windows: Vec::new(),
+        }
     }
 
     /// Queues a window to be opened when [`AppBuilder::run`] starts the

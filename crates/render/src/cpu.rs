@@ -16,15 +16,22 @@ impl CpuState {
     pub fn new(window: Arc<Window>) -> Self {
         let context =
             softbuffer::Context::new(window.clone()).expect("failed to create softbuffer context");
-        let surface =
-            softbuffer::Surface::new(&context, window).expect("failed to create softbuffer surface");
-        CpuState { surface, width: 0, height: 0 }
+        let surface = softbuffer::Surface::new(&context, window)
+            .expect("failed to create softbuffer surface");
+        CpuState {
+            surface,
+            width: 0,
+            height: 0,
+        }
     }
 
     fn resize(&mut self, width: u32, height: u32) {
         let (width, height) = (width.max(1), height.max(1));
         self.surface
-            .resize(NonZeroU32::new(width).unwrap(), NonZeroU32::new(height).unwrap())
+            .resize(
+                NonZeroU32::new(width).unwrap(),
+                NonZeroU32::new(height).unwrap(),
+            )
             .expect("failed to resize softbuffer surface");
         self.width = width;
         self.height = height;
@@ -37,7 +44,10 @@ impl CpuState {
             self.resize(width, height);
         }
 
-        let mut buffer = self.surface.buffer_mut().expect("failed to acquire softbuffer buffer");
+        let mut buffer = self
+            .surface
+            .buffer_mut()
+            .expect("failed to acquire softbuffer buffer");
         // softbuffer's pixel format is `0RGB` packed into a native-endian
         // u32; alpha is dropped since the window itself (not this blit) is
         // what controls transparency, via `WindowOptions::transparent`.
@@ -45,6 +55,8 @@ impl CpuState {
             let [r, g, b, _a] = [chunk[0], chunk[1], chunk[2], chunk[3]];
             *px = (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b);
         }
-        buffer.present().expect("failed to present softbuffer buffer");
+        buffer
+            .present()
+            .expect("failed to present softbuffer buffer");
     }
 }

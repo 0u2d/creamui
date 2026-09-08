@@ -26,7 +26,10 @@ pub struct SignalI32(Rc<RawSignalI32>);
 impl SignalI32 {
     pub fn new(rt: &Rc<Runtime>, initial: i32) -> Self {
         let ptr = unsafe { (rt.sym.signal_i32_new)(initial) };
-        SignalI32(Rc::new(RawSignalI32 { ptr, rt: rt.clone() }))
+        SignalI32(Rc::new(RawSignalI32 {
+            ptr,
+            rt: rt.clone(),
+        }))
     }
 
     pub fn get(&self) -> i32 {
@@ -56,7 +59,10 @@ pub struct SignalF32(Rc<RawSignalF32>);
 impl SignalF32 {
     pub fn new(rt: &Rc<Runtime>, initial: f32) -> Self {
         let ptr = unsafe { (rt.sym.signal_f32_new)(initial) };
-        SignalF32(Rc::new(RawSignalF32 { ptr, rt: rt.clone() }))
+        SignalF32(Rc::new(RawSignalF32 {
+            ptr,
+            rt: rt.clone(),
+        }))
     }
 
     pub fn get(&self) -> f32 {
@@ -87,7 +93,10 @@ impl SignalString {
     pub fn new(rt: &Rc<Runtime>, initial: &str) -> Self {
         let c_initial = CString::new(initial).unwrap_or_default();
         let ptr = unsafe { (rt.sym.signal_string_new)(c_initial.as_ptr()) };
-        SignalString(Rc::new(RawSignalString { ptr, rt: rt.clone() }))
+        SignalString(Rc::new(RawSignalString {
+            ptr,
+            rt: rt.clone(),
+        }))
     }
 
     /// Returns an owned copy of the current value — unlike the raw ABI
@@ -98,7 +107,9 @@ impl SignalString {
         if ptr.is_null() {
             return String::new();
         }
-        unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+        unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned()
     }
 
     pub fn set(&self, value: &str) {

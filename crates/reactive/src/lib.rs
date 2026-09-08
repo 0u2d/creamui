@@ -15,6 +15,10 @@ thread_local! {
 
 struct EffectState {
     run: RefCell<Box<dyn FnMut()>>,
+    /// Unsubscribes collected while the previous execution read signals.
+    /// They are run before the next execution so a conditional view only
+    /// remains subscribed to the branch it currently renders.
+    dependencies: RefCell<Vec<Box<dyn Fn(&Rc<EffectState>)>>>,
 }
 
 /// Handle to a running [`create_effect`] closure. Drop it to stop the effect
@@ -31,12 +35,17 @@ pub struct Effect {
 pub fn create_effect(f: impl FnMut() + 'static) -> Effect {
     let state = Rc::new(EffectState {
         run: RefCell::new(Box::new(f)),
+        dependencies: RefCell::new(Vec::new()),
     });
     run_effect(&state);
     Effect { _state: state }
 }
 
 fn run_effect(state: &Rc<EffectState>) {
+    let dependencies = std::mem::take(&mut *state.dependencies.borrow_mut());
+    for unsubscribe in dependencies {
+        unsubscribe(state);
+    }
     EFFECT_STACK.with(|stack| stack.borrow_mut().push(state.clone()));
     (state.run.borrow_mut())();
     EFFECT_STACK.with(|stack| {
@@ -125,6 +134,16 @@ impl<T: Clone + 'static> Signal<T> {
                     .any(|w| w.upgrade().is_some_and(|s| Rc::ptr_eq(&s, current)));
                 if !already {
                     subs.push(Rc::downgrade(current));
+                    let signal = self.inner.clone();
+                    current
+                        .dependencies
+                        .borrow_mut()
+                        .push(Box::new(move |effect| {
+                            signal.subscribers.borrow_mut().retain(|weak| {
+                                weak.upgrade()
+                                    .is_some_and(|subscriber| !Rc::ptr_eq(&subscriber, effect))
+                            });
+                        }));
                 }
             }
         });
@@ -198,6 +217,37 @@ mod tests {
         assert_eq!(runs.get(), 1);
         b.set(99);
         assert_eq!(runs.get(), 1, "unrelated signal must not trigger a re-run");
+    }
+
+    #[test]
+    fn conditional_effect_unsubscribes_from_the_inactive_branch() {
+        let show_first = Signal::new(true);
+        let first = Signal::new(0);
+        let second = Signal::new(0);
+        let runs = Rc::new(Cell::new(0));
+        let branch = show_first.clone();
+        let a = first.clone();
+        let b = second.clone();
+        let observed_runs = runs.clone();
+        let _effect = create_effect(move || {
+            if branch.get() {
+                let _ = a.get();
+            } else {
+                let _ = b.get();
+            }
+            observed_runs.set(observed_runs.get() + 1);
+        });
+
+        show_first.set(false);
+        assert_eq!(runs.get(), 2);
+        first.set(1);
+        assert_eq!(
+            runs.get(),
+            2,
+            "the hidden branch must no longer invalidate the view"
+        );
+        second.set(1);
+        assert_eq!(runs.get(), 3);
     }
 
     #[test]

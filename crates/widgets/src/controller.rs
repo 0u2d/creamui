@@ -147,6 +147,63 @@ pub struct TabController {
     selected: Signal<usize>,
 }
 
+/// Shared state for a [`crate::Select`] or [`crate::ComboBox`].
+///
+/// Like the other controllers, this is deliberately owned by the application:
+/// it keeps a select's chosen item and open/closed state stable while the
+/// immediate-mode widget tree is rebuilt.
+#[derive(Clone)]
+pub struct SelectController {
+    selected: Signal<usize>,
+    open: Signal<bool>,
+}
+
+impl SelectController {
+    pub fn new(selected: usize) -> Self {
+        Self {
+            selected: Signal::new(selected),
+            open: Signal::new(false),
+        }
+    }
+
+    pub fn selected(&self) -> usize {
+        self.selected.get()
+    }
+
+    pub fn peek_selected(&self) -> usize {
+        self.selected.peek()
+    }
+
+    pub fn select(&self, index: usize) {
+        creamui_reactive::batch(|| {
+            self.selected.set(index);
+            self.open.set(false);
+        });
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open.get()
+    }
+
+    pub fn peek_open(&self) -> bool {
+        self.open.peek()
+    }
+
+    pub fn set_open(&self, open: bool) {
+        self.open.set(open);
+    }
+
+    pub fn toggle(&self) {
+        self.open.update(|open| *open = !*open);
+    }
+}
+
+impl Default for SelectController {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
 impl TabController {
     pub fn new(selected: usize) -> Self {
         Self {

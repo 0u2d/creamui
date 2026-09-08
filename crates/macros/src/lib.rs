@@ -518,7 +518,14 @@ impl Element {
                 let style = self.prop("style")?;
                 let controller = self.prop("controller")?;
                 if let Some(controller) = &controller {
-                    for name in ["value", "on_change", "cursor", "on_cursor_change", "selection", "on_selection_change"] {
+                    for name in [
+                        "value",
+                        "on_change",
+                        "cursor",
+                        "on_cursor_change",
+                        "selection",
+                        "on_selection_change",
+                    ] {
                         if self.prop(name)?.is_some() {
                             return Err(Error::new_spanned(&self.tag, format!("`TextArea`'s `controller` prop cannot be combined with `{name}`")));
                         }

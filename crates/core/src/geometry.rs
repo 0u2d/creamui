@@ -38,7 +38,12 @@ impl Rect {
         let x2 = (self.x + self.width).min(other.x + other.width);
         let y2 = (self.y + self.height).min(other.y + other.height);
         if x2 > x1 && y2 > y1 {
-            Some(Rect { x: x1, y: y1, width: x2 - x1, height: y2 - y1 })
+            Some(Rect {
+                x: x1,
+                y: y1,
+                width: x2 - x1,
+                height: y2 - y1,
+            })
         } else {
             None
         }
@@ -51,34 +56,77 @@ mod tests {
 
     #[test]
     fn rect_contains_inside_point() {
-        let r = Rect { x: 10.0, y: 10.0, width: 20.0, height: 20.0 };
+        let r = Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 20.0,
+            height: 20.0,
+        };
         assert!(r.contains(Point { x: 15.0, y: 15.0 }));
     }
 
     #[test]
     fn rect_excludes_outside_point() {
-        let r = Rect { x: 10.0, y: 10.0, width: 20.0, height: 20.0 };
+        let r = Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 20.0,
+            height: 20.0,
+        };
         assert!(!r.contains(Point { x: 100.0, y: 100.0 }));
     }
 
     #[test]
     fn rect_boundary_is_inclusive() {
-        let r = Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
+        let r = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
         assert!(r.contains(Point { x: 10.0, y: 10.0 }));
         assert!(r.contains(Point { x: 0.0, y: 0.0 }));
     }
 
     #[test]
     fn intersect_overlapping_rects() {
-        let a = Rect { x: 0.0, y: 0.0, width: 20.0, height: 20.0 };
-        let b = Rect { x: 10.0, y: 10.0, width: 20.0, height: 20.0 };
-        assert_eq!(a.intersect(b), Some(Rect { x: 10.0, y: 10.0, width: 10.0, height: 10.0 }));
+        let a = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 20.0,
+            height: 20.0,
+        };
+        let b = Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 20.0,
+            height: 20.0,
+        };
+        assert_eq!(
+            a.intersect(b),
+            Some(Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 10.0,
+                height: 10.0
+            })
+        );
     }
 
     #[test]
     fn intersect_non_overlapping_rects_is_none() {
-        let a = Rect { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
-        let b = Rect { x: 100.0, y: 100.0, width: 10.0, height: 10.0 };
+        let a = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+        };
+        let b = Rect {
+            x: 100.0,
+            y: 100.0,
+            width: 10.0,
+            height: 10.0,
+        };
         assert_eq!(a.intersect(b), None);
     }
 }
