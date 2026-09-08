@@ -1,6 +1,14 @@
 use super::*;
 use crate::ScrollController;
-/// A themed vertically-scrollable container.
+
+fn with_alpha(color: Color, alpha: u8) -> Color {
+    Color::rgba(color.r, color.g, color.b, alpha)
+}
+
+/// A themed vertically-scrollable container. When built via
+/// [`ScrollView::controlled`], its scrollbar (see [`RawScrollView`]'s doc
+/// comment) is colored from the theme instead of `RawScrollView`'s neutral
+/// gray default.
 pub struct ScrollView {
     inner: RawScrollView,
 }
@@ -21,7 +29,10 @@ impl ScrollView {
     pub fn controlled(theme: &Theme, style: Style, controller: ScrollController) -> Self {
         let inner = RawScrollView::controlled(style, controller)
             .background(theme.surface)
-            .corner_radius(theme.radius_medium);
+            .corner_radius(theme.radius_medium)
+            .scrollbar_color(with_alpha(theme.text_secondary, 110))
+            .scrollbar_hover_color(with_alpha(theme.text_secondary, 170))
+            .scrollbar_pressed_color(with_alpha(theme.text_primary, 210));
         ScrollView { inner }
     }
 
@@ -52,17 +63,5 @@ impl Widget for ScrollView {
 
     fn children(&mut self) -> Vec<BoxedWidget> {
         Widget::children(&mut self.inner)
-    }
-
-    fn clips_children(&self) -> bool {
-        self.inner.clips_children()
-    }
-
-    fn scroll_offset(&self) -> Point {
-        self.inner.scroll_offset()
-    }
-
-    fn on_scroll(&self) -> Option<Rc<dyn Fn(f32)>> {
-        self.inner.on_scroll()
     }
 }

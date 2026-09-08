@@ -17,14 +17,14 @@ use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, Popover, ProgressBar,
-    ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController, SegmentedControl,
-    Select, SelectController, Sidebar, SidebarItem, Switch, Tab, TabColors, TabController,
-    TabSizing, Tabs, Text, TextController, TextInput, TextSize, View,
+    ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController, ScrollView,
+    SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab, TabColors,
+    TabController, TabSizing, Tabs, Text, TextController, TextInput, TextSize, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 9] = [
+const NAV_LABELS: [&str; 10] = [
     "Appearance",
     "Input",
     "Button",
@@ -34,6 +34,7 @@ const NAV_LABELS: [&str; 9] = [
     "Feedback",
     "Sidebar",
     "Tabs",
+    "Scroll",
 ];
 const ACCENTS: [(&str, Color); 5] = [
     ("Lilac", Color::rgb(181, 139, 255)),
@@ -114,6 +115,7 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
         Symbol::Controls,
         Symbol::Display,
         Symbol::Folder,
+        Symbol::Grid,
         Symbol::Grid,
     ];
     for (i, label) in NAV_LABELS.iter().enumerate() {
@@ -804,6 +806,101 @@ fn TabsPanel(
     })
 }
 
+/// A row of numbered list items long enough to overflow a fixed-height
+/// scroll view, used by both lists in [`ScrollPanel`].
+fn scroll_rows(theme: &Theme, count: usize, row_style: Style, text_color: Color) -> Vec<BoxedWidget> {
+    let text_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
+        ..Default::default()
+    };
+    (0..count)
+        .map(|i| {
+            let background = if i % 2 == 0 {
+                theme.surface_elevated
+            } else {
+                theme.surface
+            };
+            Box::new(
+                RawView::new(row_style.clone())
+                    .background(background)
+                    .child(Box::new(
+                        RawText::new(format!("Row {:02}", i + 1), text_color, 13.0)
+                            .align(TextAlign::Start)
+                            .layout_style(text_style.clone()),
+                    )),
+            ) as BoxedWidget
+        })
+        .collect()
+}
+
+/// The "Scroll" panel: a themed `ScrollView` and a hand-colored
+/// `RawScrollView` side by side, each holding a long enough list to show
+/// off the draggable `RawScrollbar` overlay — drag either thumb, or turn
+/// the mouse wheel over either list, and they stay in sync.
+#[component]
+fn ScrollPanel(
+    theme: Theme,
+    themed_scroll: ScrollController,
+    custom_scroll: ScrollController,
+) -> BoxedWidget {
+    const ROWS: usize = 28;
+    let list_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(240.0),
+            height: Dimension::Length(280.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    let row_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(34.0),
+            },
+            align_items: Some(AlignItems::Center),
+            ..Default::default()
+        },
+        theme.spacing_medium,
+    );
+
+    let themed_list = ScrollView::controlled(&theme, list_style.clone(), themed_scroll)
+        .with_children(scroll_rows(&theme, ROWS, row_style.clone(), theme.text_primary));
+
+    const NEON: Color = Color::rgb(0x5c, 0xe1, 0xff);
+    let custom_list = RawScrollView::controlled(list_style, custom_scroll)
+        .background(Color::rgb(0x0c, 0x14, 0x1a))
+        .corner_radius(theme.radius_medium)
+        .scrollbar_width(7.0)
+        .scrollbar_color(Color::rgba(NEON.r, NEON.g, NEON.b, 150))
+        .scrollbar_hover_color(Color::rgba(NEON.r, NEON.g, NEON.b, 220))
+        .with_children(scroll_rows(
+            &theme,
+            ROWS,
+            row_style,
+            Color::rgb(0xbf, 0xef, 0xff),
+        ));
+
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_large)}>
+            <SectionHeader theme={theme} title={"Scroll".to_owned()} subtitle={"A draggable scrollbar thumb tracks the mouse wheel automatically, and vice versa.".to_owned()} />
+            <RawView style={row(theme.spacing_large)}>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Themed · ScrollView"</Text>
+                    {Box::new(themed_list) as BoxedWidget}
+                </RawView>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Custom · RawScrollView"</Text>
+                    {Box::new(custom_list) as BoxedWidget}
+                </RawView>
+            </RawView>
+        </RawView>
+    })
+}
+
 fn main() {
     let dark_mode = Signal::new(true);
     let accent_index = Signal::new(0usize);
@@ -840,6 +937,8 @@ fn main() {
     let tabs_indicator = TabController::new(2);
     let tabs_content = TabController::default();
     let content_scroll = ScrollController::default();
+    let themed_scroll_demo = ScrollController::default();
+    let custom_scroll_demo = ScrollController::default();
 
     run(
         WindowOptions {
@@ -934,12 +1033,17 @@ fn main() {
                     theme,
                     active: sidebar_demo_active.clone(),
                 }),
-                _ => TabsPanel(TabsPanelProps {
+                8 => TabsPanel(TabsPanelProps {
                     theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
+                }),
+                _ => ScrollPanel(ScrollPanelProps {
+                    theme,
+                    themed_scroll: themed_scroll_demo.clone(),
+                    custom_scroll: custom_scroll_demo.clone(),
                 }),
             };
 

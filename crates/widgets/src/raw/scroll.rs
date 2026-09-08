@@ -6,6 +6,18 @@ use crate::ScrollController;
 /// [`ScrollController`] to the resolved content height. Children are laid out at their natural height
 /// (never flex-shrunk to fit the visible viewport, which would defeat the
 /// point of scrolling) and clipped + offset to this widget's own rect.
+///
+/// When built via [`RawScrollView::controlled`], a thin draggable
+/// [`RawScrollbar`] is overlaid on the right edge by default (disable with
+/// [`RawScrollView::scrollbar`]) — sized and positioned from the same
+/// [`ScrollController`], so dragging it and turning the mouse wheel stay in
+/// sync automatically. It has no effect on [`RawScrollView::new`], which
+/// has no controller to write a dragged position back into.
+///
+/// Internally this composes two children: a [`ScrollClip`] that does the
+/// actual clipping/offsetting (kept separate so the scrollbar, painted as
+/// its sibling, is never itself shifted by the content's own scroll
+/// offset), and the optional [`RawScrollbar`] overlay.
 pub struct RawScrollView {
     pub style: Style,
     pub scroll_y: f32,
@@ -15,6 +27,13 @@ pub struct RawScrollView {
     pub children: Vec<BoxedWidget>,
     pub on_scroll: Rc<dyn Fn(f32)>,
     pub on_scroll_bounded: Option<Rc<dyn Fn(f32, f32)>>,
+    pub scrollbar: bool,
+    pub scrollbar_width: f32,
+    pub scrollbar_margin: f32,
+    pub scrollbar_color: Color,
+    pub scrollbar_hover_color: Option<Color>,
+    pub scrollbar_pressed_color: Option<Color>,
+    pub scrollbar_track_color: Option<Color>,
 }
 
 impl RawScrollView {
@@ -28,6 +47,13 @@ impl RawScrollView {
             children: Vec::new(),
             on_scroll: Rc::new(on_scroll),
             on_scroll_bounded: None,
+            scrollbar: true,
+            scrollbar_width: 10.0,
+            scrollbar_margin: 2.0,
+            scrollbar_color: Color::rgba(128, 128, 128, 140),
+            scrollbar_hover_color: None,
+            scrollbar_pressed_color: None,
+            scrollbar_track_color: None,
         }
     }
 
@@ -64,18 +90,64 @@ impl RawScrollView {
         self.children = widgets;
         self
     }
+
+    /// Shows or hides the draggable scrollbar overlay. Only takes effect on
+    /// a controller-backed view (see [`RawScrollView::controlled`]); a
+    /// plain [`RawScrollView::new`] view never draws one, since there is no
+    /// controller for a drag to write a jumped-to position into. Default:
+    /// `true`.
+    pub fn scrollbar(mut self, visible: bool) -> Self {
+        self.scrollbar = visible;
+        self
+    }
+
+    /// Total width of the scrollbar's hit area, in logical pixels. The
+    /// painted thumb is inset within this by [`RawScrollView::scrollbar_inset`].
+    /// Default: `10.0`.
+    pub fn scrollbar_width(mut self, width: f32) -> Self {
+        self.scrollbar_width = width.max(1.0);
+        self
+    }
+
+    /// Gap between the scrollbar and the view's right edge. Default: `2.0`.
+    pub fn scrollbar_margin(mut self, margin: f32) -> Self {
+        self.scrollbar_margin = margin.max(0.0);
+        self
+    }
+
+    /// Thumb color at rest. Default: a translucent mid-gray.
+    pub fn scrollbar_color(mut self, color: Color) -> Self {
+        self.scrollbar_color = color;
+        self
+    }
+
+    pub fn scrollbar_hover_color(mut self, color: Color) -> Self {
+        self.scrollbar_hover_color = Some(color);
+        self
+    }
+
+    pub fn scrollbar_pressed_color(mut self, color: Color) -> Self {
+        self.scrollbar_pressed_color = Some(color);
+        self
+    }
+
+    /// Background painted behind the thumb across the full scrollbar
+    /// width/height. Default: `None` (no track chrome, just the thumb).
+    pub fn scrollbar_track_color(mut self, color: Color) -> Self {
+        self.scrollbar_track_color = Some(color);
+        self
+    }
 }
 
 impl Widget for RawScrollView {
     fn style(&self) -> Style {
         // Always Column, regardless of what the caller passes: the sole
-        // child is the content wrapper (see `children()` below), and it
-        // needs Column's cross axis (width) to `align-items: stretch` to
+        // in-flow child is the `ScrollClip` (see `children()` below), and
+        // it needs Column's cross axis (width) to `align-items: stretch` to
         // the container's width while its main axis (height) stays
-        // content-based — the combination that makes "as wide as the
-        // viewport, as tall as the content" actually happen. Row direction
-        // would stretch the wrapper's *height* instead, defeating scrolling
-        // entirely (its children would get flex-shrunk to fit).
+        // whatever the caller asked for — the combination that makes "as
+        // wide as the viewport, as tall as the caller wants" happen. Row
+        // direction would stretch the wrong axis instead.
         Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: creamui_core::layout::FlexDirection::Column,
@@ -90,10 +162,6 @@ impl Widget for RawScrollView {
     }
 
     fn children(&mut self) -> Vec<BoxedWidget> {
-        // Wrap the real children in a non-shrinking content column so they
-        // keep their natural (possibly taller-than-viewport) height instead
-        // of being flex-shrunk to fit — that overflow is exactly what makes
-        // scrolling meaningful in the first place.
         let content_style = Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: creamui_core::layout::FlexDirection::Column,
@@ -101,7 +169,79 @@ impl Widget for RawScrollView {
             ..Default::default()
         };
         let content = RawView::new(content_style).with_children(std::mem::take(&mut self.children));
-        vec![Box::new(content) as BoxedWidget]
+
+        let clip = ScrollClip {
+            style: Style {
+                display: creamui_core::layout::Display::Flex,
+                flex_direction: creamui_core::layout::FlexDirection::Column,
+                flex_grow: 1.0,
+                // Without this, the CSS "min-height: auto" trap floors
+                // `flex_grow` at the overflowing content's own height.
+                min_size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Length(0.0),
+                    height: creamui_core::layout::Dimension::Length(0.0),
+                },
+                ..Default::default()
+            },
+            controller: self.controller.clone(),
+            scroll_y: self.scroll_y,
+            on_scroll: self.on_scroll.clone(),
+            on_scroll_bounded: self.on_scroll_bounded.clone(),
+            content: Some(Box::new(content)),
+        };
+
+        let mut out: Vec<BoxedWidget> = vec![Box::new(clip)];
+        if self.scrollbar {
+            if let Some(controller) = &self.controller {
+                let bar_style = Style {
+                    position: creamui_core::layout::Position::Absolute,
+                    inset: creamui_core::layout::Rect {
+                        top: creamui_core::layout::LengthPercentageAuto::Length(0.0),
+                        right: creamui_core::layout::LengthPercentageAuto::Length(
+                            self.scrollbar_margin,
+                        ),
+                        bottom: creamui_core::layout::LengthPercentageAuto::Auto,
+                        left: creamui_core::layout::LengthPercentageAuto::Auto,
+                    },
+                    size: creamui_core::layout::Size {
+                        width: creamui_core::layout::Dimension::Length(self.scrollbar_width),
+                        height: creamui_core::layout::Dimension::Percent(1.0),
+                    },
+                    ..Default::default()
+                };
+                let mut bar = RawScrollbar::new(bar_style, controller.clone(), self.scrollbar_color);
+                bar.hover_color = self.scrollbar_hover_color;
+                bar.pressed_color = self.scrollbar_pressed_color;
+                bar.track_color = self.scrollbar_track_color;
+                out.push(Box::new(bar));
+            }
+        }
+        out
+    }
+}
+
+/// The actual clipping/offsetting/wheel-handling half of [`RawScrollView`],
+/// kept as a separate widget so a sibling [`RawScrollbar`] can sit beside
+/// it — as a child of the same undipped, unoffset parent — instead of
+/// being caught by its own [`Widget::scroll_offset`].
+struct ScrollClip {
+    style: Style,
+    scroll_y: f32,
+    controller: Option<ScrollController>,
+    on_scroll: Rc<dyn Fn(f32)>,
+    on_scroll_bounded: Option<Rc<dyn Fn(f32, f32)>>,
+    content: Option<BoxedWidget>,
+}
+
+impl Widget for ScrollClip {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, _painter: &mut dyn Painter, _rect: Rect) {}
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.content.take().into_iter().collect()
     }
 
     fn clips_children(&self) -> bool {
@@ -124,5 +264,156 @@ impl Widget for RawScrollView {
 
     fn on_scroll_bounded(&self) -> Option<Rc<dyn Fn(f32, f32)>> {
         self.on_scroll_bounded.clone()
+    }
+
+    fn on_content_overflow(&self) -> Option<Rc<dyn Fn(f32)>> {
+        let controller = self.controller.clone()?;
+        Some(Rc::new(move |max_offset| {
+            controller.report_max_offset(max_offset);
+        }))
+    }
+}
+
+/// Computes the painted thumb's length and its offset from the track's
+/// start, or `None` when there isn't enough overflow to justify a thumb
+/// (including the not-yet-measured `max_offset == f32::INFINITY` case).
+/// Shared between [`RawScrollbar::paint`] and its drag handler so both
+/// agree on exactly where the thumb is.
+fn thumb_geometry(track_length: f32, max_offset: f32, offset: f32, min_length: f32) -> Option<(f32, f32)> {
+    if !max_offset.is_finite() || max_offset <= 0.5 || track_length <= 0.0 {
+        return None;
+    }
+    let content_length = track_length + max_offset;
+    let thumb_length = (track_length * (track_length / content_length))
+        .clamp(min_length.min(track_length), track_length);
+    let usable = (track_length - thumb_length).max(0.0);
+    let fraction = (offset / max_offset).clamp(0.0, 1.0);
+    Some((thumb_length, usable * fraction))
+}
+
+/// A draggable vertical scrollbar thumb, self-contained enough to be used
+/// on its own (outside [`RawScrollView`]) as long as it shares a
+/// [`ScrollController`] with whatever it's meant to scroll. Sizes and
+/// positions its thumb from [`ScrollController::max_offset`] — kept fresh
+/// every paint by the scroll view's [`Widget::on_content_overflow`] hook —
+/// so it never needs its own access to the scrolled content's layout.
+pub struct RawScrollbar {
+    pub style: Style,
+    pub controller: ScrollController,
+    pub color: Color,
+    pub hover_color: Option<Color>,
+    pub pressed_color: Option<Color>,
+    pub track_color: Option<Color>,
+    pub thumb_inset: f32,
+    pub thumb_radius: Option<f32>,
+    pub min_thumb_length: f32,
+}
+
+impl RawScrollbar {
+    pub fn new(style: Style, controller: ScrollController, color: Color) -> Self {
+        RawScrollbar {
+            style,
+            controller,
+            color,
+            hover_color: None,
+            pressed_color: None,
+            track_color: None,
+            thumb_inset: 2.0,
+            thumb_radius: None,
+            min_thumb_length: 24.0,
+        }
+    }
+
+    pub fn hover_color(mut self, color: Color) -> Self {
+        self.hover_color = Some(color);
+        self
+    }
+
+    pub fn pressed_color(mut self, color: Color) -> Self {
+        self.pressed_color = Some(color);
+        self
+    }
+
+    pub fn track_color(mut self, color: Color) -> Self {
+        self.track_color = Some(color);
+        self
+    }
+
+    pub fn thumb_inset(mut self, inset: f32) -> Self {
+        self.thumb_inset = inset.max(0.0);
+        self
+    }
+
+    pub fn thumb_radius(mut self, radius: f32) -> Self {
+        self.thumb_radius = Some(radius.max(0.0));
+        self
+    }
+
+    pub fn min_thumb_length(mut self, length: f32) -> Self {
+        self.min_thumb_length = length.max(0.0);
+        self
+    }
+}
+
+impl Widget for RawScrollbar {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if let Some(track_color) = self.track_color {
+            painter.fill_rect(rect, track_color, self.thumb_radius.unwrap_or(rect.width / 2.0));
+        }
+        let Some((thumb_length, thumb_offset)) = thumb_geometry(
+            rect.height,
+            self.controller.max_offset(),
+            self.controller.peek(),
+            self.min_thumb_length,
+        ) else {
+            return;
+        };
+        let thumb_rect = Rect {
+            x: rect.x + self.thumb_inset,
+            y: rect.y + thumb_offset,
+            width: (rect.width - self.thumb_inset * 2.0).max(1.0),
+            height: thumb_length,
+        };
+        let color = if painter.pressed(rect) {
+            self.pressed_color.or(self.hover_color).unwrap_or(self.color)
+        } else if painter.hovered(rect) {
+            self.hover_color.unwrap_or(self.color)
+        } else {
+            self.color
+        };
+        painter.fill_rect(
+            thumb_rect,
+            color,
+            self.thumb_radius.unwrap_or(thumb_rect.width / 2.0),
+        );
+    }
+
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        let max_offset = self.controller.max_offset();
+        if !max_offset.is_finite() || max_offset <= 0.5 {
+            return None;
+        }
+        let controller = self.controller.clone();
+        let min_length = self.min_thumb_length;
+        Some(Rc::new(move |local: Point, rect: Rect| {
+            let max_offset = controller.max_offset();
+            let Some((thumb_length, _)) =
+                thumb_geometry(rect.height, max_offset, controller.peek(), min_length)
+            else {
+                return;
+            };
+            let usable = (rect.height - thumb_length).max(1.0);
+            let fraction = ((local.y - thumb_length / 2.0) / usable).clamp(0.0, 1.0);
+            controller.set(fraction * max_offset);
+        }))
+    }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        let max_offset = self.controller.max_offset();
+        (max_offset.is_finite() && max_offset > 0.5).then_some(CursorIcon::Pointer)
     }
 }

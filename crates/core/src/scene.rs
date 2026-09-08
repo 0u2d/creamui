@@ -186,7 +186,9 @@ fn paint_instance(
             if let Some(on_drag_start) = instance.widget.on_drag_start() {
                 out.drag_starts.push((visible, rect, on_drag_start));
             }
-            if let Some(on_scroll) = instance.widget.on_scroll_bounded() {
+            let on_scroll_bounded = instance.widget.on_scroll_bounded();
+            let on_content_overflow = instance.widget.on_content_overflow();
+            if on_scroll_bounded.is_some() || on_content_overflow.is_some() {
                 let content_bottom = instance
                     .children
                     .iter()
@@ -194,12 +196,17 @@ fn paint_instance(
                     .map(|layout| layout.location.y + layout.size.height)
                     .fold(0.0_f32, f32::max);
                 let max_offset = (content_bottom - rect.height).max(0.0);
-                if max_offset > 0.5 {
-                    out.scrollables.push((
-                        visible,
-                        Rc::new(move |delta| on_scroll(delta, max_offset)),
-                        true,
-                    ));
+                if let Some(report) = on_content_overflow {
+                    report(max_offset);
+                }
+                if let Some(on_scroll) = on_scroll_bounded {
+                    if max_offset > 0.5 {
+                        out.scrollables.push((
+                            visible,
+                            Rc::new(move |delta| on_scroll(delta, max_offset)),
+                            true,
+                        ));
+                    }
                 }
             } else if let Some(on_scroll) = instance.widget.on_scroll() {
                 out.scrollables.push((visible, on_scroll, false));

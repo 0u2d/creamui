@@ -240,12 +240,19 @@ impl Default for TabController {
 #[derive(Clone)]
 pub struct ScrollController {
     offset: Rc<Cell<f32>>,
+    /// The content's resolved overflow (content height minus viewport
+    /// height), refreshed every paint via [`creamui_core::Widget::on_content_overflow`].
+    /// Lets a [`crate::raw::RawScrollbar`] sharing this controller size and
+    /// position its thumb without its own access to the scroll view's
+    /// content layout.
+    max_offset: Rc<Cell<f32>>,
 }
 
 impl ScrollController {
     pub fn new(offset: f32) -> Self {
         Self {
             offset: Rc::new(Cell::new(offset.max(0.0))),
+            max_offset: Rc::new(Cell::new(f32::INFINITY)),
         }
     }
 
@@ -257,8 +264,23 @@ impl ScrollController {
         self.offset.get()
     }
 
+    /// The content's current scrollable overflow, i.e. the maximum value
+    /// [`ScrollController::offset`] can take. `f32::INFINITY` until the
+    /// scroll view this controller is attached to has painted at least
+    /// once (so an unbounded [`ScrollController::set`] before then doesn't
+    /// clamp away a caller's intended initial offset).
+    pub fn max_offset(&self) -> f32 {
+        self.max_offset.get()
+    }
+
+    /// Called by the scroll view's [`creamui_core::Widget::on_content_overflow`]
+    /// hook every paint. Not meant to be called directly by applications.
+    pub fn report_max_offset(&self, max_offset: f32) {
+        self.max_offset.set(max_offset.max(0.0));
+    }
+
     pub fn set(&self, offset: f32) {
-        self.offset.set(offset.max(0.0));
+        self.offset.set(offset.clamp(0.0, self.max_offset.get()));
     }
 
     pub fn scroll_by(&self, delta: f32, max_offset: f32) {

@@ -243,6 +243,19 @@ pub trait Widget {
         None
     }
 
+    /// Optional hook receiving this widget's resolved maximum vertical
+    /// scroll offset every time it's painted (whether or not the pointer is
+    /// involved) — the same value computed for [`Widget::on_scroll_bounded`],
+    /// just published unconditionally rather than only wired into a
+    /// deferred wheel-event closure. Lets a scrollbar rendered as a
+    /// separate sibling widget (which has no access to this widget's
+    /// children's resolved layout) size and position its thumb from a
+    /// shared controller instead of duplicating the content-height
+    /// calculation. Default: `None`.
+    fn on_content_overflow(&self) -> Option<Rc<dyn Fn(f32)>> {
+        None
+    }
+
     /// Whether this widget clips its children to its own rect. Default:
     /// `false`. A scroll view returns `true`.
     fn clips_children(&self) -> bool {

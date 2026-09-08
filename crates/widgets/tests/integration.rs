@@ -360,6 +360,64 @@ fn controlled_scroll_only_handles_wheel_when_content_overflows_and_clamps() {
 }
 
 #[test]
+fn scrollbar_thumb_is_draggable_and_tracks_the_wheel() {
+    let viewport_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(120.0),
+            height: Dimension::Length(100.0),
+        },
+        ..Default::default()
+    };
+    let controller = ScrollController::default();
+    let overflowing = RawScrollView::controlled(viewport_style, controller.clone()).child(
+        Box::new(RawView::new(Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(120.0),
+                height: Dimension::Length(260.0),
+            },
+            ..Default::default()
+        })),
+    );
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(overflowing),
+        Size {
+            width: 120.0,
+            height: 100.0,
+        },
+        &mut painter,
+    );
+
+    // Content overflow is 260 - 100 = 160px, so the scrollbar's own
+    // `on_content_overflow` report should have already reached the shared
+    // controller by the time this frame finished painting.
+    assert_eq!(controller.max_offset(), 160.0);
+
+    // The scrollbar sits a couple of pixels in from the right edge; (113, 50)
+    // lands inside its default 10px-wide track.
+    let index = scene
+        .drag_hit_test(Point { x: 113.0, y: 50.0 })
+        .expect("scrollbar track should be draggable when content overflows");
+    let (rect, handler) = scene
+        .draggable_at(index)
+        .expect("draggable index should still resolve this frame");
+
+    // Dragging to the track's bottom should jump the controller to its max.
+    handler(
+        Point {
+            x: 113.0 - rect.x,
+            y: rect.height,
+        },
+        rect,
+    );
+    assert_eq!(controller.peek(), 160.0);
+
+    // Dragging back to the top should return it to zero.
+    handler(Point { x: 113.0 - rect.x, y: 0.0 }, rect);
+    assert_eq!(controller.peek(), 0.0);
+}
+
+#[test]
 fn button_paints_and_responds_to_clicks() {
     let theme = Theme::dark();
     let counter = Signal::new(0);

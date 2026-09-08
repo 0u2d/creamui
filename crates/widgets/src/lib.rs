@@ -16,8 +16,9 @@ pub mod themed;
 
 pub use controller::{ScrollController, SelectController, TabController, TextController};
 pub use raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab,
-    RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
+    RawButton, RawCheckbox, RawScrollView, RawScrollbar, RawSidebar, RawSlider, RawSpinner,
+    RawSwitch, RawTab, RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide,
+    TextSelection,
 };
 pub use themed::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ButtonVariant, Checkbox, ComboBox,
