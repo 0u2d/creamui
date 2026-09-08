@@ -1,0 +1,10 @@
+[package]
+name = "creamui-themes"
+description = "Bundled visual style presets for CreamUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+creamui-theme = { workspace = true }

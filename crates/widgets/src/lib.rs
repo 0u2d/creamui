@@ -2,7 +2,8 @@
 //!
 //! - [`raw`] contains fully unstyled ("headless") widgets like [`raw::RawButton`].
 //! - [`themed`] contains styled wrappers like [`themed::Button`] that read
-//!   their appearance from a [`creamui_theme::Theme`].
+//!   their geometry from a [`creamui_theme::Theme`] and colours from its
+//!   independently swappable [`creamui_theme::ColorScheme`].
 //! - [`layout`] has convenience constructors for flex/grid layout styles.
 
 mod controller;
@@ -18,5 +19,6 @@ pub use raw::{
 };
 pub use themed::{
     Button, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
-    SidebarItem, Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput, TextSize, View,
+    SidebarItem, SidebarSeparator, Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput,
+    TextSize, View,
 };

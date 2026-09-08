@@ -23,7 +23,7 @@ use creamui_core::layout::{
 use creamui_core::{BoxedWidget, Size};
 use creamui_reactive::Signal;
 use creamui_render::{AppBuilder as RenderAppBuilder, WindowHandle};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{Color, ColorScheme, Theme};
 use creamui_widgets::raw::{RawText, RawView};
 use creamui_widgets::themed::{
     Button as ThemedButton, Checkbox as ThemedCheckbox, ScrollView as ThemedScrollView,
@@ -252,7 +252,7 @@ fn theme_to_c(t: Theme) -> CTheme {
 }
 
 fn theme_from_c(t: CTheme) -> Theme {
-    Theme {
+    let colors = ColorScheme {
         surface: color_from_c(t.surface),
         surface_elevated: color_from_c(t.surface_elevated),
         surface_hover: color_from_c(t.surface_hover),
@@ -269,13 +269,8 @@ fn theme_from_c(t: CTheme) -> Theme {
         danger: color_from_c(t.danger),
         warning: color_from_c(t.warning),
         success: color_from_c(t.success),
-        radius_small: t.radius_small,
-        radius_medium: t.radius_medium,
-        radius_large: t.radius_large,
-        spacing_small: t.spacing_small,
-        spacing_medium: t.spacing_medium,
-        spacing_large: t.spacing_large,
-    }
+    };
+    Theme::cream().with_colors(colors)
 }
 
 /// Returns the bundled default dark theme's tokens.

@@ -21,7 +21,9 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::raw::TabIndicatorSide;
-use creamui_widgets::{RawSidebar, RawTab, RawText, RawView, Sidebar, SidebarItem, TabColors, View};
+use creamui_widgets::{
+    RawSidebar, RawTab, RawText, RawView, Sidebar, SidebarItem, TabColors, View,
+};
 
 struct Section {
     label: &'static str,
@@ -57,7 +59,7 @@ const SECTIONS: [Section; 4] = [
 /// caller's `Signal`, not inside the widget.
 #[component]
 fn SidebarNav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
-    let colors = TabColors::dark(&theme);
+    let colors = TabColors::sidebar(&theme);
     let item_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -89,7 +91,24 @@ fn SidebarNav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
             move || select.set(index),
         )));
     }
-    Box::new(sidebar)
+    // Match the content card's inset: the rail keeps the canvas colour and
+    // its rounded item backgrounds never touch the card edge.
+    let outer_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(160.0 + theme.spacing_medium * 2.0),
+                height: Dimension::Percent(1.0),
+            },
+            flex_shrink: 0.0,
+            ..Default::default()
+        },
+        theme.spacing_medium,
+    );
+    Box::new(
+        RawView::new(outer_style)
+            .background(theme.surface)
+            .child(Box::new(sidebar)),
+    )
 }
 
 /// A fully custom, un-themed sidebar built directly from `RawSidebar`/
@@ -239,7 +258,11 @@ fn Showcase(theme: Theme, chip: Color, label: String, children: Vec<BoxedWidget>
         </RawView>
     });
     let card = View::new(&theme, card_style).with_children(children);
-    Box::new(RawView::new(outer_style).child(header).child(Box::new(card)))
+    Box::new(
+        RawView::new(outer_style)
+            .child(header)
+            .child(Box::new(card)),
+    )
 }
 
 fn main() {

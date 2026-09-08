@@ -17,7 +17,7 @@ use creamui_core::layout::{
     AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
 };
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
-use creamui_theme::Theme;
+use creamui_theme::{SelectionStyle, Theme};
 use std::rc::Rc;
 
 fn centered_box_style(padding: f32) -> Style {
@@ -62,7 +62,7 @@ impl Button {
         let text = RawText::new(label, theme.text_primary, 16.0);
         let inner = RawButton::new(style, on_click)
             .background(theme.accent)
-            .corner_radius(theme.radius_medium)
+            .corner_radius(theme.button_radius)
             .child(Box::new(text));
         Button { inner }
     }
@@ -110,7 +110,7 @@ impl Checkbox {
     pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
         let mut inner =
             RawCheckbox::new(20.0, checked, theme.accent, theme.border_strong, on_click);
-        inner = inner.corner_radius(theme.radius_small);
+        inner = inner.corner_radius(theme.checkbox_radius);
         Checkbox { inner }
     }
 }
@@ -169,8 +169,10 @@ impl TextInput {
     ) -> Self {
         let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
             .background(theme.surface_elevated)
-            .border(theme.border, 1.0)
-            .corner_radius(theme.radius_small);
+            .border(theme.border, theme.input_border_width)
+            .corner_radius(theme.input_radius)
+            .selection_background(theme.selection_background)
+            .selection_text_color(theme.selection_text);
         TextInput { inner }
     }
 
@@ -205,6 +207,15 @@ impl TextInput {
         Self::with_style(theme, style, controller.value(), move |next| {
             set.set_value(next)
         })
+        .cursor(controller.cursor(), { let set = controller.clone(); move |cursor| set.set_cursor(cursor) })
+        .selection(controller.selection(), { let set = controller.clone(); move |selection| set.set_selection(selection) })
+    }
+
+    pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        self.inner = self.inner.cursor(cursor, on_change); self
+    }
+    pub fn selection(mut self, selection: crate::raw::TextSelection, on_change: impl Fn(crate::raw::TextSelection) + 'static) -> Self {
+        self.inner = self.inner.selection(selection, on_change); self
     }
 }
 
@@ -227,6 +238,14 @@ impl Widget for TextInput {
 
     fn cursor_icon(&self) -> Option<CursorIcon> {
         self.inner.cursor_icon()
+    }
+
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        self.inner.on_drag()
+    }
+
+    fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        self.inner.on_drag_start()
     }
 
     fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
@@ -267,8 +286,8 @@ impl TextArea {
         Self {
             inner: RawTextArea::new(style, value, 14.0, theme.text_primary, on_change)
                 .background(theme.surface_elevated)
-                .border(theme.border, 1.0)
-                .corner_radius(theme.radius_medium)
+                .border(theme.border, theme.input_border_width)
+                .corner_radius(theme.textarea_radius)
                 .selection_background(theme.selection_background)
                 .selection_text_color(theme.selection_text),
         }
@@ -662,6 +681,8 @@ pub struct MenuColors {
     pub border: creamui_theme::Color,
     pub text: creamui_theme::Color,
     pub muted_text: creamui_theme::Color,
+    pub popup_radius: f32,
+    pub item_radius: f32,
 }
 
 impl MenuColors {
@@ -673,6 +694,8 @@ impl MenuColors {
             border: theme.border_strong,
             text: theme.text_primary,
             muted_text: theme.text_secondary,
+            popup_radius: theme.menu_radius,
+            item_radius: theme.menu_item_radius,
         }
     }
 }
@@ -718,7 +741,7 @@ impl MenuPopup {
         Self {
             inner: RawView::new(style)
                 .background(colors.border)
-                .corner_radius(4.0),
+                .corner_radius(colors.popup_radius),
         }
     }
     pub fn child(mut self, child: BoxedWidget) -> Self {
@@ -768,7 +791,7 @@ impl MenuItem {
         Self {
             inner: RawButton::new(style, on_click)
                 .background(color)
-                .corner_radius(3.0)
+                .corner_radius(colors.item_radius)
                 .child(Box::new(text)),
         }
     }
@@ -797,7 +820,7 @@ impl View {
         View {
             inner: RawView::new(style)
                 .background(theme.surface_elevated)
-                .corner_radius(theme.radius_medium),
+                .corner_radius(theme.card_radius),
         }
     }
 
@@ -833,21 +856,67 @@ impl Widget for View {
 pub struct TabColors {
     pub background: creamui_theme::Color,
     pub active_background: creamui_theme::Color,
+    pub hover_background: creamui_theme::Color,
     pub indicator: creamui_theme::Color,
     pub text: creamui_theme::Color,
+    pub active_text: creamui_theme::Color,
     pub muted_text: creamui_theme::Color,
     pub radius: f32,
+    pub container_radius: f32,
+    pub selection: SelectionStyle,
+    pub indicator_thickness: f32,
+    pub gap: f32,
+    pub icon_size: f32,
+    pub icon_radius: f32,
+    pub item_gap: f32,
+    pub separator: creamui_theme::Color,
 }
 
 impl TabColors {
+    /// Colours and geometry for a horizontal tab group.
     pub fn dark(theme: &Theme) -> Self {
         Self {
             background: theme.surface,
-            active_background: theme.surface_hover,
+            active_background: theme.accent,
+            hover_background: theme.surface_hover,
             indicator: theme.accent,
             text: theme.text_primary,
+            active_text: theme.selection_text,
             muted_text: theme.text_secondary,
-            radius: theme.radius_small,
+            radius: theme.tab_radius,
+            container_radius: theme.tabs_radius,
+            selection: theme.tab_selection,
+            indicator_thickness: theme.indicator_thickness,
+            gap: theme.tab_gap,
+            icon_size: 0.0,
+            icon_radius: 0.0,
+            item_gap: 0.0,
+            separator: theme.border,
+        }
+    }
+
+    /// Colours and geometry for a vertical sidebar. Kept separate because a
+    /// theme may intentionally give navigation a different silhouette.
+    pub fn sidebar(theme: &Theme) -> Self {
+        Self {
+            // Navigation remains integrated with the app canvas; the
+            // encapsulated content card is the elevated material.
+            background: theme.surface,
+            active_background: theme.accent,
+            hover_background: theme.surface_elevated,
+            indicator: theme.accent,
+            text: theme.text_primary,
+            active_text: theme.selection_text,
+            muted_text: theme.text_secondary,
+            radius: theme.sidebar_item_radius,
+            container_radius: theme.sidebar_radius,
+            selection: theme.sidebar_selection,
+            indicator_thickness: theme.indicator_thickness,
+            gap: theme.sidebar_gap,
+            icon_size: theme.sidebar_icon_size,
+            icon_radius: theme.sidebar_icon_radius,
+            item_gap: theme.sidebar_item_gap,
+            separator: theme.border,
         }
     }
 }
@@ -860,9 +929,15 @@ pub struct Tabs {
 }
 
 impl Tabs {
-    pub fn new(colors: TabColors, style: Style) -> Self {
+    pub fn new(colors: TabColors, mut style: Style) -> Self {
+        style.gap = creamui_core::layout::Size {
+            width: LengthPercentage::Length(colors.gap),
+            height: LengthPercentage::Length(colors.gap),
+        };
         Self {
-            inner: RawTabs::new(style).background(colors.background),
+            inner: RawTabs::new(style)
+                .background(colors.background)
+                .corner_radius(colors.container_radius),
         }
     }
 
@@ -905,15 +980,34 @@ impl Tab {
         active: bool,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        let text_color = if active { colors.indicator } else { colors.muted_text };
+        let text_color = if active && colors.selection == SelectionStyle::Filled {
+            colors.active_text
+        } else if active {
+            colors.text
+        } else {
+            colors.muted_text
+        };
         let text = RawText::new(label, text_color, 14.0)
             .align(TextAlign::Center)
             .layout_style(style.clone());
-        Self {
-            inner: RawTab::new(style, active, on_click)
-                .indicator(TabIndicatorSide::Bottom, colors.indicator, 2.5)
-                .child(Box::new(text)),
+        let mut inner = RawTab::new(style, active, on_click)
+            .corner_radius(colors.radius)
+            .child(Box::new(text));
+        match colors.selection {
+            SelectionStyle::Filled => {
+                if active {
+                    inner = inner.background(colors.active_background);
+                }
+            }
+            SelectionStyle::Indicator => {
+                inner = inner.indicator(
+                    TabIndicatorSide::Bottom,
+                    colors.indicator,
+                    colors.indicator_thickness,
+                );
+            }
         }
+        Self { inner }
     }
 }
 
@@ -943,9 +1037,15 @@ pub struct Sidebar {
 }
 
 impl Sidebar {
-    pub fn new(colors: TabColors, style: Style) -> Self {
+    pub fn new(colors: TabColors, mut style: Style) -> Self {
+        style.gap = creamui_core::layout::Size {
+            width: LengthPercentage::Length(colors.gap),
+            height: LengthPercentage::Length(colors.gap),
+        };
         Self {
-            inner: RawSidebar::new(style).background(colors.background),
+            inner: RawSidebar::new(style)
+                .background(colors.background)
+                .corner_radius(colors.container_radius),
         }
     }
 
@@ -979,6 +1079,37 @@ pub struct SidebarItem {
     inner: RawTab,
 }
 
+/// A divider for groups inside a [`Sidebar`]. Its label is optional; when
+/// supplied it becomes the small, muted section title used by settings apps.
+pub struct SidebarSeparator {
+    colors: TabColors,
+    style: Style,
+    label: Option<String>,
+}
+
+impl SidebarSeparator {
+    pub fn new(colors: TabColors, style: Style) -> Self {
+        Self { colors, style, label: None }
+    }
+
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+}
+
+impl Widget for SidebarSeparator {
+    fn style(&self) -> Style { self.style.clone() }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if let Some(label) = &self.label {
+            painter.fill_text(rect, label, self.colors.muted_text, 11.0, TextAlign::Start);
+        } else {
+            let y = rect.y + rect.height / 2.0;
+            painter.fill_rect(Rect { x: rect.x, y, width: rect.width, height: 1.0 }, self.colors.separator, 0.0);
+        }
+    }
+}
+
 impl SidebarItem {
     pub fn new(
         colors: TabColors,
@@ -987,18 +1118,133 @@ impl SidebarItem {
         active: bool,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        // No background fill: a full-row block popping in and out on every
-        // click reads as the whole row changing size, not just selection.
-        // Only the text color and a thin indicator bar change, the same
-        // restrained treatment as `Tab`'s underline.
-        let text_color = if active { colors.text } else { colors.muted_text };
-        let text = RawText::new(label, text_color, 14.0)
-            .align(TextAlign::Start)
-            .layout_style(style.clone());
-        let mut inner = RawTab::new(style, active, on_click).child(Box::new(text));
-        if active {
-            inner = inner.indicator(TabIndicatorSide::Left, colors.indicator, 3.0);
+        Self::build(colors, style, label.into(), None, active, false, None, on_click)
+    }
+
+    /// Adds a small rounded square icon before the item label.
+    pub fn with_icon(
+        colors: TabColors,
+        style: Style,
+        label: impl Into<String>,
+        icon_color: creamui_theme::Color,
+        active: bool,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self::build(colors, style, label.into(), Some(icon_color), active, false, None, on_click)
+    }
+
+    /// A sidebar item with a real pointer-hover state. Keep `hovered` in a
+    /// [`creamui_reactive::Signal`] and pass its setter here; the renderer
+    /// calls it on pointer entry/exit and the item is rebuilt with the soft
+    /// hover background on the next reactive frame.
+    pub fn with_hover(
+        colors: TabColors,
+        style: Style,
+        label: impl Into<String>,
+        active: bool,
+        hovered: bool,
+        on_hover: impl Fn(bool) + 'static,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self::build(
+            colors,
+            style,
+            label.into(),
+            None,
+            active,
+            hovered,
+            Some(Rc::new(on_hover)),
+            on_click,
+        )
+    }
+
+    /// Combines a coloured icon with the reactive hover state.
+    pub fn with_icon_hover(
+        colors: TabColors,
+        style: Style,
+        label: impl Into<String>,
+        icon_color: creamui_theme::Color,
+        active: bool,
+        hovered: bool,
+        on_hover: impl Fn(bool) + 'static,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self::build(
+            colors, style, label.into(), Some(icon_color), active, hovered,
+            Some(Rc::new(on_hover)), on_click,
+        )
+    }
+
+    fn build(
+        colors: TabColors,
+        style: Style,
+        label: String,
+        icon_color: Option<creamui_theme::Color>,
+        active: bool,
+        hovered: bool,
+        on_hover: Option<Rc<dyn Fn(bool)>>,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        let text_color = if active && colors.selection == SelectionStyle::Filled {
+            colors.active_text
+        } else if active {
+            colors.text
+        } else {
+            colors.muted_text
+        };
+        let text = RawText::new(label, text_color, 14.0).align(TextAlign::Start);
+        let content: BoxedWidget = if let Some(icon_color) = icon_color {
+            let content_style = Style {
+                size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Percent(1.0),
+                    height: creamui_core::layout::Dimension::Percent(1.0),
+                },
+                display: creamui_core::layout::Display::Flex,
+                flex_direction: creamui_core::layout::FlexDirection::Row,
+                align_items: Some(AlignItems::Center),
+                gap: creamui_core::layout::Size {
+                    width: LengthPercentage::Length(colors.item_gap),
+                    height: LengthPercentage::Length(colors.item_gap),
+                },
+                ..Default::default()
+            };
+            let icon_style = Style {
+                size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Length(colors.icon_size),
+                    height: creamui_core::layout::Dimension::Length(colors.icon_size),
+                },
+                flex_shrink: 0.0,
+                ..Default::default()
+            };
+            let text_style = Style { flex_grow: 1.0, ..Default::default() };
+            Box::new(
+                RawView::new(content_style)
+                    .child(Box::new(RawView::new(icon_style).background(icon_color).corner_radius(colors.icon_radius)))
+                    .child(Box::new(text.layout_style(text_style))),
+            )
+        } else {
+            Box::new(text.layout_style(style.clone()))
+        };
+        let mut inner = RawTab::new(style, active, on_click)
+            .corner_radius(colors.radius)
+            .child(content);
+        match colors.selection {
+            SelectionStyle::Filled => {
+                if active {
+                    inner = inner.background(colors.active_background);
+                } else if hovered {
+                    inner = inner.background(colors.hover_background);
+                }
+            }
+            SelectionStyle::Indicator => {
+                inner = inner.indicator(
+                    TabIndicatorSide::Left,
+                    colors.indicator,
+                    colors.indicator_thickness,
+                );
+            }
         }
+        inner.on_hover = on_hover;
         Self { inner }
     }
 }
@@ -1018,6 +1264,9 @@ impl Widget for SidebarItem {
     }
     fn cursor_icon(&self) -> Option<CursorIcon> {
         self.inner.cursor_icon()
+    }
+    fn on_hover(&self) -> Option<Rc<dyn Fn(bool)>> {
+        self.inner.on_hover.clone()
     }
 }
 

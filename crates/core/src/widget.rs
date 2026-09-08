@@ -216,6 +216,13 @@ pub trait Widget {
         None
     }
 
+    /// Called whenever the pointer enters or leaves this widget's visible
+    /// rect. This is deliberately separate from clicks so controls can
+    /// expose native hover affordances without owning renderer state.
+    fn on_hover(&self) -> Option<Rc<dyn Fn(bool)>> {
+        None
+    }
+
     /// Paints an overlay on top of this widget's normal [`Widget::paint`]
     /// output, called only on the frame's currently focused widget (see
     /// [`Widget::focusable`]). Used for a text input's blinking caret.

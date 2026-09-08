@@ -16,7 +16,8 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::layout::{column, fixed, margin_xy, padding, row};
 use creamui_widgets::{
-    RawView, Sidebar, SidebarItem, Tab, TabColors, Tabs, TextController, TextSize,
+    RawText, RawView, Sidebar, SidebarItem, SidebarSeparator, Tab, TabColors, Tabs,
+    TextController, TextSize,
 };
 
 /// Sidebar entries, in display order. `SEPARATOR_AFTER` marks which of these
@@ -31,6 +32,12 @@ const NAV_LABELS: [&str; 7] = [
     "Tabs",
 ];
 const SEPARATOR_AFTER: [usize; 2] = [0, 4];
+const NAV_ICON_COLORS: [Color; 7] = [
+    Color::rgb(0x7c, 0x5c, 0xff), Color::rgb(0x2f, 0x8a, 0xe6),
+    Color::rgb(0xff, 0x9f, 0x0a), Color::rgb(0x3d, 0xc9, 0x6f),
+    Color::rgb(0xff, 0x5a, 0xd8), Color::rgb(0x5a, 0xc8, 0xfa),
+    Color::rgb(0xe6, 0x8a, 0x2e),
+];
 
 const ACCENTS: [(&str, Color); 5] = [
     ("Violet", Color::rgb(0x7c, 0x5c, 0xff)),
@@ -49,9 +56,9 @@ fn shade(color: Color, delta: i32) -> Color {
 
 fn build_theme(dark: bool, accent: Color) -> Theme {
     let mut theme = if dark { Theme::dark() } else { Theme::light() };
-    theme.accent = accent;
-    theme.accent_hover = shade(accent, if dark { 18 } else { -18 });
-    theme.accent_pressed = shade(accent, if dark { -18 } else { 18 });
+    theme.colors.accent = accent;
+    theme.colors.accent_hover = shade(accent, if dark { 18 } else { -18 });
+    theme.colors.accent_pressed = shade(accent, if dark { -18 } else { 18 });
     theme
 }
 
@@ -67,12 +74,12 @@ fn label_style() -> Style {
 
 /// A 1px divider spanning the sidebar's width, with a little breathing room
 /// above and below.
-fn separator(theme: &Theme) -> BoxedWidget {
+fn separator(theme: &Theme, label: Option<&str>) -> BoxedWidget {
     let style = margin_xy(
         Style {
             size: creamui_core::layout::Size {
                 width: Dimension::Percent(1.0),
-                height: Dimension::Length(1.0),
+                height: Dimension::Length(if label.is_some() { 18.0 } else { 1.0 }),
             },
             flex_shrink: 0.0,
             ..Default::default()
@@ -80,14 +87,18 @@ fn separator(theme: &Theme) -> BoxedWidget {
         0.0,
         6.0,
     );
-    Box::new(RawView::new(style).background(theme.border))
+    let separator = SidebarSeparator::new(TabColors::sidebar(theme), style);
+    Box::new(match label {
+        Some(label) => separator.label(label),
+        None => separator,
+    })
 }
 
 /// The left-hand navigation rail: `NAV_LABELS`, with dividers spliced in
 /// after the indices in `SEPARATOR_AFTER`.
 #[component]
-fn Nav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
-    let colors = TabColors::dark(&theme);
+fn Nav(theme: Theme, active: Signal<usize>, hovered: Vec<Signal<bool>>) -> BoxedWidget {
+    let colors = TabColors::sidebar(&theme);
     let item_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -110,22 +121,58 @@ fn Nav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
         },
         theme.spacing_small,
     );
+    let brand_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(44.0),
+            },
+            align_items: Some(AlignItems::Center),
+            ..Default::default()
+        },
+        theme.spacing_medium,
+    );
     let mut sidebar = Sidebar::new(colors, sidebar_style);
+    sidebar = sidebar
+        .child(Box::new(
+            RawText::new("CreamUI", theme.text_primary, 20.0)
+                .align(TextAlign::Start)
+                .layout_style(brand_style),
+        ))
+        .child(separator(&theme, Some("GENERAL")));
     for (index, label) in NAV_LABELS.iter().enumerate() {
         let is_active = active.get() == index;
         let select = active.clone();
-        sidebar = sidebar.child(Box::new(SidebarItem::new(
+        let hover = hovered[index].clone();
+        sidebar = sidebar.child(Box::new(SidebarItem::with_icon_hover(
             colors,
             item_style.clone(),
             *label,
+            NAV_ICON_COLORS[index],
             is_active,
+            hover.get(),
+            move |is_hovered| hover.set(is_hovered),
             move || select.set(index),
         )));
         if SEPARATOR_AFTER.contains(&index) {
-            sidebar = sidebar.child(separator(&theme));
+            let label = if index == 0 { "CONTROLS" } else { "EXAMPLES" };
+            sidebar = sidebar.child(separator(&theme, Some(label)));
         }
     }
-    Box::new(sidebar)
+    let outer_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(180.0 + theme.spacing_medium * 2.0),
+                height: Dimension::Percent(1.0),
+            },
+            flex_shrink: 0.0,
+            ..Default::default()
+        },
+        theme.spacing_medium,
+    );
+    Box::new(RawView::new(outer_style)
+        .background(theme.surface)
+        .child(Box::new(sidebar)))
 }
 
 /// A section heading: a bold title plus a muted one-line description.
@@ -167,7 +214,11 @@ fn pill(theme: &Theme, label: &str, active: bool, on_click: impl Fn() + 'static)
     } else {
         theme.text_primary
     };
-    let background = if active { theme.accent } else { theme.surface_elevated };
+    let background = if active {
+        theme.accent
+    } else {
+        theme.surface_elevated
+    };
     Box::new(jsx! {
         <RawButton style={style.clone()} background={background} corner_radius={theme.radius_medium} on_click={on_click}>
             <RawText color={text_color} font_size={14.0} align={TextAlign::Center} style={style}>{label.to_owned()}</RawText>
@@ -190,7 +241,11 @@ fn swatch(theme: &Theme, color: Color, active: bool, on_click: impl Fn() + 'stat
         size: fixed(inner_size, inner_size),
         ..Default::default()
     };
-    let ring = if active { theme.text_primary } else { theme.surface };
+    let ring = if active {
+        theme.text_primary
+    } else {
+        theme.surface
+    };
     Box::new(jsx! {
         <RawButton style={outer} background={ring} corner_radius={20.0} on_click={on_click}>
             <RawView style={inner} background={color} corner_radius={16.0} />
@@ -220,9 +275,12 @@ fn AppearancePanel(
     let mut swatches: Vec<BoxedWidget> = Vec::new();
     for (index, (_, color)) in ACCENTS.iter().enumerate() {
         let set_accent = accent_index.clone();
-        swatches.push(swatch(&theme, *color, index == selected_accent, move || {
-            set_accent.set(index)
-        }));
+        swatches.push(swatch(
+            &theme,
+            *color,
+            index == selected_accent,
+            move || set_accent.set(index),
+        ));
     }
 
     let accent_name = ACCENTS[selected_accent].0;
@@ -423,7 +481,7 @@ fn CheckboxPanel(
 #[component]
 fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
     const ITEMS: [&str; 3] = ["Inbox", "Drafts", "Sent"];
-    let colors = TabColors::dark(&theme);
+    let colors = TabColors::sidebar(&theme);
     let item_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -543,12 +601,12 @@ fn main() {
     let dark_mode = Signal::new(true);
     let accent_index = Signal::new(0usize);
     let active_section = Signal::new(0usize);
+    let nav_hovered: Vec<_> = NAV_LABELS.iter().map(|_| Signal::new(false)).collect();
 
     let plain = TextController::default();
     let with_placeholder = TextController::default();
-    let notes = TextController::new(
-        "Every control on this page reads its colors from the current Theme.",
-    );
+    let notes =
+        TextController::new("Every control on this page reads its colors from the current Theme.");
     let notes_wrapped = TextController::new(
         "This one sets wrap={true}: long lines break onto a new row instead of scrolling past the edge.",
     );
@@ -587,11 +645,22 @@ fn main() {
                 ..row(0.0)
             };
 
-            let content_style = padding(
+            let content_outer_style = padding(
                 Style {
                     flex_grow: 1.0,
                     size: creamui_core::layout::Size {
                         width: Dimension::Auto,
+                        height: Dimension::Percent(1.0),
+                    },
+                    ..column(0.0)
+                },
+                theme.spacing_medium,
+            );
+            let content_style = padding(
+                Style {
+                    flex_grow: 1.0,
+                    size: creamui_core::layout::Size {
+                        width: Dimension::Percent(1.0),
                         height: Dimension::Percent(1.0),
                     },
                     ..column(0.0)
@@ -648,16 +717,17 @@ fn main() {
                     active: tabs_demo_active.clone(),
                 }),
             ];
-            let panel = panels
-                .into_iter()
-                .nth(active_section.get())
-                .expect("active_section is always kept within NAV_LABELS' range by Nav's click handlers");
+            let panel = panels.into_iter().nth(active_section.get()).expect(
+                "active_section is always kept within NAV_LABELS' range by Nav's click handlers",
+            );
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Nav theme={theme} active={active_section.clone()} />
-                    <RawView style={content_style} background={theme.surface}>
-                        {panel}
+                    <Nav theme={theme} active={active_section.clone()} hovered={nav_hovered.clone()} />
+                    <RawView style={content_outer_style} background={theme.surface}>
+                        <View theme={&theme} style={content_style}>
+                            {panel}
+                        </View>
                     </RawView>
                 </RawView>
             })

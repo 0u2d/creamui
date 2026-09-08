@@ -101,6 +101,7 @@ struct PaintOutputs {
     drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
     cursors: Vec<(Rect, CursorIcon)>,
+    hovers: Vec<(Rect, Rc<dyn Fn(bool)>)>,
 }
 
 /// Context threaded through [`paint_instance`] to identify and paint the
@@ -160,6 +161,9 @@ fn paint_instance(
         if let Some(cursor) = instance.widget.cursor_icon() {
             out.cursors.push((visible, cursor));
         }
+        if let Some(handler) = instance.widget.on_hover() {
+            out.hovers.push((visible, handler));
+        }
     }
 
     let offset = instance.widget.scroll_offset();
@@ -206,6 +210,7 @@ pub struct Scene {
     drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
     cursors: Vec<(Rect, CursorIcon)>,
+    hovers: Vec<(Rect, Rc<dyn Fn(bool)>)>,
 }
 
 impl Scene {
@@ -279,6 +284,15 @@ impl Scene {
             .find(|(rect, _)| rect.contains(point))
             .map(|(_, icon)| *icon)
     }
+
+    /// The hover callback belonging to the topmost hovered widget.
+    pub fn hover_hit_test(&self, point: Point) -> Option<(Rect, Rc<dyn Fn(bool)>)> {
+        self.hovers
+            .iter()
+            .rev()
+            .find(|(rect, _)| rect.contains(point))
+            .map(|(rect, handler)| (*rect, handler.clone()))
+    }
 }
 
 /// Owns a persistent `taffy` layout tree across frames, reconciling each new
@@ -348,6 +362,7 @@ impl Renderer {
             drag_starts: out.drag_starts,
             scrollables: out.scrollables,
             cursors: out.cursors,
+            hovers: out.hovers,
         }
     }
 }

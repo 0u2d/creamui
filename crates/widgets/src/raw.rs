@@ -296,8 +296,16 @@ pub struct RawTextInput {
     pub border_width: f32,
     pub corner_radius: f32,
     pub font_size: f32,
+    pub cursor: usize,
+    pub selection: TextSelection,
+    pub selection_background: Option<Color>,
+    pub selection_text_color: Option<Color>,
     pub on_change: Rc<dyn Fn(String)>,
+    pub on_cursor_change: Rc<dyn Fn(usize)>,
+    pub on_selection_change: Rc<dyn Fn(TextSelection)>,
     pub clipboard_enabled: bool,
+    keyboard_selection: Rc<Cell<TextSelection>>,
+    drag_anchor: Rc<Cell<usize>>,
 }
 
 /// An unstyled multi-line text editor. Like [`RawTextInput`], its value is
@@ -497,7 +505,13 @@ impl RawTextArea {
 
     /// One row per source line, unbounded width, scrolled horizontally so
     /// the caret stays visible — no wrapping.
-    fn paint_unwrapped(&self, painter: &mut dyn Painter, text_rect: Rect, text: &str, color: Color) {
+    fn paint_unwrapped(
+        &self,
+        painter: &mut dyn Painter,
+        text_rect: Rect,
+        text: &str,
+        color: Color,
+    ) {
         let line_height = self.font_size * 1.4;
         let active_line = self.value[..self.cursor.min(self.value.len())]
             .matches('\n')
@@ -567,7 +581,13 @@ impl RawTextArea {
                 }
                 source_offset = line_end + 1;
             }
-            painter.fill_text(unbounded_line_rect, line, color, self.font_size, TextAlign::Start);
+            painter.fill_text(
+                unbounded_line_rect,
+                line,
+                color,
+                self.font_size,
+                TextAlign::Start,
+            );
         }
     }
 
@@ -959,7 +979,13 @@ impl Widget for RawTextArea {
     }
 }
 
-fn cursor_at_point(value: &str, font_size: f32, point: Point, wrap: bool, visible_width: f32) -> usize {
+fn cursor_at_point(
+    value: &str,
+    font_size: f32,
+    point: Point,
+    wrap: bool,
+    visible_width: f32,
+) -> usize {
     if wrap {
         return crate::text_metrics::byte_offset_at_point(
             value,
@@ -988,9 +1014,11 @@ impl RawTextInput {
         text_color: Color,
         on_change: impl Fn(String) + 'static,
     ) -> Self {
+        let value = value.into();
+        let cursor = value.len();
         RawTextInput {
             style,
-            value: value.into(),
+            value,
             placeholder: String::new(),
             text_color,
             placeholder_color: text_color,
@@ -999,8 +1027,16 @@ impl RawTextInput {
             border_width: 1.0,
             corner_radius: 0.0,
             font_size,
+            cursor,
+            selection: TextSelection { anchor: cursor, focus: cursor },
+            selection_background: None,
+            selection_text_color: None,
             on_change: Rc::new(on_change),
+            on_cursor_change: Rc::new(|_| {}),
+            on_selection_change: Rc::new(|_| {}),
             clipboard_enabled: true,
+            keyboard_selection: Rc::new(Cell::new(TextSelection { anchor: cursor, focus: cursor })),
+            drag_anchor: Rc::new(Cell::new(cursor)),
         }
     }
 
@@ -1032,6 +1068,24 @@ impl RawTextInput {
         self.clipboard_enabled = enabled;
         self
     }
+
+    pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        self.cursor = cursor.min(self.value.len());
+        self.selection = TextSelection { anchor: self.cursor, focus: self.cursor };
+        self.keyboard_selection.set(self.selection);
+        self.on_cursor_change = Rc::new(on_change);
+        self
+    }
+
+    pub fn selection(mut self, selection: TextSelection, on_change: impl Fn(TextSelection) + 'static) -> Self {
+        self.selection = TextSelection { anchor: selection.anchor.min(self.value.len()), focus: selection.focus.min(self.value.len()) };
+        self.keyboard_selection.set(self.selection);
+        self.on_selection_change = Rc::new(on_change);
+        self
+    }
+
+    pub fn selection_background(mut self, color: Color) -> Self { self.selection_background = Some(color); self }
+    pub fn selection_text_color(mut self, color: Color) -> Self { self.selection_text_color = Some(color); self }
 
     /// How far to shift the value left so its end (editing is append-only)
     /// stays inside `visible_width` instead of running off the edge.
@@ -1082,10 +1136,20 @@ impl Widget for RawTextInput {
                 );
             }
         } else {
-            painter.fill_text(
+            let selected = self.selection.range();
+            if !selected.is_empty() {
+                if let Some(background) = self.selection_background {
+                    let (before, _) = crate::text_metrics::measure(&self.value[..selected.start], self.font_size, crate::text_metrics::unbounded_width());
+                    let (width, _) = crate::text_metrics::measure(&self.value[selected.clone()], self.font_size, crate::text_metrics::unbounded_width());
+                    painter.fill_rect(Rect { x: unbounded.x + before, y: rect.y + (rect.height - self.font_size * 1.4) / 2.0, width, height: self.font_size * 1.4 }, background, 2.0);
+                }
+            }
+            painter.fill_text_selected(
                 unbounded,
                 &self.value,
                 self.text_color,
+                self.selection_text_color.unwrap_or(self.text_color),
+                selected,
                 self.font_size,
                 TextAlign::Start,
             );
@@ -1107,8 +1171,9 @@ impl Widget for RawTextInput {
         }
         let padding = 8.0;
         let visible_width = (rect.width - padding * 2.0).max(0.0);
+        let cursor = self.cursor.min(self.value.len());
         let (text_width, _) = crate::text_metrics::measure(
-            &self.value,
+            &self.value[..cursor],
             self.font_size,
             crate::text_metrics::unbounded_width(),
         );
@@ -1129,29 +1194,60 @@ impl Widget for RawTextInput {
     }
 
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
-        let value = self.value.clone();
-        let on_change = self.on_change.clone();
+        let value = self.value.clone(); let on_change = self.on_change.clone();
+        let cursor = self.cursor; let on_cursor_change = self.on_cursor_change.clone();
+        let selection = self.keyboard_selection.clone(); let on_selection_change = self.on_selection_change.clone();
         let clipboard_enabled = self.clipboard_enabled;
         Some(Rc::new(move |input: KeyInput| {
-            let mut next = value.clone();
-            if clipboard_enabled
-                && input.modifiers.ctrl
-                && matches!(input.key, Key::Char('v') | Key::Char('V'))
-            {
-                if let Some(pasted) = clipboard_read() {
-                    next.push_str(&pasted);
-                    on_change(next);
+            let selected = selection.get();
+            if clipboard_enabled && input.modifiers.ctrl {
+                match input.key {
+                    Key::Char('a') | Key::Char('A') => { let all = TextSelection { anchor: 0, focus: value.len() }; selection.set(all); creamui_reactive::batch(|| { on_cursor_change(value.len()); on_selection_change(all); }); return; }
+                    Key::Char('c') | Key::Char('C') if !selected.is_empty() => { clipboard_write(value[selected.range()].to_owned()); return; }
+                    Key::Char('x') | Key::Char('X') if !selected.is_empty() => { let range = selected.range(); clipboard_write(value[range.clone()].to_owned()); let mut next = value.clone(); next.replace_range(range.clone(), ""); let at = range.start; let collapsed = TextSelection { anchor: at, focus: at }; selection.set(collapsed); creamui_reactive::batch(|| { on_change(next); on_cursor_change(at); on_selection_change(collapsed); }); return; }
+                    Key::Char('v') | Key::Char('V') => { if let Some(paste) = clipboard_read() { let range = selected.range(); let mut next = value.clone(); let at = if range.is_empty() { cursor.min(next.len()) } else { range.start }; next.replace_range(if range.is_empty() { at..at } else { range }, &paste); let at = at + paste.len(); let collapsed = TextSelection { anchor: at, focus: at }; selection.set(collapsed); creamui_reactive::batch(|| { on_change(next); on_cursor_change(at); on_selection_change(collapsed); }); } return; }
+                    _ => {}
                 }
-                return;
             }
+            let mut next = value.clone(); let mut at = cursor.min(next.len()); let range = selected.range(); let mut changed = false;
             match input.key {
-                Key::Char(c) => next.push(c),
-                Key::Backspace => {
-                    next.pop();
-                }
-                _ => return,
+                Key::Char(c) => { next.replace_range(if range.is_empty() { at..at } else { range.clone() }, &c.to_string()); at = if range.is_empty() { at + c.len_utf8() } else { range.start + c.len_utf8() }; changed = true; }
+                Key::Backspace => { if !range.is_empty() { next.replace_range(range.clone(), ""); at = range.start; changed = true; } else if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i) { next.replace_range(previous..at, ""); at = previous; changed = true; } }
+                Key::Delete => { if !range.is_empty() { next.replace_range(range.clone(), ""); at = range.start; changed = true; } else if let Some(ch) = next[at..].chars().next() { next.replace_range(at..at + ch.len_utf8(), ""); changed = true; } }
+                Key::Left => { if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i) { at = previous; } }
+                Key::Right => { if let Some(ch) = next[at..].chars().next() { at += ch.len_utf8(); } }
+                Key::Home => at = 0, Key::End => at = next.len(), _ => return,
             }
-            on_change(next);
+            let next_selection = if input.modifiers.shift && matches!(input.key, Key::Left | Key::Right | Key::Home | Key::End) { TextSelection { anchor: if selected.is_empty() { cursor } else { selected.anchor }, focus: at } } else { TextSelection { anchor: at, focus: at } };
+            selection.set(next_selection); creamui_reactive::batch(|| { if changed { on_change(next); } on_cursor_change(at); on_selection_change(next_selection); });
+        }))
+    }
+
+    fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        let value = self.value.clone(); let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone(); let on_selection_change = self.on_selection_change.clone();
+        let selection = self.keyboard_selection.clone(); let anchor = self.drag_anchor.clone();
+        Some(Rc::new(move |point, rect| {
+            let visible = (rect.width - 16.0).max(0.0);
+            let (width, _) = crate::text_metrics::measure(&value, font_size, crate::text_metrics::unbounded_width());
+            let scroll = (width - visible + 4.0).max(0.0);
+            let cursor = crate::text_metrics::byte_offset_at_x(&value, font_size, (point.x - 8.0 + scroll).max(0.0));
+            anchor.set(cursor); let next = TextSelection { anchor: cursor, focus: cursor }; selection.set(next);
+            creamui_reactive::batch(|| { on_cursor_change(cursor); on_selection_change(next); });
+        }))
+    }
+
+    fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
+        let value = self.value.clone(); let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone(); let on_selection_change = self.on_selection_change.clone();
+        let selection = self.keyboard_selection.clone(); let anchor = self.drag_anchor.clone();
+        Some(Rc::new(move |point, rect| {
+            let visible = (rect.width - 16.0).max(0.0);
+            let (width, _) = crate::text_metrics::measure(&value, font_size, crate::text_metrics::unbounded_width());
+            let scroll = (width - visible + 4.0).max(0.0);
+            let cursor = crate::text_metrics::byte_offset_at_x(&value, font_size, (point.x - 8.0 + scroll).max(0.0));
+            let next = TextSelection { anchor: anchor.get(), focus: cursor }; selection.set(next);
+            creamui_reactive::batch(|| { on_cursor_change(cursor); on_selection_change(next); });
         }))
     }
 }
@@ -1473,6 +1569,7 @@ pub struct RawTab {
     pub indicator: Option<(TabIndicatorSide, Color, f32)>,
     pub children: Vec<BoxedWidget>,
     pub on_click: Rc<dyn Fn()>,
+    pub on_hover: Option<Rc<dyn Fn(bool)>>,
 }
 
 impl RawTab {
@@ -1485,6 +1582,7 @@ impl RawTab {
             indicator: None,
             children: Vec::new(),
             on_click: Rc::new(on_click),
+            on_hover: None,
         }
     }
 
@@ -1501,6 +1599,13 @@ impl RawTab {
     /// Draws a solid `thickness`-px bar along `side` while `active` is true.
     pub fn indicator(mut self, side: TabIndicatorSide, color: Color, thickness: f32) -> Self {
         self.indicator = Some((side, color, thickness));
+        self
+    }
+
+    /// Registers a pointer enter/leave callback. The renderer invokes it
+    /// with `true` on entry and `false` on exit.
+    pub fn on_hover(mut self, callback: impl Fn(bool) + 'static) -> Self {
+        self.on_hover = Some(Rc::new(callback));
         self
     }
 
@@ -1569,6 +1674,10 @@ impl Widget for RawTab {
 
     fn cursor_icon(&self) -> Option<CursorIcon> {
         Some(CursorIcon::Pointer)
+    }
+
+    fn on_hover(&self) -> Option<Rc<dyn Fn(bool)>> {
+        self.on_hover.clone()
     }
 }
 

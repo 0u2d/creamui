@@ -294,6 +294,9 @@ struct WindowState {
     /// The system cursor icon last set on the window, so `CursorMoved`
     /// only calls into the backend when it actually changes.
     current_cursor: CursorIcon,
+    /// Callback for the widget currently under the pointer. Keeping the
+    /// callback rather than a scene index makes it safe across re-renders.
+    hovered: Option<(creamui_core::Rect, Rc<dyn Fn(bool)>)>,
     /// Index into the current `Scene`'s draggables while the left mouse
     /// button is held down over one, `None` otherwise.
     dragging: Option<usize>,
@@ -358,6 +361,30 @@ impl WindowState {
                     self.current_cursor = hovered_cursor;
                     self.window
                         .set_cursor(translate_cursor_icon(hovered_cursor));
+                }
+
+                let next_hover = self
+                    .frame
+                    .borrow()
+                    .scene
+                    .as_ref()
+                    .and_then(|scene| scene.hover_hit_test(self.pointer_pos));
+                // Widget descriptions are recreated on each reactive frame,
+                // so callback `Rc`s are not stable. The visible rect is: it
+                // prevents a stationary pointer from producing leave/enter
+                // churn after an unrelated redraw.
+                let unchanged = matches!(
+                    (&self.hovered, &next_hover),
+                    (Some((current_rect, _)), Some((next_rect, _))) if current_rect == next_rect
+                );
+                if !unchanged {
+                    if let Some((_, current)) = self.hovered.take() {
+                        current(false);
+                    }
+                    if let Some((rect, next)) = next_hover {
+                        next(true);
+                        self.hovered = Some((rect, next));
+                    }
                 }
 
                 if let Some(index) = self.dragging {
@@ -628,6 +655,7 @@ impl ApplicationHandler for AppHandler {
                     caret_visible: spec.caret_visible,
                     next_blink: Instant::now() + CARET_BLINK_INTERVAL,
                     current_cursor: CursorIcon::Default,
+                    hovered: None,
                     dragging: None,
                     repaint: spec.repaint,
                     render: spec.render,
