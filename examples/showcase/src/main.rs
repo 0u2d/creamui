@@ -259,7 +259,17 @@ fn InputPanel(
     plain: TextController,
     with_placeholder: TextController,
     notes: TextController,
+    notes_wrapped: TextController,
 ) -> BoxedWidget {
+    fn textarea_style() -> Style {
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(320.0),
+                height: Dimension::Length(180.0),
+            },
+            ..Default::default()
+        }
+    }
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
             <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"TextInput and TextArea, each bound to its own TextController.".to_owned()} />
@@ -271,9 +281,15 @@ fn InputPanel(
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"With placeholder".to_owned()}</Text>
                 <TextInput theme={&theme} controller={&with_placeholder} placeholder={"Type something…".to_owned()} />
             </RawView>
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Multi-line (TextArea)".to_owned()}</Text>
-                <TextArea theme={&theme} controller={&notes} placeholder={"Notes…".to_owned()} />
+            <RawView style={row(theme.spacing_large)}>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea — no wrap (scrolls)".to_owned()}</Text>
+                    <TextArea theme={&theme} controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />
+                </RawView>
+                <RawView style={column(theme.spacing_small)}>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea — wrap={true}".to_owned()}</Text>
+                    <TextArea theme={&theme} controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />
+                </RawView>
             </RawView>
         </RawView>
     })
@@ -533,6 +549,9 @@ fn main() {
     let notes = TextController::new(
         "Every control on this page reads its colors from the current Theme.",
     );
+    let notes_wrapped = TextController::new(
+        "This one sets wrap={true}: long lines break onto a new row instead of scrolling past the edge.",
+    );
 
     let clicks = Signal::new(0i32);
 
@@ -602,6 +621,7 @@ fn main() {
                     plain: plain.clone(),
                     with_placeholder: with_placeholder.clone(),
                     notes: notes.clone(),
+                    notes_wrapped: notes_wrapped.clone(),
                 }),
                 ButtonPanel(ButtonPanelProps {
                     theme,

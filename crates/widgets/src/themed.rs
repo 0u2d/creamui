@@ -335,6 +335,13 @@ impl TextArea {
         self
     }
 
+    /// When `true`, long lines wrap onto a new row at the editor's width
+    /// instead of scrolling past it. Off by default.
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.inner = self.inner.wrap(wrap);
+        self
+    }
+
     /// A `TextArea` whose value, cursor, and selection are all read from and
     /// written back to a [`crate::TextController`] — the multi-line
     /// counterpart of [`TextInput::controlled`], and the one place this

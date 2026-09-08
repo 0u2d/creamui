@@ -325,6 +325,7 @@ pub struct RawTextArea {
     pub on_selection_change: Rc<dyn Fn(TextSelection)>,
     pub on_ctrl_o: Rc<dyn Fn()>,
     pub clipboard_enabled: bool,
+    pub wrap: bool,
     // Pointer interaction can outlive a reactive frame when renders are
     // coalesced. This tiny ephemeral cell keeps drag selection anchored
     // without requiring every mouse move to rebuild the widget tree.
@@ -368,6 +369,7 @@ impl RawTextArea {
             on_selection_change: Rc::new(|_| {}),
             on_ctrl_o: Rc::new(|| {}),
             clipboard_enabled: true,
+            wrap: false,
             drag_anchor: Rc::new(Cell::new(cursor)),
             drag_focus: Rc::new(Cell::new(cursor)),
             keyboard_selection: Rc::new(Cell::new(TextSelection {
@@ -440,6 +442,15 @@ impl RawTextArea {
         self
     }
 
+    /// When `true`, long lines break onto a new visual row at the editor's
+    /// width instead of overflowing it — the caret and click-to-position
+    /// follow the wrapped rows too. Off by default (a line just scrolls
+    /// horizontally, as `RawTextInput` does).
+    pub fn wrap(mut self, wrap: bool) -> Self {
+        self.wrap = wrap;
+        self
+    }
+
     pub fn background(mut self, color: Color) -> Self {
         self.background = Some(color);
         self
@@ -483,42 +494,15 @@ impl RawTextArea {
         );
         (cursor_x - visible_width + 4.0).max(0.0)
     }
-}
 
-impl Widget for RawTextArea {
-    fn style(&self) -> Style {
-        self.style.clone()
-    }
-
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        if let Some(color) = self.background {
-            painter.fill_rect(rect, color, self.corner_radius);
-        }
-        if let Some(color) = self.border_color.filter(|_| self.border_width > 0.0) {
-            painter.stroke_rect(rect, color, self.border_width, self.corner_radius);
-        }
-        let padding = 12.0;
-        let text_rect = Rect {
-            x: rect.x + padding,
-            y: rect.y + padding,
-            width: (rect.width - padding * 2.0).max(0.0),
-            height: (rect.height - padding * 2.0).max(0.0),
-        };
-        let (text, color) = if self.value.is_empty() && !self.placeholder.is_empty() {
-            (&self.placeholder, self.placeholder_color)
-        } else {
-            (&self.value, self.text_color)
-        };
-        // `Painter::fill_text` vertically centers a text run. A textarea
-        // needs a stable baseline per source line, not one centered block.
-        // Draw each line in its own line-height box and clip overflowing
-        // document content to the editor's inner padding box.
+    /// One row per source line, unbounded width, scrolled horizontally so
+    /// the caret stays visible — no wrapping.
+    fn paint_unwrapped(&self, painter: &mut dyn Painter, text_rect: Rect, text: &str, color: Color) {
         let line_height = self.font_size * 1.4;
         let active_line = self.value[..self.cursor.min(self.value.len())]
             .matches('\n')
             .count();
         let scroll_x = self.horizontal_scroll(text_rect.width);
-        painter.push_clip(text_rect);
         let selected = self.selection.range();
         let mut source_offset = 0;
         for (index, line) in text.split('\n').enumerate() {
@@ -527,8 +511,6 @@ impl Widget for RawTextArea {
                 height: line_height,
                 ..text_rect
             };
-            // Unwrapped: a bounded width here would let fontdue word-wrap a
-            // long line, desyncing it from the single-row cursor math below.
             let unbounded_line_rect = Rect {
                 x: line_rect.x - scroll_x,
                 width: crate::text_metrics::unbounded_width(),
@@ -587,6 +569,86 @@ impl Widget for RawTextArea {
             }
             painter.fill_text(unbounded_line_rect, line, color, self.font_size, TextAlign::Start);
         }
+    }
+
+    /// Bounded width, letting `fontdue` wrap long lines onto new visual
+    /// rows; selection is highlighted per glyph since rows no longer line
+    /// up with source lines.
+    fn paint_wrapped(&self, painter: &mut dyn Painter, text_rect: Rect, text: &str, color: Color) {
+        // `Painter::fill_text` centers a block vertically within the rect
+        // it's given. A rect as tall as the whole editor would center a
+        // short wrapped block partway down it, desyncing every y this
+        // module computes (which all assume the first row starts at the
+        // rect's very top). Sizing the rect to the block's own height
+        // makes that centering a no-op.
+        let block_rect = Rect {
+            height: crate::text_metrics::content_height(text, self.font_size, text_rect.width)
+                .max(crate::text_metrics::row_height(self.font_size)),
+            ..text_rect
+        };
+        let selected = self.selection.range();
+        if !self.value.is_empty() && !selected.is_empty() {
+            if let Some(background) = self.selection_background {
+                for glyph in crate::text_metrics::layout(text, self.font_size, text_rect.width) {
+                    if selected.contains(&glyph.byte_offset) {
+                        painter.fill_rect(
+                            Rect {
+                                x: text_rect.x + glyph.x,
+                                y: text_rect.y + glyph.y,
+                                width: glyph.advance,
+                                height: glyph.row_height,
+                            },
+                            background,
+                            0.0,
+                        );
+                    }
+                }
+            }
+            painter.fill_text_selected(
+                block_rect,
+                text,
+                color,
+                self.selection_text_color.unwrap_or(color),
+                selected,
+                self.font_size,
+                TextAlign::Start,
+            );
+        } else {
+            painter.fill_text(block_rect, text, color, self.font_size, TextAlign::Start);
+        }
+    }
+}
+
+impl Widget for RawTextArea {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if let Some(color) = self.background {
+            painter.fill_rect(rect, color, self.corner_radius);
+        }
+        if let Some(color) = self.border_color.filter(|_| self.border_width > 0.0) {
+            painter.stroke_rect(rect, color, self.border_width, self.corner_radius);
+        }
+        let padding = 12.0;
+        let text_rect = Rect {
+            x: rect.x + padding,
+            y: rect.y + padding,
+            width: (rect.width - padding * 2.0).max(0.0),
+            height: (rect.height - padding * 2.0).max(0.0),
+        };
+        let (text, color) = if self.value.is_empty() && !self.placeholder.is_empty() {
+            (&self.placeholder, self.placeholder_color)
+        } else {
+            (&self.value, self.text_color)
+        };
+        painter.push_clip(text_rect);
+        if self.wrap {
+            self.paint_wrapped(painter, text_rect, text, color);
+        } else {
+            self.paint_unwrapped(painter, text_rect, text, color);
+        }
         painter.pop_clip();
     }
 
@@ -609,28 +671,36 @@ impl Widget for RawTextArea {
             height: (rect.height - padding * 2.0).max(0.0),
         };
         let cursor = self.cursor.min(self.value.len());
-        let before_cursor = &self.value[..cursor];
-        let line = before_cursor.rsplit('\n').next().unwrap_or("");
-        let (width, _) = crate::text_metrics::measure(
-            line,
-            self.font_size,
-            crate::text_metrics::unbounded_width(),
-        );
-        let lines = (before_cursor.matches('\n').count() + 1) as f32;
-        let line_height = self.font_size * 1.4;
-        // Match `RawTextInput`'s caret proportions: a slim bar sized and
-        // vertically centered to the glyphs themselves (`font_size * 1.2`),
-        // not a full-height block spanning the whole line row — the latter
-        // reads as a fat, disconnected bar next to the (smaller, centered)
-        // text `fill_text` paints.
-        let caret_height = (self.font_size * 1.2).min(line_height);
-        let line_top = text_rect.y + (lines - 1.0) * line_height;
-        let scroll_x = self.horizontal_scroll(text_rect.width);
+        // Caret proportions match `RawTextInput`'s: a slim bar sized and
+        // vertically centered to the glyphs, not a full-height block.
+        let (caret_x, caret_y, row_height) = if self.wrap {
+            let glyphs = crate::text_metrics::layout(&self.value, self.font_size, text_rect.width);
+            let fallback = crate::text_metrics::row_height(self.font_size);
+            let (x, y, row_height) = crate::text_metrics::caret_xy(&glyphs, cursor, fallback);
+            (text_rect.x + x, text_rect.y + y, row_height)
+        } else {
+            let before_cursor = &self.value[..cursor];
+            let line = before_cursor.rsplit('\n').next().unwrap_or("");
+            let (width, _) = crate::text_metrics::measure(
+                line,
+                self.font_size,
+                crate::text_metrics::unbounded_width(),
+            );
+            let lines = (before_cursor.matches('\n').count()) as f32;
+            let line_height = self.font_size * 1.4;
+            let scroll_x = self.horizontal_scroll(text_rect.width);
+            (
+                text_rect.x + width - scroll_x,
+                text_rect.y + lines * line_height,
+                line_height,
+            )
+        };
+        let caret_height = (self.font_size * 1.2).min(row_height);
         painter.push_clip(text_rect);
         painter.fill_rect(
             Rect {
-                x: text_rect.x + width - scroll_x,
-                y: line_top + (line_height - caret_height) / 2.0,
+                x: caret_x,
+                y: caret_y + (row_height - caret_height) / 2.0,
                 width: 1.5,
                 height: caret_height,
             },
@@ -836,13 +906,14 @@ impl Widget for RawTextArea {
     fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
         let value = self.value.clone();
         let font_size = self.font_size;
+        let wrap = self.wrap;
         let on_cursor_change = self.on_cursor_change.clone();
         let on_selection_change = self.on_selection_change.clone();
         let drag_anchor = self.drag_anchor.clone();
         let drag_focus = self.drag_focus.clone();
         let keyboard_selection = self.keyboard_selection.clone();
-        Some(Rc::new(move |point, _| {
-            let cursor = cursor_at_point(&value, font_size, point);
+        Some(Rc::new(move |point, rect: Rect| {
+            let cursor = cursor_at_point(&value, font_size, point, wrap, rect.width - 24.0);
             drag_anchor.set(cursor);
             drag_focus.set(cursor);
             keyboard_selection.set(TextSelection {
@@ -862,13 +933,14 @@ impl Widget for RawTextArea {
     fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
         let value = self.value.clone();
         let font_size = self.font_size;
+        let wrap = self.wrap;
         let on_cursor_change = self.on_cursor_change.clone();
         let on_selection_change = self.on_selection_change.clone();
         let drag_anchor = self.drag_anchor.clone();
         let drag_focus = self.drag_focus.clone();
         let keyboard_selection = self.keyboard_selection.clone();
-        Some(Rc::new(move |point, _| {
-            let cursor = cursor_at_point(&value, font_size, point);
+        Some(Rc::new(move |point, rect: Rect| {
+            let cursor = cursor_at_point(&value, font_size, point, wrap, rect.width - 24.0);
             if cursor != drag_focus.get() {
                 drag_focus.set(cursor);
                 keyboard_selection.set(TextSelection {
@@ -887,7 +959,16 @@ impl Widget for RawTextArea {
     }
 }
 
-fn cursor_at_point(value: &str, font_size: f32, point: Point) -> usize {
+fn cursor_at_point(value: &str, font_size: f32, point: Point, wrap: bool, visible_width: f32) -> usize {
+    if wrap {
+        return crate::text_metrics::byte_offset_at_point(
+            value,
+            font_size,
+            visible_width,
+            point.x - 12.0,
+            point.y - 12.0,
+        );
+    }
     let line = ((point.y - 12.0) / (font_size * 1.4)).floor().max(0.0) as usize;
     let lines: Vec<&str> = value.split('\n').collect();
     let line = line.min(lines.len().saturating_sub(1));

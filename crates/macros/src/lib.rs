@@ -506,6 +506,7 @@ impl Element {
                     "selection_text_color",
                     "on_ctrl_o",
                     "clipboard_enabled",
+                    "wrap",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -589,6 +590,9 @@ impl Element {
                 }
                 if let Some(enabled) = self.prop("clipboard_enabled")? {
                     output = quote!(#output.clipboard_enabled(#enabled));
+                }
+                if let Some(wrap) = self.prop("wrap")? {
+                    output = quote!(#output.wrap(#wrap));
                 }
                 Ok(output)
             }

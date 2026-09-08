@@ -84,6 +84,115 @@ pub fn byte_offset_at_x(text: &str, font_size: f32, x: f32) -> usize {
     offset.min(text.len())
 }
 
+/// One glyph's position and advance width from a layout of a whole text
+/// block, wrapped at `max_width` — the basis for word-wrap-aware
+/// caret/selection/click math. `y`/`row_height` come from the row's own
+/// metrics (`fontdue`'s `LinePosition`), not the glyph's own bounding box,
+/// so every glyph on a row shares the same `y` regardless of ascender or
+/// descender differences between characters (a "g" and an "A" sitting on
+/// the same row must report the same row top).
+pub struct LaidGlyph {
+    pub byte_offset: usize,
+    pub x: f32,
+    pub y: f32,
+    pub row_height: f32,
+    pub advance: f32,
+    pub ch: char,
+}
+
+/// Lays `text` out at `font_size`, wrapping at `max_width` and respecting
+/// embedded `\n`s exactly as the renderer will (same font, same fontdue
+/// settings), returning every glyph's position.
+pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
+    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+    layout.reset(&LayoutSettings {
+        max_width: Some(max_width),
+        horizontal_align: HorizontalAlign::Left,
+        ..LayoutSettings::default()
+    });
+    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    let glyphs = layout.glyphs();
+    let lines = layout.lines().cloned().unwrap_or_default();
+    let mut result = Vec::with_capacity(glyphs.len());
+    for (line_index, line) in lines.iter().enumerate() {
+        let end = lines
+            .get(line_index + 1)
+            .map_or(glyphs.len(), |next| next.glyph_start);
+        let row_top = line.baseline_y - line.max_ascent;
+        for g in &glyphs[line.glyph_start..end] {
+            result.push(LaidGlyph {
+                byte_offset: g.byte_offset,
+                x: g.x,
+                y: row_top,
+                row_height: line.max_new_line_size,
+                advance: font().metrics_indexed(g.key.glyph_index, g.key.px).advance_width,
+                ch: g.parent,
+            });
+        }
+    }
+    result
+}
+
+/// The total height of `text` laid out the same way [`layout`] would —
+/// pass this as a text block's height (instead of a taller container's
+/// full height) so the renderer's own vertical centering has nothing to
+/// center against and top-aligns instead, matching [`layout`]'s `y`s.
+pub fn content_height(text: &str, font_size: f32, max_width: f32) -> f32 {
+    let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
+    layout.reset(&LayoutSettings {
+        max_width: Some(max_width),
+        horizontal_align: HorizontalAlign::Left,
+        ..LayoutSettings::default()
+    });
+    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    layout.height()
+}
+
+/// The row height a lone, one-line layout at `font_size` gets — a fallback
+/// for [`caret_xy`] and empty documents, where no glyph/row exists yet to
+/// read a real one from.
+pub fn row_height(font_size: f32) -> f32 {
+    content_height("A", font_size, UNBOUNDED_WIDTH)
+}
+
+/// Where a caret at `byte_offset` should be drawn within a `layout`ed
+/// block — `(x, y, row_height)` — the start of the glyph at that offset, or
+/// just past the previous glyph when `byte_offset` falls between glyphs
+/// (end of a row, end of the text). `fallback_row_height` (see
+/// [`row_height`]) is used only when `glyphs` is empty.
+pub fn caret_xy(glyphs: &[LaidGlyph], byte_offset: usize, fallback_row_height: f32) -> (f32, f32, f32) {
+    if let Some(g) = glyphs.iter().find(|g| g.byte_offset == byte_offset) {
+        return (g.x, g.y, g.row_height);
+    }
+    if let Some(g) = glyphs.iter().rev().find(|g| g.byte_offset < byte_offset) {
+        return (g.x + g.advance, g.y, g.row_height);
+    }
+    (0.0, 0.0, fallback_row_height)
+}
+
+/// The closest UTF-8 insertion boundary to point `(x, y)` in a `layout`ed,
+/// possibly-wrapped block — the wrap-aware counterpart to
+/// [`byte_offset_at_x`], picking a row by nearest `y` first.
+pub fn byte_offset_at_point(text: &str, font_size: f32, max_width: f32, x: f32, y: f32) -> usize {
+    let glyphs = layout(text, font_size, max_width);
+    let Some(row_y) = glyphs
+        .iter()
+        .map(|g| g.y)
+        .min_by(|a, b| (a - y).abs().total_cmp(&(b - y).abs()))
+    else {
+        return 0;
+    };
+    let row: Vec<&LaidGlyph> = glyphs.iter().filter(|g| (g.y - row_y).abs() < 0.5).collect();
+    for g in &row {
+        if x < g.x + g.advance / 2.0 {
+            return g.byte_offset;
+        }
+    }
+    row.last()
+        .map_or(0, |g| g.byte_offset + g.ch.len_utf8())
+        .min(text.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
