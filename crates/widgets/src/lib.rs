@@ -14,7 +14,7 @@ pub mod raw;
 mod text_metrics;
 pub mod themed;
 
-pub use controller::{TabController, TextController};
+pub use controller::{ScrollController, TabController, TextController};
 pub use raw::{
     RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab,
     RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,

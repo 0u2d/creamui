@@ -188,6 +188,7 @@ struct WindowSpec {
     options: WindowOptions,
     on_window_ready: Box<dyn Fn(WindowHandle)>,
     repaint: Rc<dyn Fn()>,
+    repaint_scene: Rc<dyn Fn()>,
     render: Rc<dyn Fn()>,
     dirty: Rc<Cell<bool>>,
     _effect: Effect,
@@ -304,6 +305,7 @@ struct WindowState {
     /// Invalidates this window. Signal changes and caret/focus updates are
     /// coalesced until the next `RedrawRequested` frame.
     repaint: Rc<dyn Fn()>,
+    repaint_scene: Rc<dyn Fn()>,
     /// Executes the deferred build/layout/paint pass. Signal writes only
     /// schedule this; `RedrawRequested` performs it once per compositor
     /// frame.
@@ -495,13 +497,19 @@ impl WindowState {
                 let Some(scene) = frame.scene.as_ref() else {
                     return;
                 };
-                let handler = scene
-                    .scroll_hit_test(self.pointer_pos)
-                    .and_then(|index| scene.on_scroll_at(index).cloned());
+                let handler = scene.scroll_hit_test(self.pointer_pos).map(|index| {
+                    (
+                        scene.on_scroll_at(index).cloned(),
+                        scene.scroll_is_local_at(index),
+                    )
+                });
                 drop(frame);
 
-                if let Some(handler) = handler {
+                if let Some((Some(handler), local)) = handler {
                     handler(delta_y);
+                    if local {
+                        (self.repaint_scene)();
+                    }
                 }
             }
             WindowEvent::KeyboardInput {
@@ -686,6 +694,7 @@ impl ApplicationHandler for AppHandler {
                     hovered: None,
                     dragging: None,
                     repaint: spec.repaint,
+                    repaint_scene: spec.repaint_scene,
                     render: spec.render,
                     dirty: spec.dirty,
                     _effect: spec._effect,
@@ -933,6 +942,37 @@ fn build_window_spec(
         }
     });
 
+    let repaint_scene: Rc<dyn Fn()> = Rc::new({
+        let viewport = viewport.clone();
+        let scale_factor = scale_factor.clone();
+        let frame = frame.clone();
+        let window = shared_window.clone();
+        let focused = focused.clone();
+        let caret_visible = caret_visible.clone();
+        move || {
+            let logical_size = viewport.peek();
+            let scale = scale_factor.peek();
+            let mut frame = frame.borrow_mut();
+            let physical_width = (logical_size.width as f64 * scale).round() as u32;
+            let physical_height = (logical_size.height as f64 * scale).round() as u32;
+            frame.painter.set_scale(scale as f32);
+            frame.painter.resize(physical_width, physical_height);
+            frame.painter.clear(clear_color);
+            let FrameState {
+                painter, renderer, ..
+            } = &mut *frame;
+            if let Some(scene) =
+                renderer.repaint_focused(painter, focused.get(), caret_visible.get())
+            {
+                frame.scene = Some(scene);
+            }
+            drop(frame);
+            if let Some(window) = window.borrow().as_ref() {
+                window.request_redraw();
+            }
+        }
+    });
+
     let repaint: Rc<dyn Fn()> = Rc::new({
         let render = render.clone();
         let window = shared_window.clone();
@@ -959,6 +999,7 @@ fn build_window_spec(
         options,
         on_window_ready,
         repaint,
+        repaint_scene,
         render,
         dirty,
         _effect: effect,

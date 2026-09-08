@@ -1,17 +1,20 @@
 use super::*;
-/// An unstyled vertically-scrollable container. The caller owns the scroll
-/// offset (typically an `f32` `Signal`, clamped however makes sense for the
-/// content) and updates it from `on_scroll` — same pattern as every other
-/// interactive widget here. Children are laid out at their natural height
+use crate::ScrollController;
+
+/// An unstyled vertically-scrollable container. [`RawScrollView::new`] lets
+/// the caller own the offset; [`RawScrollView::controlled`] clamps a shared
+/// [`ScrollController`] to the resolved content height. Children are laid out at their natural height
 /// (never flex-shrunk to fit the visible viewport, which would defeat the
 /// point of scrolling) and clipped + offset to this widget's own rect.
 pub struct RawScrollView {
     pub style: Style,
     pub scroll_y: f32,
+    pub controller: Option<ScrollController>,
     pub background: Option<Color>,
     pub corner_radius: f32,
     pub children: Vec<BoxedWidget>,
     pub on_scroll: Rc<dyn Fn(f32)>,
+    pub on_scroll_bounded: Option<Rc<dyn Fn(f32, f32)>>,
 }
 
 impl RawScrollView {
@@ -19,11 +22,22 @@ impl RawScrollView {
         RawScrollView {
             style,
             scroll_y,
+            controller: None,
             background: None,
             corner_radius: 0.0,
             children: Vec::new(),
             on_scroll: Rc::new(on_scroll),
+            on_scroll_bounded: None,
         }
+    }
+
+    pub fn controlled(style: Style, controller: ScrollController) -> Self {
+        let mut view = Self::new(style, controller.offset(), |_| {});
+        view.controller = Some(controller.clone());
+        view.on_scroll_bounded = Some(Rc::new(move |delta, max_offset| {
+            controller.scroll_by(delta, max_offset);
+        }));
+        view
     }
 
     pub fn background(mut self, color: Color) -> Self {
@@ -97,11 +111,18 @@ impl Widget for RawScrollView {
     fn scroll_offset(&self) -> Point {
         Point {
             x: 0.0,
-            y: self.scroll_y,
+            y: self
+                .controller
+                .as_ref()
+                .map_or(self.scroll_y, ScrollController::peek),
         }
     }
 
     fn on_scroll(&self) -> Option<Rc<dyn Fn(f32)>> {
         Some(self.on_scroll.clone())
+    }
+
+    fn on_scroll_bounded(&self) -> Option<Rc<dyn Fn(f32, f32)>> {
+        self.on_scroll_bounded.clone()
     }
 }

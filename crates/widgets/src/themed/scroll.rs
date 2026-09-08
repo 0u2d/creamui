@@ -1,4 +1,5 @@
 use super::*;
+use crate::ScrollController;
 /// A themed vertically-scrollable container.
 pub struct ScrollView {
     inner: RawScrollView,
@@ -12,6 +13,13 @@ impl ScrollView {
         on_scroll: impl Fn(f32) + 'static,
     ) -> Self {
         let inner = RawScrollView::new(style, scroll_y, on_scroll)
+            .background(theme.surface)
+            .corner_radius(theme.radius_medium);
+        ScrollView { inner }
+    }
+
+    pub fn controlled(theme: &Theme, style: Style, controller: ScrollController) -> Self {
+        let inner = RawScrollView::controlled(style, controller)
             .background(theme.surface)
             .corner_radius(theme.radius_medium);
         ScrollView { inner }

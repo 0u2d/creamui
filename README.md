@@ -89,6 +89,10 @@ is only a convenience for natural label width, normalized equal width, or a
 justified bar; it never forces a width policy. `Tabs::gap(value)` is available
 when a fluent override reads better.
 
+For content that can exceed its viewport, use `RawScrollView::controlled` or
+`ScrollView::controlled` with a `ScrollController`; it only reacts to wheel
+input when content overflows and clamps the offset to the resolved range.
+
 Set `CUI_DEBUG=1` for verbose logging, or `CUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
 no compositor attached).

@@ -17,6 +17,7 @@
 
 use crate::raw::TextSelection;
 use creamui_reactive::Signal;
+use std::cell::Cell;
 use std::rc::Rc;
 
 type ChangeGuard = dyn Fn(&str, &str) -> Option<String>;
@@ -175,6 +176,46 @@ impl TabController {
 impl Default for TabController {
     fn default() -> Self {
         Self::new(0)
+    }
+}
+
+/// Shared, clamped offset state for a controlled scroll view.
+#[derive(Clone)]
+pub struct ScrollController {
+    offset: Rc<Cell<f32>>,
+}
+
+impl ScrollController {
+    pub fn new(offset: f32) -> Self {
+        Self {
+            offset: Rc::new(Cell::new(offset.max(0.0))),
+        }
+    }
+
+    pub fn offset(&self) -> f32 {
+        self.offset.get()
+    }
+
+    pub fn peek(&self) -> f32 {
+        self.offset.get()
+    }
+
+    pub fn set(&self, offset: f32) {
+        self.offset.set(offset.max(0.0));
+    }
+
+    pub fn scroll_by(&self, delta: f32, max_offset: f32) {
+        let current = self.offset.get();
+        let next = (current + delta).clamp(0.0, max_offset.max(0.0));
+        if (next - current).abs() > f32::EPSILON {
+            self.offset.set(next);
+        }
+    }
+}
+
+impl Default for ScrollController {
+    fn default() -> Self {
+        Self::new(0.0)
     }
 }
 

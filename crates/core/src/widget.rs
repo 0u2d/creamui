@@ -235,6 +235,14 @@ pub trait Widget {
         None
     }
 
+    /// Like [`Widget::on_scroll`], but receives the resolved maximum vertical
+    /// offset for this widget's content. Returning this handler lets a
+    /// controlled scroll view clamp itself without application-specific
+    /// geometry code.
+    fn on_scroll_bounded(&self) -> Option<Rc<dyn Fn(f32, f32)>> {
+        None
+    }
+
     /// Whether this widget clips its children to its own rect. Default:
     /// `false`. A scroll view returns `true`.
     fn clips_children(&self) -> bool {

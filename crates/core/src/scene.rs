@@ -103,7 +103,7 @@ struct PaintOutputs {
     /// width regardless of how much of it a scroll ancestor currently shows.
     draggables: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
-    scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
+    scrollables: Vec<(Rect, Rc<dyn Fn(f32)>, bool)>,
     cursors: Vec<(Rect, CursorIcon)>,
     hovers: Vec<(Rect, Rc<dyn Fn(bool)>)>,
 }
@@ -147,7 +147,9 @@ fn paint_instance(
         if instance.widget.focusable() {
             if let Some(on_key) = instance.widget.on_key() {
                 if focus.focused_index == Some(focus.counter) {
-                    instance.widget.paint_focused_overlay(painter, rect, focus.caret_visible);
+                    instance
+                        .widget
+                        .paint_focused_overlay(painter, rect, focus.caret_visible);
                 }
                 focus.counter += 1;
                 out.focusables.push((visible, on_key));
@@ -159,8 +161,23 @@ fn paint_instance(
         if let Some(on_drag_start) = instance.widget.on_drag_start() {
             out.drag_starts.push((visible, rect, on_drag_start));
         }
-        if let Some(on_scroll) = instance.widget.on_scroll() {
-            out.scrollables.push((visible, on_scroll));
+        if let Some(on_scroll) = instance.widget.on_scroll_bounded() {
+            let content_bottom = instance
+                .children
+                .iter()
+                .filter_map(|child| tree.layout(child.node_id).ok())
+                .map(|layout| layout.location.y + layout.size.height)
+                .fold(0.0_f32, f32::max);
+            let max_offset = (content_bottom - rect.height).max(0.0);
+            if max_offset > 0.5 {
+                out.scrollables.push((
+                    visible,
+                    Rc::new(move |delta| on_scroll(delta, max_offset)),
+                    true,
+                ));
+            }
+        } else if let Some(on_scroll) = instance.widget.on_scroll() {
+            out.scrollables.push((visible, on_scroll, false));
         }
         if let Some(cursor) = instance.widget.cursor_icon() {
             out.cursors.push((visible, cursor));
@@ -212,7 +229,7 @@ pub struct Scene {
     focusables: Vec<(Rect, Rc<dyn Fn(KeyInput)>)>,
     draggables: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
     drag_starts: Vec<(Rect, Rect, Rc<dyn Fn(Point, Rect)>)>,
-    scrollables: Vec<(Rect, Rc<dyn Fn(f32)>)>,
+    scrollables: Vec<(Rect, Rc<dyn Fn(f32)>, bool)>,
     cursors: Vec<(Rect, CursorIcon)>,
     hovers: Vec<(Rect, Rc<dyn Fn(bool)>)>,
 }
@@ -269,11 +286,17 @@ impl Scene {
 
     /// The drag handler and full (unclipped) rect at `index`, if it still exists this render.
     pub fn draggable_at(&self, index: usize) -> Option<(Rect, &Rc<dyn Fn(Point, Rect)>)> {
-        self.draggables.get(index).map(|(_, full, handler)| (*full, handler))
+        self.draggables
+            .get(index)
+            .map(|(_, full, handler)| (*full, handler))
     }
 
     pub fn drag_start_at(&self, point: Point) -> Option<(Rect, Rc<dyn Fn(Point, Rect)>)> {
-        self.drag_starts.iter().rev().find(|(visible, _, _)| visible.contains(point)).map(|(_, rect, handler)| (*rect, handler.clone()))
+        self.drag_starts
+            .iter()
+            .rev()
+            .find(|(visible, _, _)| visible.contains(point))
+            .map(|(_, rect, handler)| (*rect, handler.clone()))
     }
 
     /// Returns the index (into this scene's scrollables) of the topmost
@@ -283,13 +306,19 @@ impl Scene {
             .iter()
             .enumerate()
             .rev()
-            .find(|(_, (rect, _))| rect.contains(point))
+            .find(|(_, (rect, _, _))| rect.contains(point))
             .map(|(index, _)| index)
     }
 
     /// The scroll-wheel handler at `index`, if it still exists this render.
     pub fn on_scroll_at(&self, index: usize) -> Option<&Rc<dyn Fn(f32)>> {
-        self.scrollables.get(index).map(|(_, handler)| handler)
+        self.scrollables.get(index).map(|(_, handler, _)| handler)
+    }
+
+    pub fn scroll_is_local_at(&self, index: usize) -> bool {
+        self.scrollables
+            .get(index)
+            .is_some_and(|(_, _, local)| *local)
     }
 
     /// Returns the cursor icon of the topmost widget with a cursor
@@ -399,6 +428,41 @@ impl Renderer {
             hovers: out.hovers,
         }
     }
+
+    /// Repaints the retained tree without rebuilding widgets or recomputing
+    /// layout. Used for local interaction state such as controlled scrolling.
+    pub fn repaint_focused(
+        &mut self,
+        painter: &mut dyn Painter,
+        focused_index: Option<usize>,
+        caret_visible: bool,
+    ) -> Option<Scene> {
+        let instance = self.root.as_ref()?;
+        let mut out = PaintOutputs::default();
+        let mut focus = FocusContext {
+            focused_index,
+            caret_visible,
+            counter: 0,
+        };
+        paint_instance(
+            &self.tree,
+            instance,
+            painter,
+            Point::default(),
+            UNCLIPPED,
+            &mut focus,
+            &mut out,
+        );
+        Some(Scene {
+            hits: out.hits,
+            focusables: out.focusables,
+            draggables: out.draggables,
+            drag_starts: out.drag_starts,
+            scrollables: out.scrollables,
+            cursors: out.cursors,
+            hovers: out.hovers,
+        })
+    }
 }
 
 impl Default for Renderer {
@@ -473,8 +537,14 @@ mod tests {
         let root_id_2 = root2.node_id;
         let child_ids_2: Vec<_> = root2.children.iter().map(|c| c.node_id).collect();
 
-        assert_eq!(root_id_1, root_id_2, "root node identity should be preserved across renders");
-        assert_eq!(child_ids_1, child_ids_2, "child node identities should be preserved across renders");
+        assert_eq!(
+            root_id_1, root_id_2,
+            "root node identity should be preserved across renders"
+        );
+        assert_eq!(
+            child_ids_1, child_ids_2,
+            "child node identities should be preserved across renders"
+        );
     }
 
     #[test]

@@ -9,11 +9,14 @@ use creamui_core::{
 };
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
-use creamui_widgets::raw::{RawButton, RawCheckbox, RawSlider, RawSwitch, RawView, TextSelection};
+use creamui_widgets::raw::{
+    RawButton, RawCheckbox, RawScrollView, RawSlider, RawSwitch, RawView, TextSelection,
+};
 use creamui_widgets::themed::{
     tab_styles, Button, Checkbox, ScrollView, Slider, TabColors, TabSizing, Tabs, Text, TextArea,
     TextInput,
 };
+use creamui_widgets::ScrollController;
 
 #[derive(Default)]
 struct RecordingPainter {
@@ -205,6 +208,61 @@ fn raw_controls_preserve_tokens_and_disabled_state() {
     assert_eq!(slider.track_height, 6.0);
     assert_eq!(slider.handle_size, 20.0);
     assert!(slider.on_drag().is_none());
+}
+
+#[test]
+fn controlled_scroll_only_handles_wheel_when_content_overflows_and_clamps() {
+    let viewport_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(120.0),
+            height: Dimension::Length(100.0),
+        },
+        ..Default::default()
+    };
+    let controller = ScrollController::default();
+    let overflowing = RawScrollView::controlled(viewport_style.clone(), controller.clone()).child(
+        Box::new(RawView::new(Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(120.0),
+                height: Dimension::Length(260.0),
+            },
+            ..Default::default()
+        })),
+    );
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(overflowing),
+        Size {
+            width: 120.0,
+            height: 100.0,
+        },
+        &mut painter,
+    );
+    let handler = scene
+        .scroll_hit_test(Point { x: 20.0, y: 20.0 })
+        .and_then(|index| scene.on_scroll_at(index))
+        .expect("overflowing content registers a wheel handler");
+    handler(500.0);
+    assert_eq!(controller.peek(), 160.0);
+
+    let fitting = RawScrollView::controlled(viewport_style, ScrollController::default()).child(
+        Box::new(RawView::new(Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(120.0),
+                height: Dimension::Length(60.0),
+            },
+            ..Default::default()
+        })),
+    );
+    let scene = render_frame(
+        Box::new(fitting),
+        Size {
+            width: 120.0,
+            height: 100.0,
+        },
+        &mut painter,
+    );
+    assert!(scene.scroll_hit_test(Point { x: 20.0, y: 20.0 }).is_none());
 }
 
 #[test]

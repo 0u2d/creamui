@@ -16,9 +16,9 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
-    tab_styles, Button, ButtonSize, ButtonState, Heading, RawText, RawView, Sidebar, SidebarItem,
-    Switch, Tab, TabColors, TabController, TabSizing, Tabs, Text, TextController, TextInput,
-    TextSize, View,
+    tab_styles, Button, ButtonSize, ButtonState, Heading, RawScrollView, RawText, RawView,
+    ScrollController, Sidebar, SidebarItem, Switch, Tab, TabColors, TabController, TabSizing, Tabs,
+    Text, TextController, TextInput, TextSize, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
@@ -79,7 +79,7 @@ fn label_style() -> Style {
 
 /// The showcase category rail.
 #[component]
-fn Nav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
+fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) -> BoxedWidget {
     let mut nav = RawView::new(padding(
         Style {
             size: creamui_core::layout::Size {
@@ -131,12 +131,16 @@ fn Nav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
             ));
         }
         let select = active.clone();
+        let reset_scroll = content_scroll.clone();
         nav = nav.child(Box::new(NavigationItem::new(
             &theme,
             symbols[i],
             *label,
             active.get() == i,
-            move || select.set(i),
+            move || {
+                select.set(i);
+                reset_scroll.set(0.0);
+            },
         )));
     }
     nav = nav
@@ -561,33 +565,38 @@ fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
 }
 
 const TAB_LABELS: [&str; 3] = ["Overview", "Activity", "Settings"];
-
 fn tab_bar(
+    labels: &[&str],
     controller: TabController,
     colors: TabColors,
     sizing: TabSizing,
     height: f32,
-    padding: f32,
+    tab_padding: f32,
+    inset: f32,
 ) -> BoxedWidget {
-    let bar_style = Style {
-        size: creamui_core::layout::Size {
-            width: if sizing == TabSizing::Fill {
-                Dimension::Percent(1.0)
-            } else {
-                Dimension::Auto
+    let bar_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: if sizing == TabSizing::Fill {
+                    Dimension::Percent(1.0)
+                } else {
+                    Dimension::Auto
+                },
+                height: Dimension::Auto,
             },
-            height: Dimension::Auto,
+            flex_shrink: 0.0,
+            align_self: if sizing == TabSizing::Fill {
+                None
+            } else {
+                Some(creamui_core::layout::AlignSelf::Start)
+            },
+            ..row(colors.gap)
         },
-        align_self: if sizing == TabSizing::Fill {
-            None
-        } else {
-            Some(creamui_core::layout::AlignSelf::Start)
-        },
-        ..row(colors.gap)
-    };
-    let styles = tab_styles(&TAB_LABELS, sizing, height, padding);
+        inset,
+    );
+    let styles = tab_styles(labels, sizing, height, tab_padding);
     let mut bar = Tabs::new(colors, bar_style);
-    for (index, label) in TAB_LABELS.iter().enumerate() {
+    for (index, label) in labels.iter().enumerate() {
         let tabs = controller.clone();
         bar = bar.child(Box::new(Tab::new(
             colors,
@@ -621,7 +630,8 @@ fn TabsPanel(
     indicator: TabController,
     content: TabController,
 ) -> BoxedWidget {
-    let filled_colors = TabColors::dark(&theme);
+    let mut filled_colors = TabColors::dark(&theme);
+    filled_colors.gap = theme.spacing_medium;
 
     let mut pill_colors = filled_colors;
     pill_colors.inactive_background = Some(theme.surface_hover);
@@ -629,6 +639,7 @@ fn TabsPanel(
     pill_colors.active_text = theme.text_primary;
     pill_colors.radius = 16.0;
     pill_colors.container_radius = 20.0;
+    pill_colors.gap = theme.spacing_medium;
 
     let mut indicator_colors = filled_colors;
     indicator_colors.background = theme.surface;
@@ -668,14 +679,14 @@ fn TabsPanel(
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
             <SectionHeader theme={theme} title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
-            {tab_example(&theme, "Filled tabs · content width", tab_bar(filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium))}
-            {tab_example(&theme, "Pill tabs · equal width", tab_bar(pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium))}
-            {tab_example(&theme, "Indicator tabs · content width", tab_bar(indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium))}
+            {tab_example(&theme, "Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small))}
+            {tab_example(&theme, "Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small))}
+            {tab_example(&theme, "Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small))}
             {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
                 size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
                 ..column(theme.spacing_large)
             }, theme.spacing_medium))
-                .child(tab_bar(content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium))
+                .child(tab_bar(&TAB_LABELS, content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium, theme.spacing_small))
                 .child(Box::new(View::new(&theme, preview_style)
                     .child(Box::new(Heading::new(&theme, title)))
                     .child(Box::new(Text::secondary(&theme, detail)))
@@ -713,6 +724,7 @@ fn main() {
     let tabs_pill = TabController::new(1);
     let tabs_indicator = TabController::new(2);
     let tabs_content = TabController::default();
+    let content_scroll = ScrollController::default();
 
     run(
         WindowOptions {
@@ -814,11 +826,23 @@ fn main() {
                 "active_section is always kept within NAV_LABELS' range by Nav's click handlers",
             );
 
+            let scroll_style = Style {
+                flex_grow: 1.0,
+                size: creamui_core::layout::Size {
+                    width: Dimension::Percent(1.0),
+                    height: Dimension::Percent(1.0),
+                },
+                ..Default::default()
+            };
+            let content = RawScrollView::controlled(scroll_style, content_scroll.clone()).child(
+                Box::new(Surface::new(&theme, SurfaceRole::Panel, content_style).child(panel)),
+            );
+
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Nav theme={theme} active={active_section.clone()} />
+                    <Nav theme={theme} active={active_section.clone()} content_scroll={content_scroll.clone()} />
                     <RawView style={content_outer_style} background={theme.surface}>
-                        {Box::new(Surface::new(&theme, SurfaceRole::Panel, content_style).child(panel)) as BoxedWidget}
+                        {Box::new(content) as BoxedWidget}
                     </RawView>
                 </RawView>
             })
