@@ -19,6 +19,7 @@ members = [
     "examples/sidebar",
     "examples/scroll",
     "examples/showcase",
+    "examples/pickers",
 ]
 
 [workspace.package]
@@ -49,6 +50,7 @@ pollster = "0.3"
 softbuffer = "0.4"
 libloading = "0.8"
 arboard = "3"
+rfd = "0.17"
 
 # Optimize third-party deps (tiny-skia, fontdue, taffy) even in dev builds;
 # `*` excludes workspace crates so edit-compile-run stays fast.

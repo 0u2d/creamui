@@ -15,13 +15,87 @@
 //! creates its own default, unrestricted one internally, which is as close
 //! to "free" as an immediate-mode rebuild model can get.
 
-use crate::raw::TextSelection;
+use crate::raw::{DateTime, TextSelection};
 use creamui_reactive::Signal;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::rc::Rc;
 
 type ChangeGuard = dyn Fn(&str, &str) -> Option<String>;
+
+/// Shared date/time value for a [`crate::DateTimePicker`]. Like the other
+/// controllers it is application-owned, so picker state survives reactive
+/// widget-tree rebuilds without hidden global state.
+#[derive(Clone)]
+pub struct DateTimeController {
+    value: Signal<DateTime>,
+    open: Signal<bool>,
+}
+
+impl DateTimeController {
+    pub fn new(initial: DateTime) -> Self {
+        Self {
+            value: Signal::new(initial.normalized()),
+            open: Signal::new(false),
+        }
+    }
+
+    pub fn value(&self) -> DateTime {
+        self.value.get()
+    }
+    pub fn peek(&self) -> DateTime {
+        self.value.peek()
+    }
+    pub fn set(&self, value: DateTime) {
+        self.value.set(value.normalized())
+    }
+    pub fn is_open(&self) -> bool {
+        self.open.get()
+    }
+    pub fn set_open(&self, open: bool) {
+        self.open.set(open)
+    }
+    pub fn toggle(&self) {
+        self.open.update(|open| *open = !*open)
+    }
+}
+
+impl Default for DateTimeController {
+    fn default() -> Self {
+        Self::new(DateTime::default())
+    }
+}
+
+/// Shared visibility state for a [`crate::ColorPicker`]'s portal popup.
+/// The selected [`creamui_theme::Color`] deliberately remains caller-owned,
+/// matching the rest of CreamUI's controlled-value APIs.
+#[derive(Clone)]
+pub struct ColorPickerController {
+    open: Signal<bool>,
+}
+
+impl ColorPickerController {
+    pub fn new() -> Self {
+        Self {
+            open: Signal::new(false),
+        }
+    }
+    pub fn is_open(&self) -> bool {
+        self.open.get()
+    }
+    pub fn set_open(&self, open: bool) {
+        self.open.set(open)
+    }
+    pub fn toggle(&self) {
+        self.open.update(|open| *open = !*open)
+    }
+}
+
+impl Default for ColorPickerController {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A controller for a text editing widget's value, cursor, and selection.
 ///

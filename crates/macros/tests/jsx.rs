@@ -162,3 +162,32 @@ fn raw_view_accepts_a_generated_children_list() {
     );
     assert_eq!(painter.0, ["Generated"]);
 }
+
+#[test]
+fn jsx_exposes_configurable_portal_picker_inputs() {
+    let theme = Theme::dark();
+    let date = creamui_widgets::DateTimeController::new(creamui_widgets::DateTime::new(
+        2026, 9, 8, 14, 30,
+    ));
+    let color_popup = creamui_widgets::ColorPickerController::default();
+    let accent = Signal::new(Color::rgb(181, 139, 255));
+    let set_accent = accent.clone();
+    let root: BoxedWidget = Box::new(jsx! {
+        <RawView style={Style::default()}>
+            <DateInput theme={&theme} controller={&date} popup_width={320.0} />
+            <TimeInput theme={&theme} controller={&date} minute_step={15} />
+            <ColorPicker theme={&theme} controller={&color_popup} value={accent.get()} on_change={move |color| set_accent.set(color)} />
+        </RawView>
+    });
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 500.0,
+            height: 160.0,
+        },
+        &mut painter,
+    );
+    assert!(painter.0.iter().any(|text| text == "2026-09-08"));
+    assert!(painter.0.iter().any(|text| text == "#B58BFF"));
+}

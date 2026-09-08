@@ -53,14 +53,16 @@ done and what's next.
 cargo run -p hello-world
 cargo run -p calculator
 cargo run -p showcase
+cargo run -p pickers
 ```
 
 The examples are static Rust applications using `jsx!`. The calculator is
 also a composition example: its screen and keys are custom components built
 from the headless widgets, without adding a calculator-specific crate.
 
-The showcase keeps a category sidebar for Appearance, Input, Button, Slider,
-Checkbox, Sidebar, and Tabs. Its styling comes from the library: shared type
+The showcase keeps a category sidebar for Appearance, Input, Pickers, Button,
+Slider, Checkbox, Selection, Feedback, Sidebar, Tabs, Scroll, Tree, and Table.
+Its styling comes from the library: shared type
 roles and regular/bold faces, consistent button sizes and disabled states,
 focus outlines, and keyboard activation. Tab / Shift+Tab cycle through
 focusable controls; Enter or Space activate buttons, checkboxes, and switches.
@@ -82,6 +84,27 @@ example, `TabColors` remains public so each app can define its own treatment.
 The implementation follows the same boundary in `src/raw/` and `src/themed/`,
 with modules grouped by component domain while the `raw` and `themed` imports
 remain stable.
+
+`DateTimePicker`, `DateInput`, and `TimeInput` are controlled with a
+`DateTimeController`; `ColorPicker` accepts a controlled `Color`, callback,
+and `ColorPickerController`; and `FilePicker` opens the platform native file
+dialog, returning a `PathBuf`. Date/time and color palettes render in absolute
+portal layers, so they do not alter surrounding layout or get clipped by a
+scroll view. Their `RawDateTimePicker`,
+`RawColorPicker`, and `RawFilePicker` counterparts expose the same interaction
+surfaces without prescribing a theme or, in the file case, a local filesystem.
+
+The picker controls are also JSX intrinsics, with options written as component
+attributes in the same style as the other native controls:
+
+```rust
+jsx! {
+    <DateInput theme={&theme} controller={&date} popup_width={320.0} />
+    <TimeInput theme={&theme} controller={&time} minute_step={15} />
+    <ColorPicker theme={&theme} controller={&color_popup}
+        value={accent} on_change={move |color| accent.set(color)} />
+}
+```
 `Tabs::new(colors, style)` preserves its `Style` exactly: set `width`,
 `align_self`, `margin`, `padding`, and `gap` just as you would for any layout
 node. `tab_styles(labels, TabSizing::Content | Equal | Fill, height, padding)`

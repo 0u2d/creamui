@@ -16,7 +16,8 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
-    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, ListBox, Popover,
+    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ColorPicker, ColorPickerController,
+    DateTime, DateTimeController, DateTimePicker, FilePicker, Heading, ListBox, Popover,
     ProgressBar, ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController,
     ScrollView, SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab,
     TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text, TextController, TextInput,
@@ -25,9 +26,10 @@ use creamui_widgets::{
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 12] = [
+const NAV_LABELS: [&str; 13] = [
     "Appearance",
     "Input",
+    "Pickers",
     "Button",
     "Slider",
     "Checkbox",
@@ -193,6 +195,7 @@ fn Nav(
         Symbol::Appearance,
         Symbol::Keyboard,
         Symbol::Controls,
+        Symbol::Controls,
         Symbol::Sliders,
         Symbol::Check,
         Symbol::Controls,
@@ -205,7 +208,7 @@ fn Nav(
     ];
     let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 1 || i == 5 || i == 7 || i == 10 {
+        if i == 0 || i == 1 || i == 6 || i == 8 || i == 11 {
             items.push(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
@@ -213,9 +216,9 @@ fn Nav(
                             "SHOWCASE"
                         } else if i == 1 {
                             "CONTROLS"
-                        } else if i == 5 {
+                        } else if i == 6 {
                             "SELECTION"
-                        } else if i == 10 {
+                        } else if i == 11 {
                             "DATA VIEW"
                         } else {
                             "NAVIGATION"
@@ -464,6 +467,75 @@ fn InputPanel(
             ) as BoxedWidget}
         </RawView>
     })
+}
+
+/// Date/time, color, and file pickers live together because each returns a
+/// value chosen from a structured external domain rather than free text.
+/// The file picker uses the operating system dialog; the others keep their
+/// controlled values in the showcase's regular reactive state.
+#[component]
+fn PickersPanel(
+    theme: Theme,
+    date_time: DateTimeController,
+    color: Signal<Color>,
+    color_picker: ColorPickerController,
+    file: Signal<String>,
+) -> BoxedWidget {
+    let selected_color = color.get();
+    let file_label = file.get();
+    let set_color = color.clone();
+    let set_file = file.clone();
+    let color_label = format!(
+        "#{:02X}{:02X}{:02X}",
+        selected_color.r, selected_color.g, selected_color.b
+    );
+    let file_caption = if file_label.is_empty() {
+        "No file selected yet".to_owned()
+    } else {
+        file_label.clone()
+    };
+    Box::new(
+        RawView::new(column(section_gap(&theme)))
+            .child(SectionHeader(SectionHeaderProps {
+                theme,
+                title: "Pickers".into(),
+                subtitle: "Structured values, controlled by the application and styled from the active theme.".into(),
+            }))
+            .child(field_card(
+                &theme,
+                "Date & time · arrows or upper/lower portions adjust it",
+                Box::new(DateTimePicker::controlled(&theme, &date_time)),
+            ))
+            .child(card_row(
+                &theme,
+                vec![
+                    field_card(
+                        &theme,
+                        &format!("Color · {color_label}"),
+                        Box::new(ColorPicker::controlled(&theme, selected_color, &color_picker, move |next| {
+                            set_color.set(next)
+                        })),
+                    ),
+                    field_card(
+                        &theme,
+                        "File · native system dialog",
+                        Box::new(
+                            RawView::new(column(theme.spacing_small))
+                                .child(Box::new(
+                                    FilePicker::new(&theme, file_label, move |path| {
+                                        set_file.set(path.display().to_string())
+                                    })
+                                    .title("Choose an asset")
+                                    .filter("Images", ["png", "jpg", "jpeg", "webp"]),
+                                ))
+                                .child(Box::new(
+                                    Text::secondary(&theme, file_caption).align(TextAlign::Start),
+                                )),
+                        ),
+                    ),
+                ],
+            )),
+    )
 }
 
 /// The "Button" panel: the default themed `Button`, a couple of
@@ -1176,6 +1248,10 @@ fn main() {
     let notes_wrapped = TextController::new(
         "This one sets wrap={true}: long lines break onto a new row instead of scrolling past the edge.",
     );
+    let picker_date_time = DateTimeController::new(DateTime::new(2026, 9, 8, 14, 30));
+    let picker_color = Signal::new(Color::rgb(181, 139, 255));
+    let picker_color_popup = ColorPickerController::default();
+    let picker_file = Signal::new(String::new());
 
     let clicks = Signal::new(0i32);
 
@@ -1271,23 +1347,30 @@ fn main() {
                     notes: notes.clone(),
                     notes_wrapped: notes_wrapped.clone(),
                 }),
-                2 => ButtonPanel(ButtonPanelProps {
+                2 => PickersPanel(PickersPanelProps {
+                    theme,
+                    date_time: picker_date_time.clone(),
+                    color: picker_color.clone(),
+                    color_picker: picker_color_popup.clone(),
+                    file: picker_file.clone(),
+                }),
+                3 => ButtonPanel(ButtonPanelProps {
                     theme,
                     clicks: clicks.clone(),
                 }),
-                3 => SliderPanel(SliderPanelProps {
+                4 => SliderPanel(SliderPanelProps {
                     theme,
                     volume: volume.clone(),
                     brightness: brightness.clone(),
                     zoom: zoom.clone(),
                 }),
-                4 => CheckboxPanel(CheckboxPanelProps {
+                5 => CheckboxPanel(CheckboxPanelProps {
                     theme,
                     notifications: notifications.clone(),
                     auto_save: auto_save.clone(),
                     beta_features: beta_features.clone(),
                 }),
-                5 => SelectionPanel(SelectionPanelProps {
+                6 => SelectionPanel(SelectionPanelProps {
                     theme,
                     select: select.clone(),
                     radio: radio.clone(),
@@ -1295,29 +1378,29 @@ fn main() {
                     list_scroll: list_scroll_demo.clone(),
                     list_selected: list_selected.clone(),
                 }),
-                6 => FeedbackPanel(FeedbackPanelProps {
+                7 => FeedbackPanel(FeedbackPanelProps {
                     theme,
                     progress: progress.clone(),
                     show_popover: show_popover.clone(),
                     show_alert: show_alert.clone(),
                 }),
-                7 => SidebarPanel(SidebarPanelProps {
+                8 => SidebarPanel(SidebarPanelProps {
                     theme,
                     active: sidebar_demo_active.clone(),
                 }),
-                8 => TabsPanel(TabsPanelProps {
+                9 => TabsPanel(TabsPanelProps {
                     theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
-                9 => ScrollPanel(ScrollPanelProps {
+                10 => ScrollPanel(ScrollPanelProps {
                     theme,
                     themed_scroll: themed_scroll_demo.clone(),
                     custom_scroll: custom_scroll_demo.clone(),
                 }),
-                10 => TreePanel(TreePanelProps {
+                11 => TreePanel(TreePanelProps {
                     theme,
                     tree_scroll: tree_scroll_demo.clone(),
                     tree: tree_demo.clone(),

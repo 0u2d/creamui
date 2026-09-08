@@ -12,3 +12,4 @@ creamui-theme = { workspace = true }
 creamui-reactive = { workspace = true }
 fontdue = "0.9"
 arboard = { workspace = true }
+rfd = { workspace = true }

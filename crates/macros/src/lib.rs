@@ -198,6 +198,10 @@ impl Element {
                 | "TextArea"
                 | "TextInput"
                 | "Slider"
+                | "ColorPicker"
+                | "DateTimePicker"
+                | "DateInput"
+                | "TimeInput"
         )
     }
 
@@ -621,6 +625,103 @@ impl Element {
                 } else {
                     Ok(quote!(::creamui_widgets::themed::Slider::new(#theme, #value, #on_change)))
                 }
+            }
+            "ColorPicker" => {
+                self.reject_unknown_props(&[
+                    "theme",
+                    "controller",
+                    "value",
+                    "on_change",
+                    "style",
+                    "popup_width",
+                    "disabled",
+                ])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`ColorPicker` cannot have children",
+                    ));
+                }
+                let theme = self.required_prop("theme")?;
+                let controller = self.required_prop("controller")?;
+                let value = self.required_prop("value")?;
+                let on_change = self.required_prop("on_change")?;
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(::creamui_widgets::themed::ColorPicker::controlled_with_style(#theme, #style, #value, #controller, #on_change))
+                } else {
+                    quote!(::creamui_widgets::themed::ColorPicker::controlled(#theme, #value, #controller, #on_change))
+                };
+                if let Some(width) = self.prop("popup_width")? {
+                    output = quote!(#output.popup_width(#width));
+                }
+                if let Some(disabled) = self.prop("disabled")? {
+                    output = quote!(#output.disabled(#disabled));
+                }
+                Ok(output)
+            }
+            "DateTimePicker" | "DateInput" | "TimeInput" => {
+                self.reject_unknown_props(&[
+                    "theme",
+                    "controller",
+                    "style",
+                    "show_date",
+                    "show_time",
+                    "minute_step",
+                    "popup_width",
+                    "disabled",
+                ])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "picker inputs cannot have children",
+                    ));
+                }
+                let theme = self.required_prop("theme")?;
+                let controller = self.required_prop("controller")?;
+                let style = self.prop("style")?;
+                let tag = self.tag.to_string();
+                if tag != "DateTimePicker"
+                    && (self.prop("show_date")?.is_some() || self.prop("show_time")?.is_some())
+                {
+                    return Err(Error::new_spanned(&self.tag, "`show_date`/`show_time` belong to `DateTimePicker`; use the matching DateInput or TimeInput tag"));
+                }
+                let constructor = match (tag.as_str(), style) {
+                    ("DateTimePicker", Some(style)) => {
+                        quote!(::creamui_widgets::themed::DateTimePicker::controlled_with_style(#theme, #style, #controller))
+                    }
+                    ("DateTimePicker", None) => {
+                        quote!(::creamui_widgets::themed::DateTimePicker::controlled(#theme, #controller))
+                    }
+                    ("DateInput", Some(style)) => {
+                        quote!(::creamui_widgets::themed::DateInput::controlled_with_style(#theme, #style, #controller))
+                    }
+                    ("DateInput", None) => {
+                        quote!(::creamui_widgets::themed::DateInput::controlled(#theme, #controller))
+                    }
+                    ("TimeInput", Some(style)) => {
+                        quote!(::creamui_widgets::themed::TimeInput::controlled_with_style(#theme, #style, #controller))
+                    }
+                    _ => {
+                        quote!(::creamui_widgets::themed::TimeInput::controlled(#theme, #controller))
+                    }
+                };
+                let mut output = constructor;
+                if let Some(show) = self.prop("show_date")? {
+                    output = quote!(#output.show_date(#show));
+                }
+                if let Some(show) = self.prop("show_time")? {
+                    output = quote!(#output.show_time(#show));
+                }
+                if let Some(step) = self.prop("minute_step")? {
+                    output = quote!(#output.minute_step(#step));
+                }
+                if let Some(width) = self.prop("popup_width")? {
+                    output = quote!(#output.popup_width(#width));
+                }
+                if let Some(disabled) = self.prop("disabled")? {
+                    output = quote!(#output.disabled(#disabled));
+                }
+                Ok(output)
             }
             _ => self.expand_user_component(),
         }
