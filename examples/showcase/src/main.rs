@@ -19,8 +19,8 @@ use creamui_widgets::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, ListBox, Popover,
     ProgressBar, ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController,
     ScrollView, SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab,
-    TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text, TextController,
-    TextInput, TextSize, TreeController, TreeNode, TreeView, View,
+    TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text, TextController, TextInput,
+    TextSize, TreeController, TreeNode, TreeView, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
@@ -82,6 +82,75 @@ fn label_style() -> Style {
         },
         ..Default::default()
     }
+}
+
+/// Vertical rhythm between the cards inside a panel — wider than the
+/// theme's own `spacing_large` so each topic reads as a separate block
+/// instead of one continuous, undifferentiated column.
+fn section_gap(theme: &Theme) -> f32 {
+    theme.spacing_large * 1.75
+}
+
+/// A full-width block styled to sit visibly inset against the panel's
+/// elevated background (see `SurfaceRole::Inset`), so one topic's controls
+/// are framed as a single modular unit rather than running directly into
+/// the next. `gap` spaces the children stacked inside it.
+fn card(theme: &Theme, gap: f32) -> Surface {
+    Surface::new(
+        theme,
+        SurfaceRole::Inset,
+        padding(
+            Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Percent(1.0),
+                    height: Dimension::Auto,
+                },
+                ..column(gap)
+            },
+            theme.spacing_large,
+        ),
+    )
+}
+
+/// A muted, left-aligned caption used to label a group of controls within a
+/// card (e.g. "Mode", "Accent color").
+fn field_label(theme: &Theme, text: impl Into<String>) -> BoxedWidget {
+    Box::new(
+        Text::secondary(theme, text)
+            .align(TextAlign::Start)
+            .style(label_style()),
+    )
+}
+
+/// A caption stacked over one control, without its own card — used to pack
+/// several related fields into one bigger card (see [`card`]).
+fn stacked_field(theme: &Theme, label: &str, control: BoxedWidget) -> BoxedWidget {
+    Box::new(
+        RawView::new(column(theme.spacing_small))
+            .child(field_label(theme, label))
+            .child(control),
+    )
+}
+
+/// The most common card shape on this page: one caption over one control.
+fn field_card(theme: &Theme, label: &str, control: BoxedWidget) -> BoxedWidget {
+    Box::new(
+        card(theme, theme.spacing_small)
+            .child(field_label(theme, label))
+            .child(control),
+    )
+}
+
+/// Lays out same-height cards side by side with a comfortable gutter
+/// between them.
+fn card_row(theme: &Theme, children: Vec<BoxedWidget>) -> BoxedWidget {
+    Box::new(
+        RawView::new(Style {
+            align_items: Some(AlignItems::Stretch),
+            ..row(theme.spacing_large)
+        })
+        .with_children(children),
+    )
 }
 
 /// The showcase category rail.
@@ -294,27 +363,33 @@ fn AppearancePanel(
     );
 
     Box::new(jsx! {
-        <RawView style={column(24.)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Appearance".to_owned()} subtitle={"Explore the same components in a different light.".to_owned()} />
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Mode".to_owned()}</Text>
-                <RawView style={row(theme.spacing_medium)} children={mode_pills} />
-            </RawView>
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Accent color".to_owned()}</Text>
-                <RawView style={row(theme.spacing_medium)} children={swatches} />
-            </RawView>
-            <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{summary}</Text>
-            <View theme={&theme} style={padding(column(18.),20.)}>
-                <Heading theme={&theme} size={TextSize::Md}>"Component preview"</Heading>
-                <Text theme={&theme} align={TextAlign::Start}>"Open a category to explore sizes, states, and interactions."</Text>
-                <RawView style={row(10.)}>
-                    {Box::new(Button::new(&theme,"Primary",{let mode=dark_mode.clone();move || mode.update(|v| *v=!*v)})) as BoxedWidget}
-                    {Box::new(Button::secondary(&theme,ButtonSize::Md,"Secondary",{let mode=dark_mode.clone();move || mode.update(|v| *v=!*v)})) as BoxedWidget}
-                    {Box::new(Button::new(&theme,"Disabled",||{}).disabled(true)) as BoxedWidget}
-                </RawView>
-                <Text theme={&theme} align={TextAlign::Start} secondary={true}>"These preview buttons switch the color scheme."</Text>
-            </View>
+            {Box::new(
+                card(&theme, theme.spacing_large)
+                    .child(Box::new(
+                        card(&theme, theme.spacing_small)
+                            .child(field_label(&theme, "Mode"))
+                            .child(Box::new(RawView::new(row(theme.spacing_medium)).with_children(mode_pills))),
+                    ))
+                    .child(Box::new(
+                        card(&theme, theme.spacing_small)
+                            .child(field_label(&theme, "Accent color"))
+                            .child(Box::new(RawView::new(row(theme.spacing_medium)).with_children(swatches))),
+                    ))
+                    .child(Box::new(Text::new(&theme, summary).align(TextAlign::Start).color(theme.text_disabled).style(label_style())))
+            ) as BoxedWidget}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(Box::new(Heading::new(&theme, "Component preview")))
+                    .child(Box::new(Text::secondary(&theme, "Open a category to explore sizes, states, and interactions.").align(TextAlign::Start)))
+                    .child(card_row(&theme, vec![
+                        Box::new(Button::new(&theme, "Primary", { let mode = dark_mode.clone(); move || mode.update(|v| *v = !*v) })),
+                        Box::new(Button::secondary(&theme, ButtonSize::Md, "Secondary", { let mode = dark_mode.clone(); move || mode.update(|v| *v = !*v) })),
+                        Box::new(Button::new(&theme, "Disabled", || {}).disabled(true)),
+                    ]))
+                    .child(Box::new(Text::secondary(&theme, "These preview buttons switch the color scheme.").align(TextAlign::Start)))
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -341,37 +416,52 @@ fn InputPanel(
             ..Default::default()
         }
     }
+    let error_field: BoxedWidget = Box::new(
+        RawView::new(column(theme.spacing_small))
+            .child(Box::new(
+                TextInput::new(&theme, "", |_| {}).border(theme.danger),
+            ))
+            .child(Box::new(
+                Text::new(&theme, "Error: this field is required")
+                    .align(TextAlign::Start)
+                    .color(theme.danger)
+                    .style(label_style()),
+            )),
+    );
+    let warning_field: BoxedWidget = Box::new(
+        RawView::new(column(theme.spacing_small))
+            .child(Box::new(
+                TextInput::new(&theme, "", |_| {}).border(theme.warning),
+            ))
+            .child(Box::new(
+                Text::new(&theme, "Warning: verify this value")
+                    .align(TextAlign::Start)
+                    .color(theme.warning)
+                    .style(label_style()),
+            )),
+    );
+
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"Write, select, and edit. Each field keeps its own content.".to_owned()} />
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Default".to_owned()}</Text>
-                <TextInput theme={&theme} controller={&plain} />
-            </RawView>
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"With placeholder".to_owned()}</Text>
-                <TextInput theme={&theme} controller={&with_placeholder} placeholder={"Type something…".to_owned()} />
-            </RawView>
-            <RawView style={row(theme.spacing_large)}>
-                <RawView style={column(theme.spacing_small)}>
-                    {Box::new(TextInput::new(&theme, "", |_| {}).border(theme.danger)) as BoxedWidget}
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.danger} style={label_style()}>{"Error: this field is required".to_owned()}</Text>
-                </RawView>
-                <RawView style={column(theme.spacing_small)}>
-                    {Box::new(TextInput::new(&theme, "", |_| {}).border(theme.warning)) as BoxedWidget}
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.warning} style={label_style()}>{"Warning: verify this value".to_owned()}</Text>
-                </RawView>
-            </RawView>
-            <RawView style={row(theme.spacing_large)}>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea · horizontal scrolling".to_owned()}</Text>
-                    <TextArea theme={&theme} controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />
-                </RawView>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea · wrap to fit".to_owned()}</Text>
-                    <TextArea theme={&theme} controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />
-                </RawView>
-            </RawView>
+            {Box::new(
+                card(&theme, theme.spacing_large)
+                    .child(stacked_field(&theme, "Default", Box::new(jsx!{<TextInput theme={&theme} controller={&plain} />})))
+                    .child(stacked_field(&theme, "With placeholder", Box::new(jsx!{<TextInput theme={&theme} controller={&with_placeholder} placeholder={"Type something…".to_owned()} />})))
+            ) as BoxedWidget}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Validation states"))
+                    .child(card_row(&theme, vec![error_field, warning_field]))
+            ) as BoxedWidget}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Text area"))
+                    .child(card_row(&theme, vec![
+                        stacked_field(&theme, "Horizontal scrolling", Box::new(jsx!{<TextArea theme={&theme} controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />})),
+                        stacked_field(&theme, "Wrap to fit", Box::new(jsx!{<TextArea theme={&theme} controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />})),
+                    ]))
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -414,45 +504,53 @@ fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
         )));
     }
     Box::new(
-        RawView::new(column(24.))
+        RawView::new(column(section_gap(&theme)))
             .child(SectionHeader(SectionHeaderProps {
                 theme,
                 title: "Buttons".into(),
                 subtitle: "A clear hierarchy, from everyday actions to important decisions.".into(),
             }))
-            .child(Box::new(actions))
             .child(Box::new(
-                RawText::new("One family, four sizes", theme.text_secondary, 13.)
-                    .align(TextAlign::Start),
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Variants"))
+                    .child(Box::new(actions)),
             ))
-            .child(Box::new(sizes))
             .child(Box::new(
-                RawView::new(row(10.))
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "One family, four sizes"))
+                    .child(Box::new(sizes)),
+            ))
+            .child(Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "States"))
                     .child(Box::new(
-                        Button::new(&theme, "Unavailable", || {}).disabled(true),
+                        RawView::new(row(10.))
+                            .child(Box::new(
+                                Button::new(&theme, "Unavailable", || {}).disabled(true),
+                            ))
+                            .child(Box::new(Button::state(
+                                &theme,
+                                ButtonSize::Md,
+                                "Working",
+                                ButtonState::Loading,
+                                || {},
+                            )))
+                            .child(Box::new(Button::state(
+                                &theme,
+                                ButtonSize::Md,
+                                "Saved",
+                                ButtonState::Success,
+                                || {},
+                            ))),
                     ))
-                    .child(Box::new(Button::state(
-                        &theme,
-                        ButtonSize::Md,
-                        "Working",
-                        ButtonState::Loading,
-                        || {},
-                    )))
-                    .child(Box::new(Button::state(
-                        &theme,
-                        ButtonSize::Md,
-                        "Saved",
-                        ButtonState::Success,
-                        || {},
-                    ))),
-            ))
-            .child(Box::new(
-                RawText::new(
-                    format!("{} actions · Try Tab, then Enter or Space", clicks.get()),
-                    theme.text_secondary,
-                    12.,
-                )
-                .align(TextAlign::Start),
+                    .child(Box::new(
+                        RawText::new(
+                            format!("{} actions · Try Tab, then Enter or Space", clicks.get()),
+                            theme.text_secondary,
+                            12.,
+                        )
+                        .align(TextAlign::Start),
+                    )),
             )),
     )
 }
@@ -484,11 +582,14 @@ fn SliderPanel(
     zoom: Signal<f32>,
 ) -> BoxedWidget {
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Slider".to_owned()} subtitle={"Fine adjustments with immediate feedback.".to_owned()} />
-            {slider_row(&theme, "Volume", volume, |v| format!("{:.0}%", v * 100.0))}
-            {slider_row(&theme, "Brightness", brightness, |v| format!("{:.0}%", v * 100.0))}
-            {slider_row(&theme, "Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5))}
+            {Box::new(
+                card(&theme, theme.spacing_large)
+                    .child(slider_row(&theme, "Volume", volume, |v| format!("{:.0}%", v * 100.0)))
+                    .child(slider_row(&theme, "Brightness", brightness, |v| format!("{:.0}%", v * 100.0)))
+                    .child(slider_row(&theme, "Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5)))
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -526,15 +627,24 @@ fn CheckboxPanel(
     beta_features: Signal<bool>,
 ) -> BoxedWidget {
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Checkbox".to_owned()} subtitle={"Small preferences, clearly expressed.".to_owned()} />
-            {checkbox_row(&theme, "Notifications", notifications)}
-            {checkbox_row(&theme, "Auto-save", auto_save.clone())}
-            {checkbox_row(&theme, "Beta features", beta_features)}
-            <RawView style={row(theme.spacing_medium)}>
-                {Box::new(Switch::new(&theme, auto_save.get(), { let set = auto_save.clone(); move || set.update(|value| *value = !*value) })) as BoxedWidget}
-                <Text theme={&theme} align={TextAlign::Start} style={label_style()}>{"Switch presentation".to_owned()}</Text>
-            </RawView>
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Preferences"))
+                    .child(checkbox_row(&theme, "Notifications", notifications))
+                    .child(checkbox_row(&theme, "Auto-save", auto_save.clone()))
+                    .child(checkbox_row(&theme, "Beta features", beta_features))
+            ) as BoxedWidget}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Switch presentation"))
+                    .child(Box::new(
+                        RawView::new(Style { align_items: Some(AlignItems::Center), ..row(theme.spacing_medium) })
+                            .child(Box::new(Switch::new(&theme, auto_save.get(), { let set = auto_save.clone(); move || set.update(|value| *value = !*value) })))
+                            .child(Box::new(Text::secondary(&theme, "The same boolean, shown as a switch instead of a checkbox.").align(TextAlign::Start))),
+                    ))
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -553,8 +663,22 @@ fn SelectionPanel(
 ) -> BoxedWidget {
     const OPTIONS: [&str; 3] = ["System", "Light", "Dark"];
     const FRUITS: [&str; 16] = [
-        "Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape", "Honeydew", "Kiwi",
-        "Lemon", "Mango", "Nectarine", "Orange", "Papaya", "Quince", "Raspberry",
+        "Apple",
+        "Banana",
+        "Cherry",
+        "Date",
+        "Elderberry",
+        "Fig",
+        "Grape",
+        "Honeydew",
+        "Kiwi",
+        "Lemon",
+        "Mango",
+        "Nectarine",
+        "Orange",
+        "Papaya",
+        "Quince",
+        "Raspberry",
     ];
     let radio_value = radio.get();
     let segment_value = segment.get();
@@ -570,35 +694,31 @@ fn SelectionPanel(
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let list = ListBox::new(&theme, list_box_style, list_scroll, list_value, move |index| {
-        set_list.set(index)
-    })
+    let list = ListBox::new(
+        &theme,
+        list_box_style,
+        list_scroll,
+        list_value,
+        move |index| set_list.set(index),
+    )
     .options(&FRUITS);
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, compact Choice segments, or a scrollable list.".to_owned()} />
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Select / ComboBox"</Text>
-                {Box::new(Select::controlled(&theme, &OPTIONS, select)) as BoxedWidget}
-            </RawView>
-            <RawView style={row(theme.spacing_large)}>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Radio group"</Text>
-                    {Box::new(RadioGroup::new(&theme, radio_value, move |index| set_radio.set(index))
+            {field_card(&theme, "Select / ComboBox", Box::new(Select::controlled(&theme, &OPTIONS, select)))}
+            {card_row(&theme, vec![
+                field_card(&theme, "Radio group", Box::new(
+                    RadioGroup::new(&theme, radio_value, move |index| set_radio.set(index))
                         .option("Keep files on this device")
                         .option("Sync encrypted copies")
-                        .option("Never sync")) as BoxedWidget}
-                </RawView>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Segmented control"</Text>
-                    {Box::new(SegmentedControl::new(&theme, segment_value, move |index| set_segment.set(index))
-                        .option("Day").option("Week").option("Month")) as BoxedWidget}
-                </RawView>
-            </RawView>
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{format!("List box · {}", FRUITS[list_value])}</Text>
-                {Box::new(list) as BoxedWidget}
-            </RawView>
+                        .option("Never sync"),
+                )),
+                field_card(&theme, "Segmented control", Box::new(
+                    SegmentedControl::new(&theme, segment_value, move |index| set_segment.set(index))
+                        .option("Day").option("Week").option("Month"),
+                )),
+            ])}
+            {field_card(&theme, &format!("List box · {}", FRUITS[list_value]), Box::new(list))}
         </RawView>
     })
 }
@@ -635,31 +755,31 @@ fn FeedbackPanel(
         Box::new(RawView::new(Style::default())) as BoxedWidget
     };
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Feedback & overlays".to_owned()} subtitle={"Show work in progress, surface contextual detail, and ask for confirmation without losing context.".to_owned()} />
-            <RawView style={column(theme.spacing_small)}>
-                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{format!("Determinate progress · {:.0}%", value * 100.0)}</Text>
-                {Box::new(ProgressBar::new(&theme, value)) as BoxedWidget}
-                <Slider theme={&theme} value={value} on_change={move |next| set_progress.set(next)} />
-            </RawView>
-            <RawView style={row(theme.spacing_large)}>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Progress ring"</Text>
-                    <RawView style={row(theme.spacing_medium)}>
-                        {Box::new(ProgressRing::new(&theme, value).size(32.0)) as BoxedWidget}
-                        {Box::new(ProgressRing::indeterminate(&theme).size(32.0)) as BoxedWidget}
-                    </RawView>
-                </RawView>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Indeterminate bar"</Text>
-                    {Box::new(ProgressBar::indeterminate(&theme)) as BoxedWidget}
-                </RawView>
-            </RawView>
-            <RawView style={row(theme.spacing_medium)}>
-                {Box::new(Button::secondary(&theme, ButtonSize::Md, "Toggle popover", move || open_popover.update(|open| *open = !*open))) as BoxedWidget}
-                {Box::new(Button::new(&theme, "Open alert dialog", move || open_alert.set(true))) as BoxedWidget}
-            </RawView>
-            {popover}
+            {field_card(&theme, &format!("Determinate progress · {:.0}%", value * 100.0), Box::new(
+                RawView::new(column(theme.spacing_small))
+                    .child(Box::new(ProgressBar::new(&theme, value)))
+                    .child(Box::new(jsx!{<Slider theme={&theme} value={value} on_change={move |next| set_progress.set(next)} />})),
+            ))}
+            {card_row(&theme, vec![
+                field_card(&theme, "Progress ring", Box::new(
+                    RawView::new(row(theme.spacing_medium))
+                        .child(Box::new(ProgressRing::new(&theme, value).size(32.0)))
+                        .child(Box::new(ProgressRing::indeterminate(&theme).size(32.0))),
+                )),
+                field_card(&theme, "Indeterminate bar", Box::new(ProgressBar::indeterminate(&theme))),
+            ])}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Overlays"))
+                    .child(Box::new(
+                        RawView::new(row(theme.spacing_medium))
+                            .child(Box::new(Button::secondary(&theme, ButtonSize::Md, "Toggle popover", move || open_popover.update(|open| *open = !*open))))
+                            .child(Box::new(Button::new(&theme, "Open alert dialog", move || open_alert.set(true)))),
+                    ))
+                    .child(popover)
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -716,7 +836,7 @@ fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
     );
     let current_label = ITEMS[active.get()].to_owned();
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Sidebar".to_owned()} subtitle={"A compact navigation rail with independent selection.".to_owned()} />
             {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
                 size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(192.0) },
@@ -845,11 +965,14 @@ fn TabsPanel(
         ),
     };
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
-            {tab_example(&theme, "Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small))}
-            {tab_example(&theme, "Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small))}
-            {tab_example(&theme, "Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small))}
+            {Box::new(
+                RawView::new(column(theme.spacing_large))
+                    .child(tab_example(&theme, "Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small)))
+                    .child(tab_example(&theme, "Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small)))
+                    .child(tab_example(&theme, "Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small)))
+            ) as BoxedWidget}
             {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
                 size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
                 ..column(theme.spacing_large)
@@ -866,7 +989,12 @@ fn TabsPanel(
 
 /// A row of numbered list items long enough to overflow a fixed-height
 /// scroll view, used by both lists in [`ScrollPanel`].
-fn scroll_rows(theme: &Theme, count: usize, row_style: Style, text_color: Color) -> Vec<BoxedWidget> {
+fn scroll_rows(
+    theme: &Theme,
+    count: usize,
+    row_style: Style,
+    text_color: Color,
+) -> Vec<BoxedWidget> {
     let text_style = Style {
         size: creamui_core::layout::Size {
             width: Dimension::Percent(1.0),
@@ -925,8 +1053,10 @@ fn ScrollPanel(
         theme.spacing_medium,
     );
 
-    let themed_list = ScrollView::controlled(&theme, list_style.clone(), themed_scroll)
-        .with_children(scroll_rows(&theme, ROWS, row_style.clone(), theme.text_primary));
+    let themed_list =
+        ScrollView::controlled(&theme, list_style.clone(), themed_scroll).with_children(
+            scroll_rows(&theme, ROWS, row_style.clone(), theme.text_primary),
+        );
 
     const NEON: Color = Color::rgb(0x5c, 0xe1, 0xff);
     let custom_list = RawScrollView::controlled(list_style, custom_scroll)
@@ -943,18 +1073,12 @@ fn ScrollPanel(
         ));
 
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Scroll".to_owned()} subtitle={"A draggable scrollbar thumb tracks the mouse wheel automatically, and vice versa.".to_owned()} />
-            <RawView style={row(theme.spacing_large)}>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Themed · ScrollView"</Text>
-                    {Box::new(themed_list) as BoxedWidget}
-                </RawView>
-                <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Custom · RawScrollView"</Text>
-                    {Box::new(custom_list) as BoxedWidget}
-                </RawView>
-            </RawView>
+            {card_row(&theme, vec![
+                field_card(&theme, "Themed · ScrollView", Box::new(themed_list)),
+                field_card(&theme, "Custom · RawScrollView", Box::new(custom_list)),
+            ])}
         </RawView>
     })
 }
@@ -986,9 +1110,9 @@ fn TreePanel(theme: Theme, tree_scroll: ScrollController, tree: TreeController) 
     };
     let view = TreeView::new(&theme, tree_style, tree_scroll, tree, &nodes);
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Tree".to_owned()} subtitle={"Click a chevron to expand or collapse a folder, click a row to select it, or use the arrow keys once focused.".to_owned()} />
-            {Box::new(view) as BoxedWidget}
+            {field_card(&theme, "File browser", Box::new(view))}
         </RawView>
     })
 }
@@ -1033,9 +1157,9 @@ Radia Perlman,Engineer,1951";
         .rows(rows)
         .on_row_click(Some(selected), move |index| set_selected.set(index));
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
+        <RawView style={column(section_gap(&theme))}>
             <SectionHeader theme={theme} title={"Table".to_owned()} subtitle={"A CSV-shaped grid: fixed columns, a header that stays put, and a scrollable body. Click a row to select it.".to_owned()} />
-            {Box::new(table) as BoxedWidget}
+            {field_card(&theme, "Notable computer scientists", Box::new(table))}
         </RawView>
     })
 }
