@@ -13,10 +13,12 @@ use creamui_widgets::raw::{
     RawButton, RawCheckbox, RawScrollView, RawSlider, RawSwitch, RawView, TextSelection,
 };
 use creamui_widgets::themed::{
-    tab_styles, Button, Checkbox, Overlay, Popover, ProgressBar, ProgressRing, ScrollView, Select,
-    Slider, TabColors, TabSizing, Tabs, Text, TextArea, TextInput,
+    tab_styles, Button, Checkbox, ListBox, ListView, Overlay, Popover, ProgressBar, ProgressRing,
+    ScrollView, Select, Slider, TabColors, TabSizing, Table, Tabs, Text, TextArea, TextInput,
+    TreeNode, TreeView,
 };
-use creamui_widgets::{ScrollController, SelectController};
+use creamui_widgets::TableColumn;
+use creamui_widgets::{ScrollController, SelectController, TreeController};
 
 #[derive(Default)]
 struct RecordingPainter {
@@ -1055,4 +1057,221 @@ fn scroll_view_clips_hit_testing_to_its_visible_area_and_scrolls() {
         .hit_test(Point { x: 40.0, y: 20.0 })
         .expect("button 2 should have scrolled into view")();
     assert_eq!(clicked.get(), 2);
+}
+
+#[test]
+fn list_box_clicking_a_row_reports_its_index() {
+    let theme = Theme::dark();
+    let selected = Signal::new(0usize);
+    let build = |selected: Signal<usize>| {
+        let select = selected.clone();
+        ListBox::new(
+            &theme,
+            Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(160.0),
+                    height: Dimension::Length(100.0),
+                },
+                ..Default::default()
+            },
+            ScrollController::default(),
+            selected.get(),
+            move |index| select.set(index),
+        )
+        .options(&["Alpha", "Bravo", "Charlie"])
+        .row_height(32.0)
+    };
+    let scene = render_frame(
+        Box::new(build(selected.clone())),
+        Size {
+            width: 160.0,
+            height: 100.0,
+        },
+        &mut RecordingPainter::default(),
+    );
+    scene
+        .hit_test(Point { x: 20.0, y: 40.0 })
+        .expect("second row should be clickable")();
+    assert_eq!(selected.get(), 1);
+}
+
+#[test]
+fn tree_view_hides_collapsed_children_until_toggled_open() {
+    let theme = Theme::dark();
+    let controller = TreeController::default();
+    let nodes = vec![TreeNode::new(1, "Documents").with_children(vec![
+        TreeNode::new(2, "Resume.pdf"),
+        TreeNode::new(3, "Notes.txt"),
+    ])];
+    let viewport_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(160.0),
+            height: Dimension::Length(120.0),
+        },
+        ..Default::default()
+    };
+
+    let collapsed = TreeView::new(
+        &theme,
+        viewport_style.clone(),
+        ScrollController::default(),
+        controller.clone(),
+        &nodes,
+    )
+    .row_height(30.0);
+    let scene = render_frame(
+        Box::new(collapsed),
+        Size {
+            width: 160.0,
+            height: 120.0,
+        },
+        &mut RecordingPainter::default(),
+    );
+    // Only the root row exists; a click where the second child would be
+    // (row index 1, y in [30, 60)) should hit nothing.
+    assert!(scene.hit_test(Point { x: 100.0, y: 45.0 }).is_none());
+    // Clicking the root's chevron (near its left edge) expands it.
+    scene
+        .hit_test(Point { x: 10.0, y: 10.0 })
+        .expect("root chevron should be clickable")();
+    assert!(controller.is_expanded(1));
+
+    let expanded = TreeView::new(
+        &theme,
+        viewport_style,
+        ScrollController::default(),
+        controller.clone(),
+        &nodes,
+    )
+    .row_height(30.0);
+    let scene = render_frame(
+        Box::new(expanded),
+        Size {
+            width: 160.0,
+            height: 120.0,
+        },
+        &mut RecordingPainter::default(),
+    );
+    // Now the second child row (y in [60, 90)) should be selectable.
+    scene
+        .hit_test(Point { x: 100.0, y: 75.0 })
+        .expect("second child row should be visible after expanding")();
+    assert_eq!(controller.peek_selected(), Some(3));
+}
+
+#[test]
+fn list_view_stacks_arbitrary_rows_and_scrolls_like_raw_scroll_view() {
+    let theme = Theme::dark();
+    let clicked = Signal::new(-1i32);
+    let scroll = ScrollController::default();
+    let row_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(40.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    let build = |scroll: ScrollController, clicked: Signal<i32>| {
+        let mut list = ListView::new(
+            &theme,
+            Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(120.0),
+                    height: Dimension::Length(60.0),
+                },
+                ..Default::default()
+            },
+            scroll,
+        );
+        for i in 0..3 {
+            let record = clicked.clone();
+            list = list.row(Box::new(RawButton::new(row_style.clone(), move || {
+                record.set(i)
+            })));
+        }
+        list
+    };
+    let size = Size {
+        width: 120.0,
+        height: 60.0,
+    };
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(build(scroll.clone(), clicked.clone())),
+        size,
+        &mut painter,
+    );
+    scene
+        .hit_test(Point { x: 10.0, y: 10.0 })
+        .expect("first row is visible")();
+    assert_eq!(clicked.get(), 0);
+    assert!(
+        scene.hit_test(Point { x: 10.0, y: 90.0 }).is_none(),
+        "third row starts past the 60px viewport and should not be clickable yet"
+    );
+
+    let scroll_index = scene
+        .scroll_hit_test(Point { x: 10.0, y: 10.0 })
+        .expect("list view should be scrollable");
+    scene.on_scroll_at(scroll_index).unwrap()(80.0);
+
+    let scene = render_frame(
+        Box::new(build(scroll.clone(), clicked.clone())),
+        size,
+        &mut painter,
+    );
+    // Content is 3*40px rows plus two 1px dividers = 122px over a 60px
+    // viewport, so scrolling clamps to a 62px max offset rather than the
+    // requested 80 — enough to bring the third row (content y in [82, 122))
+    // into view, just not flush with the top.
+    scene
+        .hit_test(Point { x: 10.0, y: 30.0 })
+        .expect("third row should have scrolled into view")();
+    assert_eq!(clicked.get(), 2);
+}
+
+#[test]
+fn table_renders_header_labels_and_clicking_a_row_reports_its_index() {
+    let theme = Theme::dark();
+    let selected = Signal::new(0usize);
+    let columns = vec![TableColumn::new("Name", 80.0), TableColumn::new("Score", 60.0)];
+    let build = |selected: Signal<usize>| {
+        let set_selected = selected.clone();
+        Table::new(
+            &theme,
+            Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(140.0),
+                    height: Dimension::Length(120.0),
+                },
+                ..Default::default()
+            },
+            ScrollController::default(),
+            columns.clone(),
+        )
+        .row(vec!["Ada".to_owned(), "97".to_owned()])
+        .row(vec!["Grace".to_owned(), "95".to_owned()])
+        .row(vec!["Alan".to_owned(), "99".to_owned()])
+        .on_row_click(Some(selected.get()), move |index| set_selected.set(index))
+    };
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(build(selected.clone())),
+        Size {
+            width: 140.0,
+            height: 120.0,
+        },
+        &mut painter,
+    );
+    assert!(painter.texts.iter().any(|t| t == "Name"));
+    assert!(painter.texts.iter().any(|t| t == "Score"));
+    assert!(painter.texts.iter().any(|t| t == "Grace"));
+
+    // Header is 32px tall, each row 28px: the second row ("Grace") sits at
+    // roughly y in [60, 88).
+    scene
+        .hit_test(Point { x: 20.0, y: 70.0 })
+        .expect("second row should be clickable")();
+    assert_eq!(selected.get(), 1);
 }

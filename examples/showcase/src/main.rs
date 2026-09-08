@@ -16,15 +16,16 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
-    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, Popover, ProgressBar,
-    ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController, ScrollView,
-    SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab, TabColors,
-    TabController, TabSizing, Tabs, Text, TextController, TextInput, TextSize, View,
+    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Heading, ListBox, Popover,
+    ProgressBar, ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController,
+    ScrollView, SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab,
+    TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text, TextController,
+    TextInput, TextSize, TreeController, TreeNode, TreeView, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 10] = [
+const NAV_LABELS: [&str; 12] = [
     "Appearance",
     "Input",
     "Button",
@@ -35,6 +36,8 @@ const NAV_LABELS: [&str; 10] = [
     "Sidebar",
     "Tabs",
     "Scroll",
+    "Tree",
+    "Table",
 ];
 const ACCENTS: [(&str, Color); 5] = [
     ("Lilac", Color::rgb(181, 139, 255)),
@@ -117,9 +120,11 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
         Symbol::Folder,
         Symbol::Grid,
         Symbol::Grid,
+        Symbol::Folder,
+        Symbol::Grid,
     ];
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 1 || i == 5 || i == 7 {
+        if i == 0 || i == 1 || i == 5 || i == 7 || i == 10 {
             nav = nav.child(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
@@ -129,6 +134,8 @@ fn Nav(theme: Theme, active: Signal<usize>, content_scroll: ScrollController) ->
                             "CONTROLS"
                         } else if i == 5 {
                             "SELECTION"
+                        } else if i == 10 {
+                            "DATA VIEW"
                         } else {
                             "NAVIGATION"
                         },
@@ -514,15 +521,35 @@ fn SelectionPanel(
     select: SelectController,
     radio: Signal<usize>,
     segment: Signal<usize>,
+    list_scroll: ScrollController,
+    list_selected: Signal<usize>,
 ) -> BoxedWidget {
     const OPTIONS: [&str; 3] = ["System", "Light", "Dark"];
+    const FRUITS: [&str; 16] = [
+        "Apple", "Banana", "Cherry", "Date", "Elderberry", "Fig", "Grape", "Honeydew", "Kiwi",
+        "Lemon", "Mango", "Nectarine", "Orange", "Papaya", "Quince", "Raspberry",
+    ];
     let radio_value = radio.get();
     let segment_value = segment.get();
     let set_radio = radio.clone();
     let set_segment = segment.clone();
+    let list_value = list_selected.get();
+    let set_list = list_selected.clone();
+    let list_box_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(220.0),
+            height: Dimension::Length(200.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    let list = ListBox::new(&theme, list_box_style, list_scroll, list_value, move |index| {
+        set_list.set(index)
+    })
+    .options(&FRUITS);
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, or compact Choice segments.".to_owned()} />
+            <SectionHeader theme={theme} title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, compact Choice segments, or a scrollable list.".to_owned()} />
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>"Select / ComboBox"</Text>
                 {Box::new(Select::controlled(&theme, &OPTIONS, select)) as BoxedWidget}
@@ -540,6 +567,10 @@ fn SelectionPanel(
                     {Box::new(SegmentedControl::new(&theme, segment_value, move |index| set_segment.set(index))
                         .option("Day").option("Week").option("Month")) as BoxedWidget}
                 </RawView>
+            </RawView>
+            <RawView style={column(theme.spacing_small)}>
+                <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{format!("List box · {}", FRUITS[list_value])}</Text>
+                {Box::new(list) as BoxedWidget}
             </RawView>
         </RawView>
     })
@@ -901,6 +932,87 @@ fn ScrollPanel(
     })
 }
 
+/// The "Tree" panel: the "Data View" category's first entry — browsing a
+/// hierarchy is a different job from picking one value (see `ListBox` on
+/// the "Selection" page instead). A `TreeController` tracks which folders
+/// are expanded and which row is selected.
+#[component]
+fn TreePanel(theme: Theme, tree_scroll: ScrollController, tree: TreeController) -> BoxedWidget {
+    let nodes = vec![
+        TreeNode::new(1, "src").with_children(vec![
+            TreeNode::new(2, "main.rs"),
+            TreeNode::new(3, "widgets").with_children(vec![
+                TreeNode::new(4, "button.rs"),
+                TreeNode::new(5, "scroll.rs"),
+            ]),
+        ]),
+        TreeNode::new(6, "Cargo.toml"),
+        TreeNode::new(7, "README.md"),
+    ];
+    let tree_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(260.0),
+            height: Dimension::Length(280.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    let view = TreeView::new(&theme, tree_style, tree_scroll, tree, &nodes);
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_large)}>
+            <SectionHeader theme={theme} title={"Tree".to_owned()} subtitle={"Click a chevron to expand or collapse a folder, click a row to select it, or use the arrow keys once focused.".to_owned()} />
+            {Box::new(view) as BoxedWidget}
+        </RawView>
+    })
+}
+
+/// The "Table" panel: the Data View category's column-based entry — a CSV
+/// viewer's shape. `Table` only needs `Vec<Vec<String>>`, so these rows are
+/// parsed from a plain comma-separated string with `str::split` below, not
+/// a CSV crate — however an application gets to that shape is up to it.
+#[component]
+fn TablePanel(
+    theme: Theme,
+    table_scroll: ScrollController,
+    table_selected: Signal<usize>,
+) -> BoxedWidget {
+    const CSV: &str = "Ada Lovelace,Mathematician,1815
+Grace Hopper,Programmer,1906
+Alan Turing,Mathematician,1912
+Margaret Hamilton,Engineer,1936
+Katherine Johnson,Physicist,1918
+Barbara Liskov,Computer Scientist,1939
+Radia Perlman,Engineer,1951";
+    let rows: Vec<Vec<String>> = CSV
+        .lines()
+        .map(|line| line.split(',').map(|cell| cell.to_owned()).collect())
+        .collect();
+    let columns = vec![
+        TableColumn::new("Name", 160.0),
+        TableColumn::new("Field", 160.0),
+        TableColumn::new("Born", 70.0),
+    ];
+    let selected = table_selected.get();
+    let set_selected = table_selected.clone();
+    let table_style = Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(390.0),
+            height: Dimension::Length(280.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    let table = Table::new(&theme, table_style, table_scroll, columns)
+        .rows(rows)
+        .on_row_click(Some(selected), move |index| set_selected.set(index));
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_large)}>
+            <SectionHeader theme={theme} title={"Table".to_owned()} subtitle={"A CSV-shaped grid: fixed columns, a header that stays put, and a scrollable body. Click a row to select it.".to_owned()} />
+            {Box::new(table) as BoxedWidget}
+        </RawView>
+    })
+}
+
 fn main() {
     let dark_mode = Signal::new(true);
     let accent_index = Signal::new(0usize);
@@ -939,6 +1051,12 @@ fn main() {
     let content_scroll = ScrollController::default();
     let themed_scroll_demo = ScrollController::default();
     let custom_scroll_demo = ScrollController::default();
+    let list_scroll_demo = ScrollController::default();
+    let list_selected = Signal::new(0usize);
+    let tree_scroll_demo = ScrollController::default();
+    let tree_demo = TreeController::default();
+    let table_scroll_demo = ScrollController::default();
+    let table_selected = Signal::new(0usize);
 
     run(
         WindowOptions {
@@ -1022,6 +1140,8 @@ fn main() {
                     select: select.clone(),
                     radio: radio.clone(),
                     segment: segment.clone(),
+                    list_scroll: list_scroll_demo.clone(),
+                    list_selected: list_selected.clone(),
                 }),
                 6 => FeedbackPanel(FeedbackPanelProps {
                     theme,
@@ -1040,10 +1160,20 @@ fn main() {
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
-                _ => ScrollPanel(ScrollPanelProps {
+                9 => ScrollPanel(ScrollPanelProps {
                     theme,
                     themed_scroll: themed_scroll_demo.clone(),
                     custom_scroll: custom_scroll_demo.clone(),
+                }),
+                10 => TreePanel(TreePanelProps {
+                    theme,
+                    tree_scroll: tree_scroll_demo.clone(),
+                    tree: tree_demo.clone(),
+                }),
+                _ => TablePanel(TablePanelProps {
+                    theme,
+                    table_scroll: table_scroll_demo.clone(),
+                    table_selected: table_selected.clone(),
                 }),
             };
 

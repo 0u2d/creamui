@@ -18,6 +18,7 @@
 use crate::raw::TextSelection;
 use creamui_reactive::Signal;
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::rc::Rc;
 
 type ChangeGuard = dyn Fn(&str, &str) -> Option<String>;
@@ -295,6 +296,63 @@ impl ScrollController {
 impl Default for ScrollController {
     fn default() -> Self {
         Self::new(0.0)
+    }
+}
+
+/// Shared expanded/selected state for a [`crate::themed::TreeView`], keyed
+/// by each node's own `id`. Backed by `Signal`s (unlike [`ScrollController`])
+/// because a toggled node changes which rows exist at all — `TreeView` reads
+/// this controller once, in its own constructor rather than lazily in
+/// `Widget::children`, so that read happens on the same call stack as the
+/// application's `build_ui` and actually subscribes to future changes.
+#[derive(Clone)]
+pub struct TreeController {
+    expanded: Signal<HashSet<u64>>,
+    selected: Signal<Option<u64>>,
+}
+
+impl TreeController {
+    pub fn new() -> Self {
+        Self {
+            expanded: Signal::new(HashSet::new()),
+            selected: Signal::new(None),
+        }
+    }
+
+    pub fn is_expanded(&self, id: u64) -> bool {
+        self.expanded.get().contains(&id)
+    }
+
+    pub fn set_expanded(&self, id: u64, expanded: bool) {
+        self.expanded.update(|set| {
+            if expanded {
+                set.insert(id);
+            } else {
+                set.remove(&id);
+            }
+        });
+    }
+
+    pub fn toggle(&self, id: u64) {
+        self.set_expanded(id, !self.expanded.peek().contains(&id));
+    }
+
+    pub fn selected(&self) -> Option<u64> {
+        self.selected.get()
+    }
+
+    pub fn peek_selected(&self) -> Option<u64> {
+        self.selected.peek()
+    }
+
+    pub fn select(&self, id: u64) {
+        self.selected.set(Some(id));
+    }
+}
+
+impl Default for TreeController {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

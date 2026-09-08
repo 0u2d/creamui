@@ -10,8 +10,9 @@
 //! new constructor function in the same shape.
 
 use crate::raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab,
-    RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide,
+    RawButton, RawCheckbox, RawListView, RawScrollView, RawSidebar, RawSlider, RawSpinner,
+    RawSwitch, RawTab, RawTable, RawTabs, RawText, RawTextArea, RawTextInput, RawView,
+    TabIndicatorSide, TableColumn,
 };
 use creamui_core::layout::{
     AlignItems, Dimension, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
@@ -36,6 +37,7 @@ fn centered_box_style(padding: f32) -> Style {
 
 mod button;
 mod controls;
+mod dataview;
 mod feedback;
 mod inputs;
 mod navigation;
@@ -46,6 +48,7 @@ mod text;
 
 pub use button::*;
 pub use controls::*;
+pub use dataview::*;
 pub use feedback::*;
 pub use inputs::*;
 pub use navigation::*;

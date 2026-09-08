@@ -1,5 +1,6 @@
 use super::*;
-use crate::layout::{column, fixed, padding, row};
+use crate::layout::{column, fill, fixed, padding, row};
+use crate::ScrollController;
 use creamui_core::layout::{AlignItems, Dimension, LengthPercentageAuto, Position, Style};
 use creamui_core::Key;
 
@@ -450,5 +451,144 @@ impl Widget for SegmentedControl {
                 )) as BoxedWidget
             })
             .collect()
+    }
+}
+
+/// A scrollable, single-select list of plain-text rows. Selection is fully
+/// controlled — like [`RadioGroup`], it takes the current index and an
+/// `on_change` callback rather than owning state itself — while scrolling
+/// (including the draggable thumb) is delegated to a [`crate::RawScrollView`]
+/// built from the given [`ScrollController`]. For hierarchical or
+/// column-based data, see [`crate::themed::TreeView`] instead.
+pub struct ListBox {
+    theme: Theme,
+    style: Style,
+    scroll: ScrollController,
+    options: Vec<String>,
+    selected: usize,
+    on_change: Rc<dyn Fn(usize)>,
+    row_height: f32,
+}
+
+impl ListBox {
+    pub fn new(
+        theme: &Theme,
+        style: Style,
+        scroll: ScrollController,
+        selected: usize,
+        on_change: impl Fn(usize) + 'static,
+    ) -> Self {
+        Self {
+            theme: *theme,
+            style,
+            scroll,
+            options: Vec::new(),
+            selected,
+            on_change: Rc::new(on_change),
+            row_height: 32.0,
+        }
+    }
+
+    pub fn option(mut self, label: impl Into<String>) -> Self {
+        self.options.push(label.into());
+        self
+    }
+
+    pub fn options(mut self, labels: &[&str]) -> Self {
+        self.options = labels.iter().map(|label| (*label).to_owned()).collect();
+        self
+    }
+
+    pub fn row_height(mut self, height: f32) -> Self {
+        self.row_height = height.max(1.0);
+        self
+    }
+}
+
+impl Widget for ListBox {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, _painter: &mut dyn Painter, _rect: Rect) {}
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        let mut scroll_view = RawScrollView::controlled(fill(Style::default()), self.scroll.clone())
+            .background(self.theme.surface_elevated)
+            .corner_radius(self.theme.input_radius);
+        for (index, label) in self.options.iter().enumerate() {
+            let selected = index == self.selected;
+            let on_change = self.on_change.clone();
+            let row_style = padding(
+                Style {
+                    size: creamui_core::layout::Size {
+                        width: Dimension::Percent(1.0),
+                        height: Dimension::Length(self.row_height),
+                    },
+                    flex_shrink: 0.0,
+                    align_items: Some(AlignItems::Center),
+                    ..Default::default()
+                },
+                self.theme.spacing_medium,
+            );
+            let background = if selected {
+                self.theme.accent
+            } else {
+                self.theme.surface_elevated
+            };
+            let foreground = if selected {
+                self.theme.selection_text
+            } else {
+                self.theme.text_primary
+            };
+            let mut item = RawButton::new(row_style, move || on_change(index)).background(background);
+            item.hover_background = Some(if selected {
+                self.theme.accent_hover
+            } else {
+                self.theme.surface_hover
+            });
+            item = item.child(Box::new(
+                RawText::new(label.clone(), foreground, self.theme.typography.body)
+                    .align(TextAlign::Start),
+            ));
+            scroll_view = scroll_view.child(Box::new(item));
+        }
+        vec![Box::new(scroll_view)]
+    }
+
+    fn focusable(&self) -> bool {
+        true
+    }
+
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        let on_change = self.on_change.clone();
+        let len = self.options.len();
+        let selected = self.selected;
+        Some(Rc::new(move |input| {
+            if len == 0 {
+                return;
+            }
+            match input.key {
+                Key::Down => on_change((selected + 1).min(len - 1)),
+                Key::Up => on_change(selected.saturating_sub(1)),
+                Key::Home => on_change(0),
+                Key::End => on_change(len - 1),
+                _ => {}
+            }
+        }))
+    }
+
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, _caret_visible: bool) {
+        painter.stroke_rect(
+            Rect {
+                x: rect.x - 2.0,
+                y: rect.y - 2.0,
+                width: rect.width + 4.0,
+                height: rect.height + 4.0,
+            },
+            self.theme.accent,
+            2.0,
+            self.theme.input_radius + 2.0,
+        );
     }
 }

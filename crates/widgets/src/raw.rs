@@ -51,6 +51,7 @@ fn clipboard_read() -> Option<String> {
 
 mod button;
 mod controls;
+mod dataview;
 mod foundation;
 mod navigation;
 mod scroll;
@@ -59,6 +60,7 @@ mod text_input;
 
 pub use button::*;
 pub use controls::*;
+pub use dataview::*;
 pub use foundation::*;
 pub use navigation::*;
 pub use scroll::*;
