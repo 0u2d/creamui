@@ -15,7 +15,9 @@ use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::layout::{column, fixed, margin_xy, padding, row};
-use creamui_widgets::{RawView, Sidebar, SidebarItem, Tab, TabColors, Tabs, TextSize};
+use creamui_widgets::{
+    RawView, Sidebar, SidebarItem, Tab, TabColors, Tabs, TextController, TextSize,
+};
 
 /// Sidebar entries, in display order. `SEPARATOR_AFTER` marks which of these
 /// get a divider drawn below them.
@@ -247,35 +249,31 @@ fn AppearancePanel(
 }
 
 /// The "Input" panel: every `TextInput`/`TextArea` variation side by side —
-/// plain, with a placeholder, and a multi-line editor.
+/// plain, with a placeholder, and a multi-line editor. Each is bound to its
+/// own [`TextController`] rather than a hand-wired `value`/`on_change` (and,
+/// for the `TextArea`, `cursor`/`selection`) pair — the controller owns that
+/// state and the widget just reads and writes through it.
 #[component]
 fn InputPanel(
     theme: Theme,
-    plain_value: Signal<String>,
-    placeholder_value: Signal<String>,
-    area_value: Signal<String>,
+    plain: TextController,
+    with_placeholder: TextController,
+    notes: TextController,
 ) -> BoxedWidget {
-    let plain_set = plain_value.clone();
-    let placeholder_set = placeholder_value.clone();
-    let area_set = area_value.clone();
-    let plain_value_snapshot = plain_value.get();
-    let placeholder_value_snapshot = placeholder_value.get();
-    let area_value_snapshot = area_value.get();
-
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"TextInput and TextArea, each fully controlled by a Signal.".to_owned()} />
+            <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"TextInput and TextArea, each bound to its own TextController.".to_owned()} />
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Default".to_owned()}</Text>
-                <TextInput theme={&theme} value={plain_value_snapshot} on_change={move |v| plain_set.set(v)} />
+                <TextInput theme={&theme} controller={&plain} />
             </RawView>
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"With placeholder".to_owned()}</Text>
-                <TextInput theme={&theme} value={placeholder_value_snapshot} on_change={move |v| placeholder_set.set(v)} placeholder={"Type something…".to_owned()} />
+                <TextInput theme={&theme} controller={&with_placeholder} placeholder={"Type something…".to_owned()} />
             </RawView>
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Multi-line (TextArea)".to_owned()}</Text>
-                <TextArea theme={&theme} value={area_value_snapshot} on_change={move |v| area_set.set(v)} placeholder={"Notes…".to_owned()} />
+                <TextArea theme={&theme} controller={&notes} placeholder={"Notes…".to_owned()} />
             </RawView>
         </RawView>
     })
@@ -317,7 +315,7 @@ fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
                 <RawButton style={button_style()} background={theme.success} corner_radius={theme.radius_medium} on_click={move || success_clicks.update(|c| *c += 1)}>
                     <RawText color={theme.selection_text} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Save".to_owned()}</RawText>
                 </RawButton>
-                <RawButton style={button_style()} background={theme.surface_hover} corner_radius={theme.radius_medium} on_click={|| {}}>
+                <RawButton style={button_style()} background={theme.surface_hover} corner_radius={theme.radius_medium} on_click={|| {}} disabled={true}>
                     <RawText color={theme.text_disabled} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Disabled".to_owned()}</RawText>
                 </RawButton>
             </RawView>
@@ -530,10 +528,10 @@ fn main() {
     let accent_index = Signal::new(0usize);
     let active_section = Signal::new(0usize);
 
-    let plain_value = Signal::new(String::new());
-    let placeholder_value = Signal::new(String::new());
-    let area_value = Signal::new(
-        "Every control on this page reads its colors from the current Theme.".to_owned(),
+    let plain = TextController::default();
+    let with_placeholder = TextController::default();
+    let notes = TextController::new(
+        "Every control on this page reads its colors from the current Theme.",
     );
 
     let clicks = Signal::new(0i32);
@@ -601,9 +599,9 @@ fn main() {
                 }),
                 InputPanel(InputPanelProps {
                     theme,
-                    plain_value: plain_value.clone(),
-                    placeholder_value: placeholder_value.clone(),
-                    area_value: area_value.clone(),
+                    plain: plain.clone(),
+                    with_placeholder: with_placeholder.clone(),
+                    notes: notes.clone(),
                 }),
                 ButtonPanel(ButtonPanelProps {
                     theme,

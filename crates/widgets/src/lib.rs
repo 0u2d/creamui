@@ -5,11 +5,13 @@
 //!   their appearance from a [`creamui_theme::Theme`].
 //! - [`layout`] has convenience constructors for flex/grid layout styles.
 
+mod controller;
 pub mod layout;
 pub mod raw;
 mod text_metrics;
 pub mod themed;
 
+pub use controller::TextController;
 pub use raw::{
     RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawTab, RawTabs, RawText,
     RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,

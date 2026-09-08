@@ -325,7 +325,13 @@ impl Element {
                 Ok(output)
             }
             "RawButton" => {
-                self.reject_unknown_props(&["style", "on_click", "background", "corner_radius"])?;
+                self.reject_unknown_props(&[
+                    "style",
+                    "on_click",
+                    "background",
+                    "corner_radius",
+                    "disabled",
+                ])?;
                 let style = self.required_prop("style")?;
                 let on_click = self.required_prop("on_click")?;
                 let mut output = quote!(::creamui_widgets::raw::RawButton::new(#style, #on_click));
@@ -334,6 +340,9 @@ impl Element {
                 }
                 if let Some(radius) = self.prop("corner_radius")? {
                     output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(disabled) = self.prop("disabled")? {
+                    output = quote!(#output.disabled(#disabled));
                 }
                 self.container_children(output)
             }
@@ -408,17 +417,19 @@ impl Element {
                 Ok(output)
             }
             "Button" => {
-                self.reject_unknown_props(&["theme", "on_click", "style"])?;
+                self.reject_unknown_props(&["theme", "on_click", "style", "disabled"])?;
                 let theme = self.required_prop("theme")?;
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
-                if let Some(style) = self.prop("style")? {
-                    Ok(
-                        quote!(::creamui_widgets::themed::Button::with_style(#theme, #style, #label, #on_click)),
-                    )
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(::creamui_widgets::themed::Button::with_style(#theme, #style, #label, #on_click))
                 } else {
-                    Ok(quote!(::creamui_widgets::themed::Button::new(#theme, #label, #on_click)))
+                    quote!(::creamui_widgets::themed::Button::new(#theme, #label, #on_click))
+                };
+                if let Some(disabled) = self.prop("disabled")? {
+                    output = quote!(#output.disabled(#disabled));
                 }
+                Ok(output)
             }
             "Checkbox" => {
                 self.reject_unknown_props(&["theme", "checked", "on_click"])?;
@@ -436,6 +447,7 @@ impl Element {
             "TextInput" => {
                 self.reject_unknown_props(&[
                     "theme",
+                    "controller",
                     "value",
                     "on_change",
                     "style",
@@ -449,12 +461,20 @@ impl Element {
                     ));
                 }
                 let theme = self.required_prop("theme")?;
-                let value = self.required_prop("value")?;
-                let on_change = self.required_prop("on_change")?;
-                let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(::creamui_widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
-                } else {
-                    quote!(::creamui_widgets::themed::TextInput::new(#theme, #value, #on_change))
+                let style = self.prop("style")?;
+                let mut output = match (self.prop("controller")?, self.prop("value")?, self.prop("on_change")?) {
+                    (Some(controller), None, None) => if let Some(style) = &style {
+                        quote!(::creamui_widgets::themed::TextInput::controlled_with_style(#theme, #style, #controller))
+                    } else {
+                        quote!(::creamui_widgets::themed::TextInput::controlled(#theme, #controller))
+                    },
+                    (None, Some(value), Some(on_change)) => if let Some(style) = &style {
+                        quote!(::creamui_widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
+                    } else {
+                        quote!(::creamui_widgets::themed::TextInput::new(#theme, #value, #on_change))
+                    },
+                    (None, None, None) => return Err(Error::new_spanned(&self.tag, "`TextInput` requires either a `controller` prop or both `value` and `on_change`")),
+                    _ => return Err(Error::new_spanned(&self.tag, "`TextInput`'s `controller` prop cannot be combined with `value`/`on_change`")),
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.placeholder(#theme, #placeholder));
@@ -467,6 +487,7 @@ impl Element {
             "TextArea" => {
                 self.reject_unknown_props(&[
                     "theme",
+                    "controller",
                     "value",
                     "on_change",
                     "style",
@@ -493,12 +514,30 @@ impl Element {
                     ));
                 }
                 let theme = self.required_prop("theme")?;
-                let value = self.required_prop("value")?;
-                let on_change = self.required_prop("on_change")?;
-                let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(::creamui_widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                let style = self.prop("style")?;
+                let controller = self.prop("controller")?;
+                if let Some(controller) = &controller {
+                    for name in ["value", "on_change", "cursor", "on_cursor_change", "selection", "on_selection_change"] {
+                        if self.prop(name)?.is_some() {
+                            return Err(Error::new_spanned(&self.tag, format!("`TextArea`'s `controller` prop cannot be combined with `{name}`")));
+                        }
+                    }
+                    let _ = controller;
+                }
+                let mut output = if let Some(controller) = &controller {
+                    if let Some(style) = &style {
+                        quote!(::creamui_widgets::themed::TextArea::controlled_with_style(#theme, #style, #controller))
+                    } else {
+                        quote!(::creamui_widgets::themed::TextArea::controlled(#theme, #controller))
+                    }
                 } else {
-                    quote!(::creamui_widgets::themed::TextArea::new(#theme, #value, #on_change))
+                    let value = self.required_prop("value")?;
+                    let on_change = self.required_prop("on_change")?;
+                    if let Some(style) = &style {
+                        quote!(::creamui_widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                    } else {
+                        quote!(::creamui_widgets::themed::TextArea::new(#theme, #value, #on_change))
+                    }
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.placeholder(#theme, #placeholder));

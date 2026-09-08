@@ -199,6 +199,7 @@ pub struct RawButton {
     pub corner_radius: f32,
     pub children: Vec<BoxedWidget>,
     pub on_click: Rc<dyn Fn()>,
+    pub disabled: bool,
 }
 
 impl RawButton {
@@ -209,6 +210,7 @@ impl RawButton {
             corner_radius: 0.0,
             children: Vec::new(),
             on_click: Rc::new(on_click),
+            disabled: false,
         }
     }
 
@@ -236,6 +238,14 @@ impl RawButton {
         self.children = widgets;
         self
     }
+
+    /// While `true`, the button reports no click handler (so it truly can't
+    /// be activated, not just visually dimmed) and shows a "not allowed"
+    /// cursor instead of the usual pointer.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
 }
 
 impl Widget for RawButton {
@@ -254,11 +264,19 @@ impl Widget for RawButton {
     }
 
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
-        Some(self.on_click.clone())
+        if self.disabled {
+            None
+        } else {
+            Some(self.on_click.clone())
+        }
     }
 
     fn cursor_icon(&self) -> Option<CursorIcon> {
-        Some(CursorIcon::Pointer)
+        Some(if self.disabled {
+            CursorIcon::NotAllowed
+        } else {
+            CursorIcon::Pointer
+        })
     }
 }
 
@@ -447,11 +465,23 @@ impl RawTextArea {
         self
     }
 
-    /// Highlights the source line containing the caret. CreamUI's current
-    /// textarea caret is append-only, so this is the final source line.
+    /// Highlights the source line containing the caret.
     pub fn active_line_background(mut self, color: Color) -> Self {
         self.active_line_background = Some(color);
         self
+    }
+
+    /// How far to shift every line left so the caret stays inside
+    /// `visible_width` instead of running off the unwrapped line's edge.
+    fn horizontal_scroll(&self, visible_width: f32) -> f32 {
+        let cursor = self.cursor.min(self.value.len());
+        let line_start = self.value[..cursor].rfind('\n').map_or(0, |i| i + 1);
+        let (cursor_x, _) = crate::text_metrics::measure(
+            &self.value[line_start..cursor],
+            self.font_size,
+            crate::text_metrics::unbounded_width(),
+        );
+        (cursor_x - visible_width + 4.0).max(0.0)
     }
 }
 
@@ -487,6 +517,7 @@ impl Widget for RawTextArea {
         let active_line = self.value[..self.cursor.min(self.value.len())]
             .matches('\n')
             .count();
+        let scroll_x = self.horizontal_scroll(text_rect.width);
         painter.push_clip(text_rect);
         let selected = self.selection.range();
         let mut source_offset = 0;
@@ -495,6 +526,13 @@ impl Widget for RawTextArea {
                 y: text_rect.y + index as f32 * line_height,
                 height: line_height,
                 ..text_rect
+            };
+            // Unwrapped: a bounded width here would let fontdue word-wrap a
+            // long line, desyncing it from the single-row cursor math below.
+            let unbounded_line_rect = Rect {
+                x: line_rect.x - scroll_x,
+                width: crate::text_metrics::unbounded_width(),
+                ..line_rect
             };
             if index == active_line {
                 if let Some(background) = self.active_line_background {
@@ -525,7 +563,7 @@ impl Widget for RawTextArea {
                         );
                         painter.fill_rect(
                             Rect {
-                                x: line_rect.x + x,
+                                x: line_rect.x + x - scroll_x,
                                 width,
                                 ..line_rect
                             },
@@ -534,7 +572,7 @@ impl Widget for RawTextArea {
                         );
                     }
                     painter.fill_text_selected(
-                        line_rect,
+                        unbounded_line_rect,
                         line,
                         color,
                         self.selection_text_color.unwrap_or(color),
@@ -547,7 +585,7 @@ impl Widget for RawTextArea {
                 }
                 source_offset = line_end + 1;
             }
-            painter.fill_text(line_rect, line, color, self.font_size, TextAlign::Start);
+            painter.fill_text(unbounded_line_rect, line, color, self.font_size, TextAlign::Start);
         }
         painter.pop_clip();
     }
@@ -564,6 +602,12 @@ impl Widget for RawTextArea {
             return;
         }
         let padding = 12.0;
+        let text_rect = Rect {
+            x: rect.x + padding,
+            y: rect.y + padding,
+            width: (rect.width - padding * 2.0).max(0.0),
+            height: (rect.height - padding * 2.0).max(0.0),
+        };
         let cursor = self.cursor.min(self.value.len());
         let before_cursor = &self.value[..cursor];
         let line = before_cursor.rsplit('\n').next().unwrap_or("");
@@ -574,16 +618,26 @@ impl Widget for RawTextArea {
         );
         let lines = (before_cursor.matches('\n').count() + 1) as f32;
         let line_height = self.font_size * 1.4;
+        // Match `RawTextInput`'s caret proportions: a slim bar sized and
+        // vertically centered to the glyphs themselves (`font_size * 1.2`),
+        // not a full-height block spanning the whole line row — the latter
+        // reads as a fat, disconnected bar next to the (smaller, centered)
+        // text `fill_text` paints.
+        let caret_height = (self.font_size * 1.2).min(line_height);
+        let line_top = text_rect.y + (lines - 1.0) * line_height;
+        let scroll_x = self.horizontal_scroll(text_rect.width);
+        painter.push_clip(text_rect);
         painter.fill_rect(
             Rect {
-                x: (rect.x + padding + width).min(rect.x + rect.width - 1.0),
-                y: rect.y + padding + (lines - 1.0) * line_height,
+                x: text_rect.x + width - scroll_x,
+                y: line_top + (line_height - caret_height) / 2.0,
                 width: 1.5,
-                height: line_height.min((rect.height - padding * 2.0).max(0.0)),
+                height: caret_height,
             },
             self.text_color,
             0.0,
         );
+        painter.pop_clip();
     }
 
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
@@ -897,6 +951,17 @@ impl RawTextInput {
         self.clipboard_enabled = enabled;
         self
     }
+
+    /// How far to shift the value left so its end (editing is append-only)
+    /// stays inside `visible_width` instead of running off the edge.
+    fn horizontal_scroll(&self, visible_width: f32) -> f32 {
+        let (text_width, _) = crate::text_metrics::measure(
+            &self.value,
+            self.font_size,
+            crate::text_metrics::unbounded_width(),
+        );
+        (text_width - visible_width + 4.0).max(0.0)
+    }
 }
 
 impl Widget for RawTextInput {
@@ -918,10 +983,17 @@ impl Widget for RawTextInput {
             width: (rect.width - padding * 2.0).max(0.0),
             height: rect.height,
         };
+        // Unwrapped: a bounded width here would let fontdue word-wrap onto a second row.
+        let unbounded = Rect {
+            x: text_rect.x - self.horizontal_scroll(text_rect.width),
+            width: crate::text_metrics::unbounded_width(),
+            ..text_rect
+        };
+        painter.push_clip(text_rect);
         if self.value.is_empty() {
             if !self.placeholder.is_empty() {
                 painter.fill_text(
-                    text_rect,
+                    unbounded,
                     &self.placeholder,
                     self.placeholder_color,
                     self.font_size,
@@ -930,13 +1002,14 @@ impl Widget for RawTextInput {
             }
         } else {
             painter.fill_text(
-                text_rect,
+                unbounded,
                 &self.value,
                 self.text_color,
                 self.font_size,
                 TextAlign::Start,
             );
         }
+        painter.pop_clip();
     }
 
     fn focusable(&self) -> bool {
@@ -952,6 +1025,7 @@ impl Widget for RawTextInput {
             return;
         }
         let padding = 8.0;
+        let visible_width = (rect.width - padding * 2.0).max(0.0);
         let (text_width, _) = crate::text_metrics::measure(
             &self.value,
             self.font_size,
@@ -962,9 +1036,7 @@ impl Widget for RawTextInput {
         } else {
             text_width
         };
-        let caret_x = (rect.x + padding + text_width)
-            .min(rect.x + rect.width - 1.0)
-            .max(rect.x);
+        let caret_x = rect.x + padding + text_width - self.horizontal_scroll(visible_width);
         let caret_height = (self.font_size * 1.2).min(rect.height);
         let caret_rect = Rect {
             x: caret_x,

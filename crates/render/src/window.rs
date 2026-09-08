@@ -47,6 +47,7 @@ fn translate_cursor_icon(icon: CursorIcon) -> WinitCursorIcon {
         CursorIcon::Default => WinitCursorIcon::Default,
         CursorIcon::Text => WinitCursorIcon::Text,
         CursorIcon::Pointer => WinitCursorIcon::Pointer,
+        CursorIcon::NotAllowed => WinitCursorIcon::NotAllowed,
     }
 }
 
@@ -490,6 +491,10 @@ impl WindowState {
                             shift: self.modifiers.shift_key(),
                         },
                     });
+                    // Rebuild now, not on the next debounced redraw: a
+                    // queued second keystroke would otherwise still see
+                    // `handler`'s stale pre-edit snapshot.
+                    (self.render)();
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),

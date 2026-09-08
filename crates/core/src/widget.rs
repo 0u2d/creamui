@@ -62,6 +62,8 @@ pub enum CursorIcon {
     Text,
     /// A hand/pointer, shown over clickable widgets.
     Pointer,
+    /// A "no" circle-with-a-line, shown over a disabled control.
+    NotAllowed,
 }
 
 /// Backend-agnostic drawing surface a [`Widget`] paints itself onto.

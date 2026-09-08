@@ -66,6 +66,16 @@ impl Button {
             .child(Box::new(text));
         Button { inner }
     }
+
+    /// While `true`, the button reports no click handler and shows a "not
+    /// allowed" cursor instead of a pointer. Purely behavioral — pass a
+    /// theme-derived muted background/text color to [`Button::with_style`]
+    /// (or build from [`RawButton`] directly, as this crate's examples do)
+    /// for a dimmed disabled look to match.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.inner = self.inner.disabled(disabled);
+        self
+    }
 }
 
 impl Widget for Button {
@@ -173,6 +183,28 @@ impl TextInput {
     pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
         self.inner = self.inner.clipboard_enabled(enabled);
         self
+    }
+
+    /// A `TextInput` whose value is read from and written back to a
+    /// [`crate::TextController`], instead of a manually wired `value` +
+    /// `on_change` pair. The controller must be a handle the app keeps
+    /// alive across renders (created once, e.g. in `main`, the same way a
+    /// `Signal` is) — cloning it here is cheap and shares the same
+    /// underlying state.
+    pub fn controlled(theme: &Theme, controller: &crate::TextController) -> Self {
+        Self::controlled_with_style(theme, Self::default_style(), controller)
+    }
+
+    /// Same as [`TextInput::controlled`], but with full control over layout.
+    pub fn controlled_with_style(
+        theme: &Theme,
+        style: Style,
+        controller: &crate::TextController,
+    ) -> Self {
+        let set = controller.clone();
+        Self::with_style(theme, style, controller.value(), move |next| {
+            set.set_value(next)
+        })
     }
 }
 
@@ -301,6 +333,35 @@ impl TextArea {
     pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
         self.inner = self.inner.clipboard_enabled(enabled);
         self
+    }
+
+    /// A `TextArea` whose value, cursor, and selection are all read from and
+    /// written back to a [`crate::TextController`] — the multi-line
+    /// counterpart of [`TextInput::controlled`], and the one place this
+    /// pays off most: no more separately wiring `cursor`/`on_cursor_change`
+    /// and `selection`/`on_selection_change` by hand. The controller must be
+    /// a handle the app keeps alive across renders (created once, e.g. in
+    /// `main`, the same way a `Signal` is).
+    pub fn controlled(theme: &Theme, controller: &crate::TextController) -> Self {
+        Self::controlled_with_style(theme, Self::default_style(), controller)
+    }
+
+    /// Same as [`TextArea::controlled`], but with full control over layout.
+    pub fn controlled_with_style(
+        theme: &Theme,
+        style: Style,
+        controller: &crate::TextController,
+    ) -> Self {
+        let value_set = controller.clone();
+        let cursor_set = controller.clone();
+        let selection_set = controller.clone();
+        Self::with_style(theme, style, controller.value(), move |next| {
+            value_set.set_value(next)
+        })
+        .cursor(controller.cursor(), move |next| cursor_set.set_cursor(next))
+        .selection(controller.selection(), move |next| {
+            selection_set.set_selection(next)
+        })
     }
 }
 
