@@ -306,11 +306,15 @@ impl Painter for SkiaPainter {
     }
 
     fn push_clip(&mut self, rect: Rect) {
+        self.push_clip_rounded(rect, 0.0);
+    }
+
+    fn push_clip_rounded(&mut self, rect: Rect, corner_radius: f32) {
         let width = self.pixmap.width();
         let height = self.pixmap.height();
         let scaled = scale_rect(rect, self.scale);
 
-        let Some(path) = Self::rounded_rect_path(scaled, 0.0) else {
+        let Some(path) = Self::rounded_rect_path(scaled, corner_radius * self.scale) else {
             // Degenerate (zero-size) clip rect: nothing inside it can be
             // visible, so push a fully-blocking (all-zero) mask.
             let mask = self.take_mask(width, height);

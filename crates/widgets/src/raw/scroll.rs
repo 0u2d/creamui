@@ -249,6 +249,7 @@ impl Widget for RawScrollView {
             scroll_y: self.scroll_y,
             on_scroll: self.on_scroll.clone(),
             on_scroll_bounded: self.on_scroll_bounded.clone(),
+            corner_radius: self.corner_radius,
             content: Some(Box::new(content)),
         };
 
@@ -293,6 +294,7 @@ struct ScrollClip {
     controller: Option<ScrollController>,
     on_scroll: Rc<dyn Fn(f32)>,
     on_scroll_bounded: Option<Rc<dyn Fn(f32, f32)>>,
+    corner_radius: f32,
     content: Option<BoxedWidget>,
 }
 
@@ -309,6 +311,10 @@ impl Widget for ScrollClip {
 
     fn clips_children(&self) -> bool {
         true
+    }
+
+    fn clip_corner_radius(&self) -> f32 {
+        self.corner_radius
     }
 
     fn scroll_offset(&self) -> Point {

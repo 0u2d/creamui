@@ -151,6 +151,11 @@ pub trait Painter {
     /// Default: a no-op, for backends/tests that don't need real clipping.
     fn push_clip(&mut self, _rect: Rect) {}
 
+    /// Like [`Painter::push_clip`], preserving rounded corners when supported.
+    fn push_clip_rounded(&mut self, rect: Rect, _corner_radius: f32) {
+        self.push_clip(rect);
+    }
+
     /// Removes the most recently pushed clip. Must be paired 1:1 with
     /// [`Painter::push_clip`] calls. Default: a no-op.
     fn pop_clip(&mut self) {}
@@ -260,6 +265,11 @@ pub trait Widget {
     /// `false`. A scroll view returns `true`.
     fn clips_children(&self) -> bool {
         false
+    }
+
+    /// Corner radius used when clipping children. Defaults to a rectangular clip.
+    fn clip_corner_radius(&self) -> f32 {
+        0.0
     }
 
     /// Shifts every child's painted/hit-tested position by this offset

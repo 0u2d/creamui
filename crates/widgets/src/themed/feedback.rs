@@ -311,12 +311,13 @@ impl Widget for ProgressBar {
             Some(value) => (rect.x, rect.width * value.clamp(0.0, 1.0)),
             None => {
                 let width = rect.width * 0.32;
-                let travel = (rect.width - width).max(0.0);
+                let travel = rect.width + width;
                 let phase = (painter.animation_time() * 0.8).fract();
-                (rect.x + travel * phase, width)
+                (rect.x - width + travel * phase, width)
             }
         };
         if width > 0.0 {
+            painter.push_clip_rounded(rect, radius);
             painter.fill_rect(
                 Rect {
                     x,
@@ -327,6 +328,7 @@ impl Widget for ProgressBar {
                 self.theme.accent,
                 radius,
             );
+            painter.pop_clip();
         }
     }
 }

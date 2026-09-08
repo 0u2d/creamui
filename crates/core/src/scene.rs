@@ -151,10 +151,7 @@ fn paint_instance(
         .style(instance.node_id)
         .map(|style| style.position == taffy::style::Position::Absolute)
         .unwrap_or(false);
-    // Absolute layers are the framework's portal primitive: when the second
-    // pass reaches one, let it escape clipping ancestors such as a scroll
-    // view. Its layout coordinates still come from the declarative parent,
-    // but paint and hit-testing happen in the topmost portal layer.
+    // Absolute layers are portals.
     let effective_clip = if mode == PaintMode::Absolute && absolute {
         UNCLIPPED
     } else {
@@ -247,7 +244,7 @@ fn paint_instance(
     };
 
     if clips {
-        painter.push_clip(child_clip);
+        painter.push_clip_rounded(child_clip, instance.widget.clip_corner_radius());
     }
     let child_mode = if mode == PaintMode::Absolute && absolute {
         PaintMode::Flow
