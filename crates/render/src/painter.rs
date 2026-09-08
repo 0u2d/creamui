@@ -27,6 +27,9 @@ pub struct SkiaPainter {
     /// intersected with its parent so the top of the stack is always the
     /// full cumulative clip region.
     clip_stack: Vec<Mask>,
+    /// Popped masks, reused by [`SkiaPainter::take_mask`] instead of
+    /// reallocating a window-sized buffer on every [`Painter::push_clip`].
+    mask_pool: Vec<Mask>,
 }
 
 impl SkiaPainter {
@@ -42,7 +45,20 @@ impl SkiaPainter {
             started: std::time::Instant::now(),
             scale: 1.0,
             clip_stack: Vec::new(),
+            mask_pool: Vec::new(),
         }
+    }
+
+    /// A zero-filled, `width` x `height` [`Mask`], reusing a pooled one when
+    /// possible.
+    fn take_mask(&mut self, width: u32, height: u32) -> Mask {
+        while let Some(mut mask) = self.mask_pool.pop() {
+            if mask.width() == width && mask.height() == height {
+                mask.clear();
+                return mask;
+            }
+        }
+        Mask::new(width, height).expect("non-zero pixmap size")
     }
 
     /// Sets the logical-to-physical pixel scale factor applied to every
@@ -67,6 +83,7 @@ impl SkiaPainter {
         // within one frame, and resize only ever runs between frames), but
         // clear defensively rather than risk stale masks sized for the old pixmap.
         self.clip_stack.clear();
+        self.mask_pool.clear();
     }
 
     pub fn clear(&mut self, color: Color) {
@@ -296,39 +313,38 @@ impl Painter for SkiaPainter {
         let Some(path) = Self::rounded_rect_path(scaled, 0.0) else {
             // Degenerate (zero-size) clip rect: nothing inside it can be
             // visible, so push a fully-blocking (all-zero) mask.
-            if let Some(mask) = Mask::new(width, height) {
-                self.clip_stack.push(mask);
-            }
+            let mask = self.take_mask(width, height);
+            self.clip_stack.push(mask);
             return;
         };
 
-        let mask = match self.clip_stack.last() {
+        let mut mask = self.take_mask(width, height);
+        match self.clip_stack.last() {
             Some(parent) => {
-                let mut mask = parent.clone();
+                mask.data_mut().copy_from_slice(parent.data());
                 mask.intersect_path(
                     &path,
                     tiny_skia::FillRule::Winding,
                     true,
                     Transform::identity(),
                 );
-                mask
             }
             None => {
-                let mut mask = Mask::new(width, height).expect("non-zero pixmap size");
                 mask.fill_path(
                     &path,
                     tiny_skia::FillRule::Winding,
                     true,
                     Transform::identity(),
                 );
-                mask
             }
-        };
+        }
         self.clip_stack.push(mask);
     }
 
     fn pop_clip(&mut self) {
-        self.clip_stack.pop();
+        if let Some(mask) = self.clip_stack.pop() {
+            self.mask_pool.push(mask);
+        }
     }
 
     fn fill_text(

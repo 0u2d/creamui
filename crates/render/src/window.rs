@@ -42,6 +42,14 @@ use winit::window::{
 /// blinking (on, then off, then on again).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(530);
 
+/// Writes `value` to `signal` only if it differs, avoiding a needless
+/// re-render when a window manager fires a resize event with no real change.
+fn set_if_changed<T: Clone + PartialEq + 'static>(signal: &Signal<T>, value: T) {
+    if signal.peek() != value {
+        signal.set(value);
+    }
+}
+
 fn translate_cursor_icon(icon: CursorIcon) -> WinitCursorIcon {
     match icon {
         CursorIcon::Default => WinitCursorIcon::Default,
@@ -189,8 +197,10 @@ struct WindowSpec {
     on_window_ready: Box<dyn Fn(WindowHandle)>,
     repaint: Rc<dyn Fn()>,
     repaint_scene: Rc<dyn Fn()>,
+    repaint_light: Rc<dyn Fn()>,
     render: Rc<dyn Fn()>,
     dirty: Rc<Cell<bool>>,
+    scene_dirty: Rc<Cell<bool>>,
     _effect: Effect,
     viewport: Signal<Size>,
     scale_factor: Signal<f64>,
@@ -306,11 +316,15 @@ struct WindowState {
     /// coalesced until the next `RedrawRequested` frame.
     repaint: Rc<dyn Fn()>,
     repaint_scene: Rc<dyn Fn()>,
+    /// Paint-only refresh (no rebuild, no layout) for hover/press/focus-only
+    /// changes — cheap enough to call from every `CursorMoved`.
+    repaint_light: Rc<dyn Fn()>,
     /// Executes the deferred build/layout/paint pass. Signal writes only
     /// schedule this; `RedrawRequested` performs it once per compositor
     /// frame.
     render: Rc<dyn Fn()>,
     dirty: Rc<Cell<bool>>,
+    scene_dirty: Rc<Cell<bool>>,
     _effect: Effect,
     t_run: Instant,
     first_present_logged: bool,
@@ -322,10 +336,13 @@ impl WindowState {
     fn sync_viewport_from_window(&self) {
         let physical = self.window.inner_size();
         let scale = self.scale_factor.peek();
-        self.viewport.set(Size {
-            width: (physical.width as f64 / scale) as f32,
-            height: (physical.height as f64 / scale) as f32,
-        });
+        set_if_changed(
+            &self.viewport,
+            Size {
+                width: (physical.width as f64 / scale) as f32,
+                height: (physical.height as f64 / scale) as f32,
+            },
+        );
     }
 
     fn handle_window_event(&mut self, event: WindowEvent) {
@@ -335,14 +352,17 @@ impl WindowState {
                     return;
                 }
                 let scale = self.scale_factor.peek();
-                self.viewport.set(Size {
-                    width: (new_size.width as f64 / scale) as f32,
-                    height: (new_size.height as f64 / scale) as f32,
-                });
+                set_if_changed(
+                    &self.viewport,
+                    Size {
+                        width: (new_size.width as f64 / scale) as f32,
+                        height: (new_size.height as f64 / scale) as f32,
+                    },
+                );
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 log::debug!("creamui-render: scale factor changed to {scale_factor}");
-                self.scale_factor.set(scale_factor);
+                set_if_changed(&self.scale_factor, scale_factor);
                 self.sync_viewport_from_window();
             }
             WindowEvent::CursorMoved { position, .. } => {
@@ -352,7 +372,7 @@ impl WindowState {
                     y: (position.y / scale) as f32,
                 };
                 self.frame.borrow_mut().painter.pointer = Some(self.pointer_pos);
-                (self.repaint)();
+                (self.repaint_light)();
 
                 let hovered_cursor = {
                     let frame = self.frame.borrow();
@@ -413,7 +433,7 @@ impl WindowState {
                 ..
             } => {
                 self.frame.borrow_mut().painter.press_origin = Some(self.pointer_pos);
-                (self.repaint)();
+                (self.repaint_light)();
                 let frame = self.frame.borrow();
                 let Some(scene) = frame.scene.as_ref() else {
                     return;
@@ -437,7 +457,7 @@ impl WindowState {
                     // possibly landing mid-blink.
                     self.caret_visible.set(true);
                     self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
-                    (self.repaint)();
+                    (self.repaint_light)();
                 }
 
                 if let Some((index, rect, handler)) = drag_start {
@@ -469,19 +489,19 @@ impl WindowState {
             } => {
                 self.dragging = None;
                 self.frame.borrow_mut().painter.press_origin = None;
-                (self.repaint)();
+                (self.repaint_light)();
             }
             WindowEvent::CursorLeft { .. } => {
                 self.frame.borrow_mut().painter.pointer = None;
                 if let Some((_, callback)) = self.hovered.take() {
                     callback(false);
                 }
-                (self.repaint)();
+                (self.repaint_light)();
             }
             WindowEvent::Focused(false) => {
                 self.frame.borrow_mut().painter.press_origin = None;
                 self.dragging = None;
-                (self.repaint)();
+                (self.repaint_light)();
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.scale_factor.peek();
@@ -528,7 +548,7 @@ impl WindowState {
                         scene.next_focus(self.focused.get(), self.modifiers.shift_key())
                     });
                     self.focused.set(next);
-                    (self.repaint)();
+                    (self.repaint_light)();
                     return;
                 }
                 let Some(index) = self.focused.get() else {
@@ -563,6 +583,11 @@ impl WindowState {
             WindowEvent::RedrawRequested => {
                 if self.dirty.get() {
                     (self.render)();
+                    // `render` already repaints the scene, so a pending
+                    // `scene_dirty` from earlier in the same event is moot.
+                    self.scene_dirty.set(false);
+                } else if self.scene_dirty.replace(false) {
+                    (self.repaint_scene)();
                 }
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
@@ -695,8 +720,10 @@ impl ApplicationHandler for AppHandler {
                     dragging: None,
                     repaint: spec.repaint,
                     repaint_scene: spec.repaint_scene,
+                    repaint_light: spec.repaint_light,
                     render: spec.render,
                     dirty: spec.dirty,
+                    scene_dirty: spec.scene_dirty,
                     _effect: spec._effect,
                     t_run: t0,
                     first_present_logged: false,
@@ -887,6 +914,8 @@ fn build_window_spec(
     });
 
     let dirty = Rc::new(Cell::new(false));
+    // Tree built eagerly by `repaint`, consumed by the next `render`.
+    let pending_root: Rc<RefCell<Option<BoxedWidget>>> = Rc::new(RefCell::new(None));
 
     // The expensive half of a frame. It is deliberately separate from
     // `repaint` below: pointer input may invalidate a UI dozens of times
@@ -900,14 +929,20 @@ fn build_window_spec(
         let focused = focused.clone();
         let caret_visible = caret_visible.clone();
         let dirty = dirty.clone();
+        let pending_root = pending_root.clone();
         move || {
             dirty.set(false);
             // Widgets are laid out in logical pixels; the painter (and the
             // presenter it feeds) is sized in physical pixels so HiDPI
             // displays stay crisp — see `SkiaPainter`'s doc comment.
-            let logical_size = viewport.get();
-            let scale = scale_factor.get();
-            let root = build_ui(logical_size);
+            let logical_size = viewport.peek();
+            let scale = scale_factor.peek();
+            // `repaint` usually already built this; fall back for
+            // non-signal-driven redraws (animation ticks, caret blink).
+            let root = pending_root
+                .borrow_mut()
+                .take()
+                .unwrap_or_else(|| build_ui(logical_size));
 
             let mut frame = frame.borrow_mut();
             let FrameState {
@@ -973,21 +1008,50 @@ fn build_window_spec(
         }
     });
 
+    // `create_effect` wraps this, so it must call `build_ui` itself, right
+    // here, to stay subscribed to whatever `Signal`s the active branch
+    // reads — a closure that only flips `dirty` for `render` to build later
+    // reads no `Signal` and de-subscribes the effect from everything after
+    // its first run. Layout/paint stay deferred through `dirty`.
     let repaint: Rc<dyn Fn()> = Rc::new({
+        let viewport = viewport.clone();
+        let build_ui = build_ui.clone();
+        let pending_root = pending_root.clone();
         let render = render.clone();
         let window = shared_window.clone();
         let dirty = dirty.clone();
         move || {
+            let logical_size = viewport.get();
+            *pending_root.borrow_mut() = Some(build_ui(logical_size));
             // The first reactive run happens before winit has created the
             // window, so render immediately to provide its initial frame.
             // Afterwards merely mark dirty and let RedrawRequested coalesce
-            // all input updates into one build/layout/paint pass.
+            // all input updates into one layout/paint pass.
             if let Some(window) = window.borrow().as_ref() {
                 if !dirty.replace(true) {
                     window.request_redraw();
                 }
             } else {
                 render();
+            }
+        }
+    });
+
+    let scene_dirty = Rc::new(Cell::new(false));
+
+    // Paint-only counterpart to `repaint`: no rebuild, no layout.
+    let repaint_light: Rc<dyn Fn()> = Rc::new({
+        let repaint_scene = repaint_scene.clone();
+        let window = shared_window.clone();
+        let dirty = dirty.clone();
+        let scene_dirty = scene_dirty.clone();
+        move || {
+            if let Some(window) = window.borrow().as_ref() {
+                if !dirty.get() && !scene_dirty.replace(true) {
+                    window.request_redraw();
+                }
+            } else {
+                repaint_scene();
             }
         }
     });
@@ -1000,8 +1064,10 @@ fn build_window_spec(
         on_window_ready,
         repaint,
         repaint_scene,
+        repaint_light,
         render,
         dirty,
+        scene_dirty,
         _effect: effect,
         viewport,
         scale_factor,
