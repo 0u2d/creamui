@@ -41,7 +41,7 @@ use winit::window::{
 /// How long the text-input caret stays in each visibility phase while
 /// blinking (on, then off, then on again).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(530);
-const RESIZE_FRAME_INTERVAL: Duration = Duration::from_millis(33);
+const RESIZE_SETTLE_DELAY: Duration = Duration::from_millis(100);
 
 /// Writes `value` to `signal` only if it differs, avoiding a needless
 /// re-render when a window manager fires a resize event with no real change.
@@ -306,6 +306,7 @@ struct WindowState {
     next_animation: Instant,
     next_resize_render: Instant,
     resize_pending: bool,
+    pending_viewport: Option<Size>,
     /// The system cursor icon last set on the window, so `CursorMoved`
     /// only calls into the backend when it actually changes.
     current_cursor: CursorIcon,
@@ -334,28 +335,35 @@ struct WindowState {
 }
 
 impl WindowState {
-    /// Sets `viewport` (logical pixels) from the window's current physical
-    /// inner size and `scale_factor`.
-    fn sync_viewport_from_window(&self) {
+    fn viewport_from_window(&self) -> Size {
         let physical = self.window.inner_size();
         let scale = self.scale_factor.peek();
-        set_if_changed(
-            &self.viewport,
-            Size {
-                width: (physical.width as f64 / scale) as f32,
-                height: (physical.height as f64 / scale) as f32,
-            },
-        );
+        Size {
+            width: (physical.width as f64 / scale) as f32,
+            height: (physical.height as f64 / scale) as f32,
+        }
     }
 
     fn schedule_resize_render(&mut self) {
-        let now = Instant::now();
-        if now >= self.next_resize_render {
-            self.next_resize_render = now + RESIZE_FRAME_INTERVAL;
-            self.resize_pending = false;
+        self.next_resize_render = Instant::now() + RESIZE_SETTLE_DELAY;
+        self.resize_pending = true;
+    }
+
+    fn queue_viewport(&mut self, viewport: Size) {
+        if self
+            .pending_viewport
+            .unwrap_or_else(|| self.viewport.peek())
+            != viewport
+        {
+            self.pending_viewport = Some(viewport);
+            self.schedule_resize_render();
+        }
+    }
+
+    fn flush_pending_viewport(&mut self) {
+        if let Some(viewport) = self.pending_viewport.take() {
+            self.viewport.set(viewport);
             (self.repaint)();
-        } else {
-            self.resize_pending = true;
         }
     }
 
@@ -370,16 +378,13 @@ impl WindowState {
                     width: (new_size.width as f64 / scale) as f32,
                     height: (new_size.height as f64 / scale) as f32,
                 };
-                if self.viewport.peek() != viewport {
-                    self.viewport.set(viewport);
-                    self.schedule_resize_render();
-                }
+                self.queue_viewport(viewport);
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 log::debug!("creamui-render: scale factor changed to {scale_factor}");
                 set_if_changed(&self.scale_factor, scale_factor);
-                self.sync_viewport_from_window();
-                self.schedule_resize_render();
+                let viewport = self.viewport_from_window();
+                self.queue_viewport(viewport);
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = self.scale_factor.peek();
@@ -598,6 +603,7 @@ impl WindowState {
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => {
                 if self.dirty.get() {
+                    self.flush_pending_viewport();
                     (self.render)();
                     // `render` already repaints the scene, so a pending
                     // `scene_dirty` from earlier in the same event is moot.
@@ -734,6 +740,7 @@ impl ApplicationHandler for AppHandler {
                     next_animation: Instant::now(),
                     next_resize_render: Instant::now(),
                     resize_pending: false,
+                    pending_viewport: None,
                     current_cursor: CursorIcon::Default,
                     hovered: None,
                     dragging: None,
@@ -777,9 +784,9 @@ impl ApplicationHandler for AppHandler {
         for state in self.windows.values_mut() {
             if state.resize_pending {
                 if now >= state.next_resize_render {
-                    state.next_resize_render = now + RESIZE_FRAME_INTERVAL;
                     state.resize_pending = false;
-                    (state.repaint)();
+                    state.dirty.set(true);
+                    state.window.request_redraw();
                 } else {
                     next_wake = Some(next_wake.map_or(state.next_resize_render, |t| {
                         t.min(state.next_resize_render)
