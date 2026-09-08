@@ -40,12 +40,18 @@ done and what's next.
 | `creamui-theme` | Colour schemes (`ColorScheme`) and colour-agnostic style metadata (`Theme`) |
 | `creamui-themes` | Bundled visual presets: rounded `Cream` (default) and indicator-based `Square` |
 | `creamui-widgets` | Headless (`raw`) and themed (`themed`) widgets, layout helpers |
+| `creamui-image` | Decoded raster-image widget with opt-in PNG, JPEG, and WebP codecs |
 | `creamui-render` | winit windowing + `tiny-skia` CPU rasterization + `wgpu`/`softbuffer` presentation |
 | `creamui-abi` | Plain `#[repr(C)]` ABI types shared by `creamui-ffi` and `creamui-dynamic`, no engine dependency |
 | `creamui-ffi` | `#[no_mangle] extern "C"` ABI, built as a `cdylib`, for dynamic linking |
 | `creamui-jsx` | Runtime bridge from widgets or component results to JSX children |
 | `creamui-macros` | `jsx!` syntax for the Rust widget builders |
 | `creamui-dynamic` | Safe client that `dlopen`s the `cdylib` and resolves its ABI once, for apps that don't want to hand-write `libloading`/`#[repr(C)]` boilerplate |
+
+`creamui-image` enables only PNG by default. Add `jpeg` and/or `webp` when
+needed: `creamui-image = { path = "../creamui/crates/image", features = ["jpeg", "webp"] }`.
+
+The image gallery is available with `cargo run -p images`.
 
 ## Running the examples
 
@@ -54,6 +60,7 @@ cargo run -p hello-world
 cargo run -p calculator
 cargo run -p showcase
 cargo run -p pickers
+cargo run -p images
 ```
 
 The examples are static Rust applications using `jsx!`. The calculator is

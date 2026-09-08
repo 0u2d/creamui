@@ -128,6 +128,9 @@ pub trait Painter {
         align: TextAlign,
     );
 
+    /// Draws premultiplied RGBA8 pixels into `rect`.
+    fn draw_rgba_image(&mut self, _rect: Rect, _pixels: &[u8], _width: u32, _height: u32) {}
+
     /// Draws a text run whose glyph layout stays intact while a byte range
     /// receives a different foreground color. Backends that do not support
     /// per-glyph coloring may use the stable normal-color fallback.

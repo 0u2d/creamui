@@ -7,7 +7,9 @@ use crate::font::Font;
 use creamui_core::{Painter, Point, Rect, TextAlign};
 use creamui_theme::Color;
 use fontdue::layout::HorizontalAlign;
-use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
+use tiny_skia::{
+    FilterQuality, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Stroke, Transform,
+};
 
 /// Widgets are laid out and painted in logical (DPI-independent) pixels;
 /// `SkiaPainter` scales every coordinate by `scale` (the window's
@@ -277,6 +279,30 @@ impl Painter for SkiaPainter {
         );
     }
 
+    fn draw_rgba_image(&mut self, rect: Rect, pixels: &[u8], width: u32, height: u32) {
+        if width == 0 || height == 0 || rect.width <= 0.0 || rect.height <= 0.0 {
+            return;
+        }
+        let Some(source) = PixmapRef::from_bytes(pixels, width, height) else {
+            return;
+        };
+        let rect = scale_rect(rect, self.scale);
+        let transform = Transform::from_row(
+            rect.width / width as f32,
+            0.0,
+            0.0,
+            rect.height / height as f32,
+            rect.x,
+            rect.y,
+        );
+        let paint = PixmapPaint {
+            quality: FilterQuality::Bilinear,
+            ..Default::default()
+        };
+        self.pixmap
+            .draw_pixmap(0, 0, source, &paint, transform, self.clip_stack.last());
+    }
+
     fn stroke_rect(&mut self, rect: Rect, color: Color, width: f32, corner_radius: f32) {
         let Some(path) =
             Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale)
@@ -381,5 +407,29 @@ impl Painter for SkiaPainter {
             align,
             false,
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn draws_rgba_images_at_the_requested_destination() {
+        let mut painter = SkiaPainter::new(8, 8);
+        painter.clear(Color::rgba(0, 0, 0, 0));
+        painter.draw_rgba_image(
+            Rect {
+                x: 2.0,
+                y: 1.0,
+                width: 4.0,
+                height: 4.0,
+            },
+            &[255, 0, 0, 255],
+            1,
+            1,
+        );
+        assert_eq!(painter.pixmap.pixel(3, 2).unwrap().red(), 255);
+        assert_eq!(painter.pixmap.pixel(0, 0).unwrap().alpha(), 0);
     }
 }

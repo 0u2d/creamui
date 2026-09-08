@@ -191,3 +191,20 @@ fn jsx_exposes_configurable_portal_picker_inputs() {
     assert!(painter.0.iter().any(|text| text == "2026-09-08"));
     assert!(painter.0.iter().any(|text| text == "#B58BFF"));
 }
+
+#[test]
+fn jsx_exposes_raster_images() {
+    let data = creamui_image::ImageData::from_rgba(1, 1, vec![255, 0, 0, 255]).unwrap();
+    let root: BoxedWidget = Box::new(jsx! {
+        <Image data={data} fit={creamui_image::ImageFit::Contain} corner_radius={8.0} />
+    });
+    let mut painter = TextPainter::default();
+    render_frame(
+        root,
+        Size {
+            width: 24.0,
+            height: 24.0,
+        },
+        &mut painter,
+    );
+}

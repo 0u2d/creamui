@@ -1,0 +1,252 @@
+//! Raster image support for CreamUI.
+//!
+//! Enable only the decoders an application uses: `png` (default), `jpeg`,
+//! and/or `webp`.
+
+use creamui_core::layout::{Dimension, Style};
+use creamui_core::{Painter, Rect, Widget};
+use std::fmt;
+use std::path::Path;
+use std::sync::Arc;
+
+/// How an [`Image`] fits its source pixels inside its layout box.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageFit {
+    /// Stretch to the layout box.
+    Fill,
+    /// Preserve aspect ratio; the complete image remains visible.
+    Contain,
+    /// Preserve aspect ratio while filling the layout box; excess is clipped.
+    #[default]
+    Cover,
+    /// Keep the source pixel dimensions, anchored at the top-left.
+    None,
+}
+
+/// A decoded RGBA image ready for reuse across widget-tree rebuilds.
+#[derive(Clone)]
+pub struct ImageData {
+    width: u32,
+    height: u32,
+    pixels: Arc<[u8]>,
+}
+
+impl ImageData {
+    /// Decodes PNG, JPEG, or WebP bytes when its corresponding crate feature
+    /// is enabled.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, ImageError> {
+        let image = image_rs::load_from_memory(bytes).map_err(ImageError::Decode)?;
+        let rgba = image.to_rgba8();
+        Self::from_rgba(rgba.width(), rgba.height(), rgba.into_raw())
+    }
+
+    /// Reads and decodes an image from the local filesystem.
+    pub fn from_path(path: impl AsRef<Path>) -> Result<Self, ImageError> {
+        let bytes = std::fs::read(path).map_err(ImageError::Io)?;
+        Self::from_bytes(&bytes)
+    }
+
+    /// Creates image data from straight-alpha RGBA8 pixels.
+    pub fn from_rgba(width: u32, height: u32, mut pixels: Vec<u8>) -> Result<Self, ImageError> {
+        let expected = width as usize * height as usize * 4;
+        if width == 0 || height == 0 || pixels.len() != expected {
+            return Err(ImageError::InvalidPixels {
+                width,
+                height,
+                length: pixels.len(),
+            });
+        }
+        for pixel in pixels.chunks_exact_mut(4) {
+            let alpha = pixel[3] as u16;
+            pixel[0] = (pixel[0] as u16 * alpha / 255) as u8;
+            pixel[1] = (pixel[1] as u16 * alpha / 255) as u8;
+            pixel[2] = (pixel[2] as u16 * alpha / 255) as u8;
+        }
+        Ok(Self {
+            width,
+            height,
+            pixels: pixels.into(),
+        })
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+    pub fn pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+}
+
+/// Errors returned while loading or validating [`ImageData`].
+#[derive(Debug)]
+pub enum ImageError {
+    Io(std::io::Error),
+    Decode(image_rs::ImageError),
+    InvalidPixels {
+        width: u32,
+        height: u32,
+        length: usize,
+    },
+}
+
+impl fmt::Display for ImageError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Io(error) => write!(f, "could not read image: {error}"),
+            Self::Decode(error) => write!(f, "could not decode image: {error}"),
+            Self::InvalidPixels {
+                width,
+                height,
+                length,
+            } => write!(
+                f,
+                "expected {} RGBA bytes for {width}×{height}, got {length}",
+                *width as usize * *height as usize * 4
+            ),
+        }
+    }
+}
+impl std::error::Error for ImageError {}
+
+/// A layoutable image widget backed by reusable decoded [`ImageData`].
+pub struct Image {
+    data: ImageData,
+    style: Style,
+    fit: ImageFit,
+    corner_radius: f32,
+}
+
+impl Image {
+    pub fn new(data: ImageData) -> Self {
+        Self {
+            style: Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(data.width as f32),
+                    height: Dimension::Length(data.height as f32),
+                },
+                ..Default::default()
+            },
+            data,
+            fit: ImageFit::Cover,
+            corner_radius: 0.0,
+        }
+    }
+
+    pub fn with_style(data: ImageData, style: Style) -> Self {
+        Self {
+            style,
+            ..Self::new(data)
+        }
+    }
+
+    pub fn fit(mut self, fit: ImageFit) -> Self {
+        self.fit = fit;
+        self
+    }
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.corner_radius = radius.max(0.0);
+        self
+    }
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+    pub fn data(&self) -> &ImageData {
+        &self.data
+    }
+
+    fn destination(&self, rect: Rect) -> Rect {
+        let source_width = self.data.width as f32;
+        let source_height = self.data.height as f32;
+        let scale = match self.fit {
+            ImageFit::Fill => return rect,
+            ImageFit::Contain => (rect.width / source_width).min(rect.height / source_height),
+            ImageFit::Cover => (rect.width / source_width).max(rect.height / source_height),
+            ImageFit::None => 1.0,
+        };
+        let width = source_width * scale;
+        let height = source_height * scale;
+        Rect {
+            x: rect.x + (rect.width - width) / 2.0,
+            y: rect.y + (rect.height - height) / 2.0,
+            width,
+            height,
+        }
+    }
+}
+
+impl Widget for Image {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if matches!(self.fit, ImageFit::Cover) || self.corner_radius > 0.0 {
+            painter.push_clip_rounded(rect, self.corner_radius);
+            painter.draw_rgba_image(
+                self.destination(rect),
+                self.data.pixels(),
+                self.data.width,
+                self.data.height,
+            );
+            painter.pop_clip();
+        } else {
+            painter.draw_rgba_image(
+                self.destination(rect),
+                self.data.pixels(),
+                self.data.width,
+                self.data.height,
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use creamui_core::{render_frame, Size, TextAlign};
+
+    #[derive(Default)]
+    struct PainterSpy {
+        image: Option<(Rect, u32, u32)>,
+    }
+    impl Painter for PainterSpy {
+        fn fill_rect(&mut self, _: Rect, _: creamui_theme::Color, _: f32) {}
+        fn stroke_rect(&mut self, _: Rect, _: creamui_theme::Color, _: f32, _: f32) {}
+        fn fill_text(&mut self, _: Rect, _: &str, _: creamui_theme::Color, _: f32, _: TextAlign) {}
+        fn draw_rgba_image(&mut self, rect: Rect, _: &[u8], width: u32, height: u32) {
+            self.image = Some((rect, width, height));
+        }
+    }
+
+    #[test]
+    fn contain_preserves_the_source_aspect_ratio() {
+        let data = ImageData::from_rgba(4, 2, vec![255; 32]).unwrap();
+        let image = Image::with_style(
+            data,
+            Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(100.),
+                    height: Dimension::Length(100.),
+                },
+                ..Default::default()
+            },
+        )
+        .fit(ImageFit::Contain);
+        let mut painter = PainterSpy::default();
+        render_frame(
+            Box::new(image),
+            Size {
+                width: 100.,
+                height: 100.,
+            },
+            &mut painter,
+        );
+        let (rect, width, height) = painter.image.unwrap();
+        assert_eq!((width, height), (4, 2));
+        assert_eq!((rect.width, rect.height), (100., 50.));
+    }
+}

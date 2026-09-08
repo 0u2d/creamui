@@ -1,0 +1,20 @@
+[package]
+name = "creamui-image"
+description = "Decoded raster-image widget for CreamUI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["png"]
+png = ["image-rs/png"]
+jpeg = ["image-rs/jpeg"]
+webp = ["image-rs/webp"]
+
+[dependencies]
+creamui-core = { workspace = true }
+image-rs = { package = "image", version = "0.25.10", default-features = false }
+
+[dev-dependencies]
+creamui-theme = { workspace = true }

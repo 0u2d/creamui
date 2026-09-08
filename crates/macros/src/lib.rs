@@ -202,6 +202,7 @@ impl Element {
                 | "DateTimePicker"
                 | "DateInput"
                 | "TimeInput"
+                | "Image"
         )
     }
 
@@ -656,6 +657,28 @@ impl Element {
                 }
                 if let Some(disabled) = self.prop("disabled")? {
                     output = quote!(#output.disabled(#disabled));
+                }
+                Ok(output)
+            }
+            "Image" => {
+                self.reject_unknown_props(&["data", "style", "fit", "corner_radius"])?;
+                if !self.children.is_empty() {
+                    return Err(Error::new_spanned(
+                        &self.tag,
+                        "`Image` cannot have children",
+                    ));
+                }
+                let data = self.required_prop("data")?;
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(::creamui_image::Image::with_style(#data, #style))
+                } else {
+                    quote!(::creamui_image::Image::new(#data))
+                };
+                if let Some(fit) = self.prop("fit")? {
+                    output = quote!(#output.fit(#fit));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
                 }
                 Ok(output)
             }

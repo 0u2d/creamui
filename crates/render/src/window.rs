@@ -41,6 +41,7 @@ use winit::window::{
 /// How long the text-input caret stays in each visibility phase while
 /// blinking (on, then off, then on again).
 const CARET_BLINK_INTERVAL: Duration = Duration::from_millis(530);
+const RESIZE_FRAME_INTERVAL: Duration = Duration::from_millis(33);
 
 /// Writes `value` to `signal` only if it differs, avoiding a needless
 /// re-render when a window manager fires a resize event with no real change.
@@ -303,6 +304,8 @@ struct WindowState {
     /// When the caret should next toggle visibility (see `about_to_wait`).
     next_blink: Instant,
     next_animation: Instant,
+    next_resize_render: Instant,
+    resize_pending: bool,
     /// The system cursor icon last set on the window, so `CursorMoved`
     /// only calls into the backend when it actually changes.
     current_cursor: CursorIcon,
@@ -345,6 +348,17 @@ impl WindowState {
         );
     }
 
+    fn schedule_resize_render(&mut self) {
+        let now = Instant::now();
+        if now >= self.next_resize_render {
+            self.next_resize_render = now + RESIZE_FRAME_INTERVAL;
+            self.resize_pending = false;
+            (self.repaint)();
+        } else {
+            self.resize_pending = true;
+        }
+    }
+
     fn handle_window_event(&mut self, event: WindowEvent) {
         match event {
             WindowEvent::Resized(new_size) => {
@@ -352,18 +366,20 @@ impl WindowState {
                     return;
                 }
                 let scale = self.scale_factor.peek();
-                set_if_changed(
-                    &self.viewport,
-                    Size {
-                        width: (new_size.width as f64 / scale) as f32,
-                        height: (new_size.height as f64 / scale) as f32,
-                    },
-                );
+                let viewport = Size {
+                    width: (new_size.width as f64 / scale) as f32,
+                    height: (new_size.height as f64 / scale) as f32,
+                };
+                if self.viewport.peek() != viewport {
+                    self.viewport.set(viewport);
+                    self.schedule_resize_render();
+                }
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 log::debug!("creamui-render: scale factor changed to {scale_factor}");
                 set_if_changed(&self.scale_factor, scale_factor);
                 self.sync_viewport_from_window();
+                self.schedule_resize_render();
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let scale = self.scale_factor.peek();
@@ -670,6 +686,7 @@ impl ApplicationHandler for AppHandler {
                     height: (physical.height as f64 / scale) as f32,
                 });
             }
+            (spec.repaint)();
 
             let mut presenter = match spec.options.backend {
                 RenderBackend::Gpu => {
@@ -715,6 +732,8 @@ impl ApplicationHandler for AppHandler {
                     caret_visible: spec.caret_visible,
                     next_blink: Instant::now() + CARET_BLINK_INTERVAL,
                     next_animation: Instant::now(),
+                    next_resize_render: Instant::now(),
+                    resize_pending: false,
                     current_cursor: CursorIcon::Default,
                     hovered: None,
                     dragging: None,
@@ -756,6 +775,17 @@ impl ApplicationHandler for AppHandler {
         let now = Instant::now();
         let mut next_wake: Option<Instant> = None;
         for state in self.windows.values_mut() {
+            if state.resize_pending {
+                if now >= state.next_resize_render {
+                    state.next_resize_render = now + RESIZE_FRAME_INTERVAL;
+                    state.resize_pending = false;
+                    (state.repaint)();
+                } else {
+                    next_wake = Some(next_wake.map_or(state.next_resize_render, |t| {
+                        t.min(state.next_resize_render)
+                    }));
+                }
+            }
             if state.frame.borrow().painter.animated {
                 if now >= state.next_animation {
                     state.next_animation = now + Duration::from_millis(32);
@@ -1021,7 +1051,7 @@ fn build_window_spec(
         let window = shared_window.clone();
         let dirty = dirty.clone();
         move || {
-            let logical_size = viewport.get();
+            let logical_size = viewport.peek();
             *pending_root.borrow_mut() = Some(build_ui(logical_size));
             // The first reactive run happens before winit has created the
             // window, so render immediately to provide its initial frame.

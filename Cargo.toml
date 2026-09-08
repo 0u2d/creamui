@@ -6,6 +6,7 @@ members = [
     "crates/theme",
     "crates/themes",
     "crates/widgets",
+    "crates/image",
     "crates/render",
     "crates/abi",
     "crates/ffi",
@@ -20,6 +21,7 @@ members = [
     "examples/scroll",
     "examples/showcase",
     "examples/pickers",
+    "examples/images",
 ]
 
 [workspace.package]

@@ -10,6 +10,7 @@
 
 use creamui_core::layout::{AlignItems, Dimension, JustifyContent, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
+use creamui_image::{Image, ImageData, ImageFit};
 use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
@@ -26,10 +27,11 @@ use creamui_widgets::{
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 13] = [
+const NAV_LABELS: [&str; 14] = [
     "Appearance",
     "Input",
     "Pickers",
+    "Images",
     "Button",
     "Slider",
     "Checkbox",
@@ -195,6 +197,7 @@ fn Nav(
         Symbol::Appearance,
         Symbol::Keyboard,
         Symbol::Controls,
+        Symbol::Display,
         Symbol::Controls,
         Symbol::Sliders,
         Symbol::Check,
@@ -208,7 +211,7 @@ fn Nav(
     ];
     let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 1 || i == 6 || i == 8 || i == 11 {
+        if i == 0 || i == 1 || i == 7 || i == 9 || i == 12 {
             items.push(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
@@ -216,9 +219,9 @@ fn Nav(
                             "SHOWCASE"
                         } else if i == 1 {
                             "CONTROLS"
-                        } else if i == 6 {
+                        } else if i == 7 {
                             "SELECTION"
-                        } else if i == 11 {
+                        } else if i == 12 {
                             "DATA VIEW"
                         } else {
                             "NAVIGATION"
@@ -531,6 +534,58 @@ fn PickersPanel(
                                 .child(Box::new(
                                     Text::secondary(&theme, file_caption).align(TextAlign::Start),
                                 )),
+                        ),
+                    ),
+                ],
+            )),
+    )
+}
+
+#[component]
+fn ImagesPanel(theme: Theme, png: ImageData, jpeg: ImageData, webp: ImageData) -> BoxedWidget {
+    let square = Style {
+        size: fixed(168., 168.),
+        flex_shrink: 0.,
+        ..Default::default()
+    };
+    let landscape = Style {
+        size: fixed(210., 148.),
+        flex_shrink: 0.,
+        ..Default::default()
+    };
+    Box::new(
+        RawView::new(column(section_gap(&theme)))
+            .child(SectionHeader(SectionHeaderProps {
+                theme,
+                title: "Images".into(),
+                subtitle:
+                    "Local PNG, JPEG, and WebP assets, each cropped with a different fit and shape."
+                        .into(),
+            }))
+            .child(card_row(
+                &theme,
+                vec![
+                    field_card(
+                        &theme,
+                        "PNG · square",
+                        Box::new(Image::with_style(png, square.clone()).fit(ImageFit::Cover)),
+                    ),
+                    field_card(
+                        &theme,
+                        "JPEG · rounded corners",
+                        Box::new(
+                            Image::with_style(jpeg, landscape)
+                                .fit(ImageFit::Cover)
+                                .corner_radius(theme.card_radius),
+                        ),
+                    ),
+                    field_card(
+                        &theme,
+                        "WebP · full circle",
+                        Box::new(
+                            Image::with_style(webp, square)
+                                .fit(ImageFit::Cover)
+                                .corner_radius(84.),
                         ),
                     ),
                 ],
@@ -1237,6 +1292,12 @@ Radia Perlman,Engineer,1951";
 }
 
 fn main() {
+    let image_png = ImageData::from_bytes(include_bytes!("../assets/images/iridescent.png"))
+        .expect("bundled PNG should decode");
+    let image_jpeg = ImageData::from_bytes(include_bytes!("../assets/images/still-life.jpg"))
+        .expect("bundled JPEG should decode");
+    let image_webp = ImageData::from_bytes(include_bytes!("../assets/images/botanical.webp"))
+        .expect("bundled WebP should decode");
     let dark_mode = Signal::new(true);
     let accent_index = Signal::new(0usize);
     let active_section = Signal::new(0usize);
@@ -1354,23 +1415,29 @@ fn main() {
                     color_picker: picker_color_popup.clone(),
                     file: picker_file.clone(),
                 }),
-                3 => ButtonPanel(ButtonPanelProps {
+                3 => ImagesPanel(ImagesPanelProps {
+                    theme,
+                    png: image_png.clone(),
+                    jpeg: image_jpeg.clone(),
+                    webp: image_webp.clone(),
+                }),
+                4 => ButtonPanel(ButtonPanelProps {
                     theme,
                     clicks: clicks.clone(),
                 }),
-                4 => SliderPanel(SliderPanelProps {
+                5 => SliderPanel(SliderPanelProps {
                     theme,
                     volume: volume.clone(),
                     brightness: brightness.clone(),
                     zoom: zoom.clone(),
                 }),
-                5 => CheckboxPanel(CheckboxPanelProps {
+                6 => CheckboxPanel(CheckboxPanelProps {
                     theme,
                     notifications: notifications.clone(),
                     auto_save: auto_save.clone(),
                     beta_features: beta_features.clone(),
                 }),
-                6 => SelectionPanel(SelectionPanelProps {
+                7 => SelectionPanel(SelectionPanelProps {
                     theme,
                     select: select.clone(),
                     radio: radio.clone(),
@@ -1378,29 +1445,29 @@ fn main() {
                     list_scroll: list_scroll_demo.clone(),
                     list_selected: list_selected.clone(),
                 }),
-                7 => FeedbackPanel(FeedbackPanelProps {
+                8 => FeedbackPanel(FeedbackPanelProps {
                     theme,
                     progress: progress.clone(),
                     show_popover: show_popover.clone(),
                     show_alert: show_alert.clone(),
                 }),
-                8 => SidebarPanel(SidebarPanelProps {
+                9 => SidebarPanel(SidebarPanelProps {
                     theme,
                     active: sidebar_demo_active.clone(),
                 }),
-                9 => TabsPanel(TabsPanelProps {
+                10 => TabsPanel(TabsPanelProps {
                     theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
-                10 => ScrollPanel(ScrollPanelProps {
+                11 => ScrollPanel(ScrollPanelProps {
                     theme,
                     themed_scroll: themed_scroll_demo.clone(),
                     custom_scroll: custom_scroll_demo.clone(),
                 }),
-                11 => TreePanel(TreePanelProps {
+                12 => TreePanel(TreePanelProps {
                     theme,
                     tree_scroll: tree_scroll_demo.clone(),
                     tree: tree_demo.clone(),
