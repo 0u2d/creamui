@@ -18,6 +18,14 @@ thread_local! {
     static SYSTEM_CLIPBOARD: RefCell<Option<arboard::Clipboard>> = const { RefCell::new(None) };
 }
 
+fn activate_on_key(click: Rc<dyn Fn()>) -> Rc<dyn Fn(KeyInput)> {
+    Rc::new(move |input| {
+        if !input.modifiers.ctrl && matches!(input.key, Key::Enter | Key::Char(' ')) {
+            click();
+        }
+    })
+}
+
 fn clipboard_write(text: String) {
     SYSTEM_CLIPBOARD.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -124,6 +132,7 @@ impl Widget for RawView {
 
 /// Unstyled text with no color or size opinion beyond what's passed in.
 pub struct RawText {
+    pub bold: bool,
     pub text: String,
     pub color: Color,
     pub font_size: f32,
@@ -134,6 +143,7 @@ pub struct RawText {
 impl RawText {
     pub fn new(text: impl Into<String>, color: Color, font_size: f32) -> Self {
         RawText {
+            bold: false,
             text: text.into(),
             color,
             font_size,
@@ -144,6 +154,11 @@ impl RawText {
 
     pub fn color(mut self, color: Color) -> Self {
         self.color = color;
+        self
+    }
+
+    pub fn bold(mut self, bold: bool) -> Self {
+        self.bold = bold;
         self
     }
 
@@ -169,12 +184,20 @@ impl Widget for RawText {
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        painter.fill_text(rect, &self.text, self.color, self.font_size, self.align);
+        painter.fill_text_weight(
+            rect,
+            &self.text,
+            self.color,
+            self.font_size,
+            self.align,
+            self.bold,
+        );
     }
 
     fn measure(&self) -> Option<creamui_core::MeasureFn> {
         let text = self.text.clone();
         let font_size = self.font_size;
+        let bold = self.bold;
         Some(Box::new(move |known_dimensions, available_space| {
             let max_width = match (known_dimensions.width, available_space.width) {
                 (Some(w), _) => w,
@@ -182,7 +205,7 @@ impl Widget for RawText {
                 (None, _) => crate::text_metrics::unbounded_width(),
             };
             let (natural_width, natural_height) =
-                crate::text_metrics::measure(&text, font_size, max_width);
+                crate::text_metrics::measure_weight(&text, font_size, max_width, bold);
             creamui_core::layout::Size {
                 width: known_dimensions.width.unwrap_or(natural_width),
                 height: known_dimensions.height.unwrap_or(natural_height),
@@ -194,6 +217,9 @@ impl Widget for RawText {
 /// An unstyled clickable region. Paints only its `background`/`border` if
 /// set; combine with [`RawText`] as a child for a labeled button.
 pub struct RawButton {
+    pub hover_background: Option<Color>,
+    pub pressed_background: Option<Color>,
+    pub focus_color: Option<Color>,
     pub style: Style,
     pub background: Option<Color>,
     pub corner_radius: f32,
@@ -206,6 +232,9 @@ pub struct RawButton {
 impl RawButton {
     pub fn new(style: Style, on_click: impl Fn() + 'static) -> Self {
         RawButton {
+            hover_background: None,
+            pressed_background: None,
+            focus_color: None,
             style,
             background: None,
             corner_radius: 0.0,
@@ -225,7 +254,10 @@ impl RawButton {
         self.corner_radius = radius;
         self
     }
-    pub fn border(mut self, color: Color, width: f32) -> Self { self.border = Some((color, width)); self }
+    pub fn border(mut self, color: Color, width: f32) -> Self {
+        self.border = Some((color, width));
+        self
+    }
 
     pub fn layout_style(mut self, style: Style) -> Self {
         self.style = style;
@@ -252,15 +284,53 @@ impl RawButton {
 }
 
 impl Widget for RawButton {
+    fn focusable(&self) -> bool {
+        !self.disabled
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        if self.disabled {
+            return None;
+        }
+        let click = self.on_click.clone();
+        Some(Rc::new(move |input| {
+            if !input.modifiers.ctrl && matches!(input.key, Key::Enter | Key::Char(' ')) {
+                click();
+            }
+        }))
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, _: bool) {
+        if let Some(color) = self.focus_color {
+            painter.stroke_rect(
+                Rect {
+                    x: rect.x - 2.,
+                    y: rect.y - 2.,
+                    width: rect.width + 4.,
+                    height: rect.height + 4.,
+                },
+                color,
+                2.,
+                self.corner_radius + 2.,
+            );
+        }
+    }
     fn style(&self) -> Style {
         self.style.clone()
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        if let Some(color) = self.background {
+        let background = if !self.disabled && painter.pressed(rect) {
+            self.pressed_background.or(self.background)
+        } else if !self.disabled && painter.hovered(rect) {
+            self.hover_background.or(self.background)
+        } else {
+            self.background
+        };
+        if let Some(color) = background {
             painter.fill_rect(rect, color, self.corner_radius);
         }
-        if let Some((color, width)) = self.border { painter.stroke_rect(rect, color, width, self.corner_radius); }
+        if let Some((color, width)) = self.border {
+            painter.stroke_rect(rect, color, width, self.corner_radius);
+        }
     }
 
     fn children(&mut self) -> Vec<BoxedWidget> {
@@ -286,11 +356,66 @@ impl Widget for RawButton {
 
 /// A compact segmented circular progress indicator. Each rebuild may choose a
 /// different phase to animate it; it remains useful as a static busy glyph.
-pub struct RawSpinner { pub color: Color, pub phase: usize, pub size: f32 }
-impl RawSpinner { pub fn new(color: Color) -> Self { Self { color, phase: 0, size: 14.0 } } pub fn phase(mut self, phase: usize) -> Self { self.phase = phase; self } pub fn size(mut self, size: f32) -> Self { self.size = size; self } }
+pub struct RawSpinner {
+    pub color: Color,
+    pub phase: usize,
+    pub size: f32,
+    pub animate: bool,
+}
+impl RawSpinner {
+    pub fn new(color: Color) -> Self {
+        Self {
+            color,
+            phase: 0,
+            size: 14.0,
+            animate: true,
+        }
+    }
+    pub fn phase(mut self, phase: usize) -> Self {
+        self.phase = phase;
+        self.animate = false;
+        self
+    }
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = size;
+        self
+    }
+}
 impl Widget for RawSpinner {
-    fn style(&self) -> Style { Style { size: creamui_core::layout::Size { width: creamui_core::layout::Dimension::Length(self.size), height: creamui_core::layout::Dimension::Length(self.size) }, ..Default::default() } }
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { let cx = rect.x + rect.width / 2.0; let cy = rect.y + rect.height / 2.0; let radius = rect.width.min(rect.height) * 0.36; let dot = (self.size * 0.18).max(1.5); for index in 0..8 { let angle = (index as f32 / 8.0) * std::f32::consts::TAU; let alpha = if index == self.phase % 8 { 255 } else { 80 }; painter.fill_rect(Rect { x: cx + angle.cos() * radius - dot/2., y: cy + angle.sin() * radius - dot/2., width: dot, height: dot }, Color::rgba(self.color.r, self.color.g, self.color.b, alpha), dot/2.); } }
+    fn style(&self) -> Style {
+        Style {
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(self.size),
+                height: creamui_core::layout::Dimension::Length(self.size),
+            },
+            ..Default::default()
+        }
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        let phase = if self.animate {
+            (painter.animation_time() * 10.) as usize
+        } else {
+            self.phase
+        };
+        let cx = rect.x + rect.width / 2.0;
+        let cy = rect.y + rect.height / 2.0;
+        let radius = rect.width.min(rect.height) * 0.36;
+        let dot = (self.size * 0.18).max(1.5);
+        for index in 0..8 {
+            let angle = (index as f32 / 8.0) * std::f32::consts::TAU;
+            let alpha = if index == phase % 8 { 255 } else { 80 };
+            painter.fill_rect(
+                Rect {
+                    x: cx + angle.cos() * radius - dot / 2.,
+                    y: cy + angle.sin() * radius - dot / 2.,
+                    width: dot,
+                    height: dot,
+                },
+                Color::rgba(self.color.r, self.color.g, self.color.b, alpha),
+                dot / 2.,
+            );
+        }
+    }
 }
 
 /// An unstyled single-line text input. The caller owns the current text
@@ -1041,14 +1166,20 @@ impl RawTextInput {
             corner_radius: 0.0,
             font_size,
             cursor,
-            selection: TextSelection { anchor: cursor, focus: cursor },
+            selection: TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            },
             selection_background: None,
             selection_text_color: None,
             on_change: Rc::new(on_change),
             on_cursor_change: Rc::new(|_| {}),
             on_selection_change: Rc::new(|_| {}),
             clipboard_enabled: true,
-            keyboard_selection: Rc::new(Cell::new(TextSelection { anchor: cursor, focus: cursor })),
+            keyboard_selection: Rc::new(Cell::new(TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            })),
             drag_anchor: Rc::new(Cell::new(cursor)),
         }
     }
@@ -1084,21 +1215,37 @@ impl RawTextInput {
 
     pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
         self.cursor = cursor.min(self.value.len());
-        self.selection = TextSelection { anchor: self.cursor, focus: self.cursor };
+        self.selection = TextSelection {
+            anchor: self.cursor,
+            focus: self.cursor,
+        };
         self.keyboard_selection.set(self.selection);
         self.on_cursor_change = Rc::new(on_change);
         self
     }
 
-    pub fn selection(mut self, selection: TextSelection, on_change: impl Fn(TextSelection) + 'static) -> Self {
-        self.selection = TextSelection { anchor: selection.anchor.min(self.value.len()), focus: selection.focus.min(self.value.len()) };
+    pub fn selection(
+        mut self,
+        selection: TextSelection,
+        on_change: impl Fn(TextSelection) + 'static,
+    ) -> Self {
+        self.selection = TextSelection {
+            anchor: selection.anchor.min(self.value.len()),
+            focus: selection.focus.min(self.value.len()),
+        };
         self.keyboard_selection.set(self.selection);
         self.on_selection_change = Rc::new(on_change);
         self
     }
 
-    pub fn selection_background(mut self, color: Color) -> Self { self.selection_background = Some(color); self }
-    pub fn selection_text_color(mut self, color: Color) -> Self { self.selection_text_color = Some(color); self }
+    pub fn selection_background(mut self, color: Color) -> Self {
+        self.selection_background = Some(color);
+        self
+    }
+    pub fn selection_text_color(mut self, color: Color) -> Self {
+        self.selection_text_color = Some(color);
+        self
+    }
 
     /// How far to shift the value left so its end (editing is append-only)
     /// stays inside `visible_width` instead of running off the edge.
@@ -1152,9 +1299,26 @@ impl Widget for RawTextInput {
             let selected = self.selection.range();
             if !selected.is_empty() {
                 if let Some(background) = self.selection_background {
-                    let (before, _) = crate::text_metrics::measure(&self.value[..selected.start], self.font_size, crate::text_metrics::unbounded_width());
-                    let (width, _) = crate::text_metrics::measure(&self.value[selected.clone()], self.font_size, crate::text_metrics::unbounded_width());
-                    painter.fill_rect(Rect { x: unbounded.x + before, y: rect.y + (rect.height - self.font_size * 1.4) / 2.0, width, height: self.font_size * 1.4 }, background, 2.0);
+                    let (before, _) = crate::text_metrics::measure(
+                        &self.value[..selected.start],
+                        self.font_size,
+                        crate::text_metrics::unbounded_width(),
+                    );
+                    let (width, _) = crate::text_metrics::measure(
+                        &self.value[selected.clone()],
+                        self.font_size,
+                        crate::text_metrics::unbounded_width(),
+                    );
+                    painter.fill_rect(
+                        Rect {
+                            x: unbounded.x + before,
+                            y: rect.y + (rect.height - self.font_size * 1.4) / 2.0,
+                            width,
+                            height: self.font_size * 1.4,
+                        },
+                        background,
+                        2.0,
+                    );
                 }
             }
             painter.fill_text_selected(
@@ -1207,60 +1371,228 @@ impl Widget for RawTextInput {
     }
 
     fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
-        let value = self.value.clone(); let on_change = self.on_change.clone();
-        let cursor = self.cursor; let on_cursor_change = self.on_cursor_change.clone();
-        let selection = self.keyboard_selection.clone(); let on_selection_change = self.on_selection_change.clone();
+        let value = self.value.clone();
+        let on_change = self.on_change.clone();
+        let cursor = self.cursor;
+        let on_cursor_change = self.on_cursor_change.clone();
+        let selection = self.keyboard_selection.clone();
+        let on_selection_change = self.on_selection_change.clone();
         let clipboard_enabled = self.clipboard_enabled;
         Some(Rc::new(move |input: KeyInput| {
             let selected = selection.get();
             if clipboard_enabled && input.modifiers.ctrl {
                 match input.key {
-                    Key::Char('a') | Key::Char('A') => { let all = TextSelection { anchor: 0, focus: value.len() }; selection.set(all); creamui_reactive::batch(|| { on_cursor_change(value.len()); on_selection_change(all); }); return; }
-                    Key::Char('c') | Key::Char('C') if !selected.is_empty() => { clipboard_write(value[selected.range()].to_owned()); return; }
-                    Key::Char('x') | Key::Char('X') if !selected.is_empty() => { let range = selected.range(); clipboard_write(value[range.clone()].to_owned()); let mut next = value.clone(); next.replace_range(range.clone(), ""); let at = range.start; let collapsed = TextSelection { anchor: at, focus: at }; selection.set(collapsed); creamui_reactive::batch(|| { on_change(next); on_cursor_change(at); on_selection_change(collapsed); }); return; }
-                    Key::Char('v') | Key::Char('V') => { if let Some(paste) = clipboard_read() { let range = selected.range(); let mut next = value.clone(); let at = if range.is_empty() { cursor.min(next.len()) } else { range.start }; next.replace_range(if range.is_empty() { at..at } else { range }, &paste); let at = at + paste.len(); let collapsed = TextSelection { anchor: at, focus: at }; selection.set(collapsed); creamui_reactive::batch(|| { on_change(next); on_cursor_change(at); on_selection_change(collapsed); }); } return; }
+                    Key::Char('a') | Key::Char('A') => {
+                        let all = TextSelection {
+                            anchor: 0,
+                            focus: value.len(),
+                        };
+                        selection.set(all);
+                        creamui_reactive::batch(|| {
+                            on_cursor_change(value.len());
+                            on_selection_change(all);
+                        });
+                        return;
+                    }
+                    Key::Char('c') | Key::Char('C') if !selected.is_empty() => {
+                        clipboard_write(value[selected.range()].to_owned());
+                        return;
+                    }
+                    Key::Char('x') | Key::Char('X') if !selected.is_empty() => {
+                        let range = selected.range();
+                        clipboard_write(value[range.clone()].to_owned());
+                        let mut next = value.clone();
+                        next.replace_range(range.clone(), "");
+                        let at = range.start;
+                        let collapsed = TextSelection {
+                            anchor: at,
+                            focus: at,
+                        };
+                        selection.set(collapsed);
+                        creamui_reactive::batch(|| {
+                            on_change(next);
+                            on_cursor_change(at);
+                            on_selection_change(collapsed);
+                        });
+                        return;
+                    }
+                    Key::Char('v') | Key::Char('V') => {
+                        if let Some(paste) = clipboard_read() {
+                            let range = selected.range();
+                            let mut next = value.clone();
+                            let at = if range.is_empty() {
+                                cursor.min(next.len())
+                            } else {
+                                range.start
+                            };
+                            next.replace_range(
+                                if range.is_empty() { at..at } else { range },
+                                &paste,
+                            );
+                            let at = at + paste.len();
+                            let collapsed = TextSelection {
+                                anchor: at,
+                                focus: at,
+                            };
+                            selection.set(collapsed);
+                            creamui_reactive::batch(|| {
+                                on_change(next);
+                                on_cursor_change(at);
+                                on_selection_change(collapsed);
+                            });
+                        }
+                        return;
+                    }
                     _ => {}
                 }
             }
-            let mut next = value.clone(); let mut at = cursor.min(next.len()); let range = selected.range(); let mut changed = false;
+            let mut next = value.clone();
+            let mut at = cursor.min(next.len());
+            let range = selected.range();
+            let mut changed = false;
             match input.key {
-                Key::Char(c) => { next.replace_range(if range.is_empty() { at..at } else { range.clone() }, &c.to_string()); at = if range.is_empty() { at + c.len_utf8() } else { range.start + c.len_utf8() }; changed = true; }
-                Key::Backspace => { if !range.is_empty() { next.replace_range(range.clone(), ""); at = range.start; changed = true; } else if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i) { next.replace_range(previous..at, ""); at = previous; changed = true; } }
-                Key::Delete => { if !range.is_empty() { next.replace_range(range.clone(), ""); at = range.start; changed = true; } else if let Some(ch) = next[at..].chars().next() { next.replace_range(at..at + ch.len_utf8(), ""); changed = true; } }
-                Key::Left => { if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i) { at = previous; } }
-                Key::Right => { if let Some(ch) = next[at..].chars().next() { at += ch.len_utf8(); } }
-                Key::Home => at = 0, Key::End => at = next.len(), _ => return,
+                Key::Char(c) => {
+                    next.replace_range(
+                        if range.is_empty() {
+                            at..at
+                        } else {
+                            range.clone()
+                        },
+                        &c.to_string(),
+                    );
+                    at = if range.is_empty() {
+                        at + c.len_utf8()
+                    } else {
+                        range.start + c.len_utf8()
+                    };
+                    changed = true;
+                }
+                Key::Backspace => {
+                    if !range.is_empty() {
+                        next.replace_range(range.clone(), "");
+                        at = range.start;
+                        changed = true;
+                    } else if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i)
+                    {
+                        next.replace_range(previous..at, "");
+                        at = previous;
+                        changed = true;
+                    }
+                }
+                Key::Delete => {
+                    if !range.is_empty() {
+                        next.replace_range(range.clone(), "");
+                        at = range.start;
+                        changed = true;
+                    } else if let Some(ch) = next[at..].chars().next() {
+                        next.replace_range(at..at + ch.len_utf8(), "");
+                        changed = true;
+                    }
+                }
+                Key::Left => {
+                    if let Some(previous) = next[..at].char_indices().last().map(|(i, _)| i) {
+                        at = previous;
+                    }
+                }
+                Key::Right => {
+                    if let Some(ch) = next[at..].chars().next() {
+                        at += ch.len_utf8();
+                    }
+                }
+                Key::Home => at = 0,
+                Key::End => at = next.len(),
+                _ => return,
             }
-            let next_selection = if input.modifiers.shift && matches!(input.key, Key::Left | Key::Right | Key::Home | Key::End) { TextSelection { anchor: if selected.is_empty() { cursor } else { selected.anchor }, focus: at } } else { TextSelection { anchor: at, focus: at } };
-            selection.set(next_selection); creamui_reactive::batch(|| { if changed { on_change(next); } on_cursor_change(at); on_selection_change(next_selection); });
+            let next_selection = if input.modifiers.shift
+                && matches!(input.key, Key::Left | Key::Right | Key::Home | Key::End)
+            {
+                TextSelection {
+                    anchor: if selected.is_empty() {
+                        cursor
+                    } else {
+                        selected.anchor
+                    },
+                    focus: at,
+                }
+            } else {
+                TextSelection {
+                    anchor: at,
+                    focus: at,
+                }
+            };
+            selection.set(next_selection);
+            creamui_reactive::batch(|| {
+                if changed {
+                    on_change(next);
+                }
+                on_cursor_change(at);
+                on_selection_change(next_selection);
+            });
         }))
     }
 
     fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
-        let value = self.value.clone(); let font_size = self.font_size;
-        let on_cursor_change = self.on_cursor_change.clone(); let on_selection_change = self.on_selection_change.clone();
-        let selection = self.keyboard_selection.clone(); let anchor = self.drag_anchor.clone();
+        let value = self.value.clone();
+        let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone();
+        let on_selection_change = self.on_selection_change.clone();
+        let selection = self.keyboard_selection.clone();
+        let anchor = self.drag_anchor.clone();
         Some(Rc::new(move |point, rect| {
             let visible = (rect.width - 16.0).max(0.0);
-            let (width, _) = crate::text_metrics::measure(&value, font_size, crate::text_metrics::unbounded_width());
+            let (width, _) = crate::text_metrics::measure(
+                &value,
+                font_size,
+                crate::text_metrics::unbounded_width(),
+            );
             let scroll = (width - visible + 4.0).max(0.0);
-            let cursor = crate::text_metrics::byte_offset_at_x(&value, font_size, (point.x - 8.0 + scroll).max(0.0));
-            anchor.set(cursor); let next = TextSelection { anchor: cursor, focus: cursor }; selection.set(next);
-            creamui_reactive::batch(|| { on_cursor_change(cursor); on_selection_change(next); });
+            let cursor = crate::text_metrics::byte_offset_at_x(
+                &value,
+                font_size,
+                (point.x - 8.0 + scroll).max(0.0),
+            );
+            anchor.set(cursor);
+            let next = TextSelection {
+                anchor: cursor,
+                focus: cursor,
+            };
+            selection.set(next);
+            creamui_reactive::batch(|| {
+                on_cursor_change(cursor);
+                on_selection_change(next);
+            });
         }))
     }
 
     fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
-        let value = self.value.clone(); let font_size = self.font_size;
-        let on_cursor_change = self.on_cursor_change.clone(); let on_selection_change = self.on_selection_change.clone();
-        let selection = self.keyboard_selection.clone(); let anchor = self.drag_anchor.clone();
+        let value = self.value.clone();
+        let font_size = self.font_size;
+        let on_cursor_change = self.on_cursor_change.clone();
+        let on_selection_change = self.on_selection_change.clone();
+        let selection = self.keyboard_selection.clone();
+        let anchor = self.drag_anchor.clone();
         Some(Rc::new(move |point, rect| {
             let visible = (rect.width - 16.0).max(0.0);
-            let (width, _) = crate::text_metrics::measure(&value, font_size, crate::text_metrics::unbounded_width());
+            let (width, _) = crate::text_metrics::measure(
+                &value,
+                font_size,
+                crate::text_metrics::unbounded_width(),
+            );
             let scroll = (width - visible + 4.0).max(0.0);
-            let cursor = crate::text_metrics::byte_offset_at_x(&value, font_size, (point.x - 8.0 + scroll).max(0.0));
-            let next = TextSelection { anchor: anchor.get(), focus: cursor }; selection.set(next);
-            creamui_reactive::batch(|| { on_cursor_change(cursor); on_selection_change(next); });
+            let cursor = crate::text_metrics::byte_offset_at_x(
+                &value,
+                font_size,
+                (point.x - 8.0 + scroll).max(0.0),
+            );
+            let next = TextSelection {
+                anchor: anchor.get(),
+                focus: cursor,
+            };
+            selection.set(next);
+            creamui_reactive::batch(|| {
+                on_cursor_change(cursor);
+                on_selection_change(next);
+            });
         }))
     }
 }
@@ -1305,6 +1637,25 @@ impl RawCheckbox {
 }
 
 impl Widget for RawCheckbox {
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        Some(activate_on_key(self.on_click.clone()))
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, _: bool) {
+        p.stroke_rect(
+            Rect {
+                x: r.x - 3.,
+                y: r.y - 3.,
+                width: r.width + 6.,
+                height: r.height + 6.,
+            },
+            self.fill_color,
+            2.,
+            self.corner_radius + 2.,
+        );
+    }
     fn style(&self) -> Style {
         Style {
             size: creamui_core::layout::Size {
@@ -1318,6 +1669,12 @@ impl Widget for RawCheckbox {
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
         if self.checked {
             painter.fill_rect(rect, self.fill_color, self.corner_radius);
+            let p = |x: f32, y: f32| Point {
+                x: rect.x + rect.width * x,
+                y: rect.y + rect.height * y,
+            };
+            painter.stroke_line(p(0.25, 0.5), p(0.43, 0.68), Color::rgb(255, 255, 255), 1.8);
+            painter.stroke_line(p(0.43, 0.68), p(0.76, 0.32), Color::rgb(255, 255, 255), 1.8);
         } else {
             painter.stroke_rect(
                 rect,
@@ -1338,15 +1695,91 @@ impl Widget for RawCheckbox {
 }
 
 /// Headless iOS/macOS-style boolean switch: a pill track with a sliding thumb.
-pub struct RawSwitch { pub checked: bool, pub on_color: Color, pub off_color: Color, pub thumb_color: Color, pub on_click: Rc<dyn Fn()> }
+pub struct RawSwitch {
+    pub checked: bool,
+    pub on_color: Color,
+    pub off_color: Color,
+    pub thumb_color: Color,
+    pub on_click: Rc<dyn Fn()>,
+}
 impl RawSwitch {
-    pub fn new(checked: bool, on_color: Color, off_color: Color, thumb_color: Color, on_click: impl Fn() + 'static) -> Self { Self { checked, on_color, off_color, thumb_color, on_click: Rc::new(on_click) } }
+    pub fn new(
+        checked: bool,
+        on_color: Color,
+        off_color: Color,
+        thumb_color: Color,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self {
+            checked,
+            on_color,
+            off_color,
+            thumb_color,
+            on_click: Rc::new(on_click),
+        }
+    }
 }
 impl Widget for RawSwitch {
-    fn style(&self) -> Style { Style { size: creamui_core::layout::Size { width: creamui_core::layout::Dimension::Length(42.0), height: creamui_core::layout::Dimension::Length(24.0) }, ..Default::default() } }
-    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { let d = (rect.height - 4.0).max(0.0); painter.fill_rect(rect, if self.checked { self.on_color } else { self.off_color }, rect.height / 2.0); painter.fill_rect(Rect { x: if self.checked { rect.x + rect.width - d - 2.0 } else { rect.x + 2.0 }, y: rect.y + 2.0, width: d, height: d }, self.thumb_color, d / 2.0); }
-    fn on_click(&self) -> Option<Rc<dyn Fn()>> { Some(self.on_click.clone()) }
-    fn cursor_icon(&self) -> Option<CursorIcon> { Some(CursorIcon::Pointer) }
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        Some(activate_on_key(self.on_click.clone()))
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, _: bool) {
+        p.stroke_rect(
+            Rect {
+                x: r.x - 3.,
+                y: r.y - 3.,
+                width: r.width + 6.,
+                height: r.height + 6.,
+            },
+            self.on_color,
+            2.,
+            r.height / 2. + 3.,
+        );
+    }
+    fn style(&self) -> Style {
+        Style {
+            size: creamui_core::layout::Size {
+                width: creamui_core::layout::Dimension::Length(42.0),
+                height: creamui_core::layout::Dimension::Length(24.0),
+            },
+            ..Default::default()
+        }
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        let d = (rect.height - 4.0).max(0.0);
+        painter.fill_rect(
+            rect,
+            if self.checked {
+                self.on_color
+            } else {
+                self.off_color
+            },
+            rect.height / 2.0,
+        );
+        painter.fill_rect(
+            Rect {
+                x: if self.checked {
+                    rect.x + rect.width - d - 2.0
+                } else {
+                    rect.x + 2.0
+                },
+                y: rect.y + 2.0,
+                width: d,
+                height: d,
+            },
+            self.thumb_color,
+            d / 2.0,
+        );
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        Some(self.on_click.clone())
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        Some(CursorIcon::Pointer)
+    }
 }
 
 /// An unstyled horizontal slider: drag (or click) anywhere along its track
@@ -1387,6 +1820,26 @@ impl RawSlider {
 }
 
 impl Widget for RawSlider {
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        let value = self.value;
+        let change = self.on_change.clone();
+        Some(Rc::new(move |input| {
+            let next = match input.key {
+                Key::Left | Key::Down => value - 0.05,
+                Key::Right | Key::Up => value + 0.05,
+                Key::Home => 0.,
+                Key::End => 1.,
+                _ => return,
+            };
+            change(next.clamp(0., 1.));
+        }))
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, _: bool) {
+        p.stroke_rect(r, self.fill_color, 1., 5.);
+    }
     fn style(&self) -> Style {
         self.style.clone()
     }
@@ -1484,6 +1937,11 @@ impl RawTabs {
         self
     }
 
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
     pub fn child(mut self, widget: BoxedWidget) -> Self {
         self.children.push(widget);
         self
@@ -1546,6 +2004,11 @@ impl RawSidebar {
         self
     }
 
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
     pub fn child(mut self, widget: BoxedWidget) -> Self {
         self.children.push(widget);
         self
@@ -1590,11 +2053,15 @@ pub struct RawTab {
     pub style: Style,
     pub active: bool,
     pub background: Option<Color>,
+    pub hover_background: Option<Color>,
+    pub pressed_background: Option<Color>,
+    pub focus_color: Option<Color>,
     pub corner_radius: f32,
     pub indicator: Option<(TabIndicatorSide, Color, f32)>,
     pub children: Vec<BoxedWidget>,
     pub on_click: Rc<dyn Fn()>,
     pub on_hover: Option<Rc<dyn Fn(bool)>>,
+    pub disabled: bool,
 }
 
 impl RawTab {
@@ -1603,11 +2070,15 @@ impl RawTab {
             style,
             active,
             background: None,
+            hover_background: None,
+            pressed_background: None,
+            focus_color: None,
             corner_radius: 0.0,
             indicator: None,
             children: Vec::new(),
             on_click: Rc::new(on_click),
             on_hover: None,
+            disabled: false,
         }
     }
 
@@ -1616,8 +2087,33 @@ impl RawTab {
         self
     }
 
+    pub fn hover_background(mut self, color: Color) -> Self {
+        self.hover_background = Some(color);
+        self
+    }
+
+    pub fn pressed_background(mut self, color: Color) -> Self {
+        self.pressed_background = Some(color);
+        self
+    }
+
+    pub fn focus_color(mut self, color: Color) -> Self {
+        self.focus_color = Some(color);
+        self
+    }
+
     pub fn corner_radius(mut self, radius: f32) -> Self {
         self.corner_radius = radius;
+        self
+    }
+
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
         self
     }
 
@@ -1646,12 +2142,49 @@ impl RawTab {
 }
 
 impl Widget for RawTab {
+    fn focusable(&self) -> bool {
+        !self.disabled
+    }
+
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        if self.disabled {
+            None
+        } else {
+            Some(activate_on_key(self.on_click.clone()))
+        }
+    }
+
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, _: bool) {
+        if let Some(color) = self.focus_color {
+            painter.stroke_rect(
+                Rect {
+                    x: rect.x - 2.,
+                    y: rect.y - 2.,
+                    width: rect.width + 4.,
+                    height: rect.height + 4.,
+                },
+                color,
+                2.,
+                self.corner_radius + 2.,
+            );
+        }
+    }
+
     fn style(&self) -> Style {
         self.style.clone()
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        if let Some(color) = self.background {
+        let background = if !self.disabled && painter.pressed(rect) {
+            self.pressed_background
+                .or(self.hover_background)
+                .or(self.background)
+        } else if !self.disabled && painter.hovered(rect) {
+            self.hover_background.or(self.background)
+        } else {
+            self.background
+        };
+        if let Some(color) = background {
             painter.fill_rect(rect, color, self.corner_radius);
         }
         if self.active {
@@ -1694,11 +2227,15 @@ impl Widget for RawTab {
     }
 
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
-        Some(self.on_click.clone())
+        (!self.disabled).then(|| self.on_click.clone())
     }
 
     fn cursor_icon(&self) -> Option<CursorIcon> {
-        Some(CursorIcon::Pointer)
+        Some(if self.disabled {
+            CursorIcon::NotAllowed
+        } else {
+            CursorIcon::Pointer
+        })
     }
 
     fn on_hover(&self) -> Option<Rc<dyn Fn(bool)>> {

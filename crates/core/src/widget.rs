@@ -71,6 +71,46 @@ pub enum CursorIcon {
 /// Implemented once per rendering backend (e.g. the `tiny-skia` + `wgpu`
 /// backend in `creamui-render`); widgets never depend on a specific backend.
 pub trait Painter {
+    /// Optional pointer paint context. Coordinates are logical pixels.
+    fn hovered(&self, _rect: Rect) -> bool {
+        false
+    }
+    fn pressed(&self, _rect: Rect) -> bool {
+        false
+    }
+    /// Request another frame only while an animated control is visible.
+    fn animation_time(&mut self) -> f32 {
+        0.0
+    }
+    fn stroke_line(&mut self, from: Point, to: Point, color: creamui_theme::Color, width: f32) {
+        let steps = ((to.x - from.x).abs().max((to.y - from.y).abs()) * 2.0)
+            .ceil()
+            .max(1.0) as usize;
+        for i in 0..=steps {
+            let t = i as f32 / steps as f32;
+            self.fill_rect(
+                Rect {
+                    x: from.x + (to.x - from.x) * t - width / 2.,
+                    y: from.y + (to.y - from.y) * t - width / 2.,
+                    width,
+                    height: width,
+                },
+                color,
+                width / 2.,
+            );
+        }
+    }
+    fn fill_text_weight(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: creamui_theme::Color,
+        font_size: f32,
+        align: TextAlign,
+        _bold: bool,
+    ) {
+        self.fill_text(rect, text, color, font_size, align);
+    }
     fn fill_rect(&mut self, rect: Rect, color: creamui_theme::Color, corner_radius: f32);
     fn stroke_rect(
         &mut self,

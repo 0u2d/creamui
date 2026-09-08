@@ -41,13 +41,29 @@ const UNBOUNDED_WIDTH: f32 = 1_000_000.0;
 /// same text with the same `max_width` at paint time — no fudge factor
 /// needed.
 pub fn measure(text: &str, font_size: f32, max_width: f32) -> (f32, f32) {
+    measure_weight(text, font_size, max_width, false)
+}
+
+pub fn measure_weight(text: &str, font_size: f32, max_width: f32, bold: bool) -> (f32, f32) {
+    static BOLD: OnceLock<Font> = OnceLock::new();
+    let face = if bold {
+        BOLD.get_or_init(|| {
+            Font::from_bytes(
+                include_bytes!("../../../assets/fonts/DejaVuSans-Bold.ttf") as &[u8],
+                fontdue::FontSettings::default(),
+            )
+            .expect("bundled bold font")
+        })
+    } else {
+        font()
+    };
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    layout.append(&[face], &TextStyle::new(text, font_size, 0));
 
     let width = layout
         .lines()
@@ -125,7 +141,9 @@ pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
                 x: g.x,
                 y: row_top,
                 row_height: line.max_new_line_size,
-                advance: font().metrics_indexed(g.key.glyph_index, g.key.px).advance_width,
+                advance: font()
+                    .metrics_indexed(g.key.glyph_index, g.key.px)
+                    .advance_width,
                 ch: g.parent,
             });
         }
@@ -160,7 +178,11 @@ pub fn row_height(font_size: f32) -> f32 {
 /// just past the previous glyph when `byte_offset` falls between glyphs
 /// (end of a row, end of the text). `fallback_row_height` (see
 /// [`row_height`]) is used only when `glyphs` is empty.
-pub fn caret_xy(glyphs: &[LaidGlyph], byte_offset: usize, fallback_row_height: f32) -> (f32, f32, f32) {
+pub fn caret_xy(
+    glyphs: &[LaidGlyph],
+    byte_offset: usize,
+    fallback_row_height: f32,
+) -> (f32, f32, f32) {
     if let Some(g) = glyphs.iter().find(|g| g.byte_offset == byte_offset) {
         return (g.x, g.y, g.row_height);
     }
@@ -182,7 +204,10 @@ pub fn byte_offset_at_point(text: &str, font_size: f32, max_width: f32, x: f32, 
     else {
         return 0;
     };
-    let row: Vec<&LaidGlyph> = glyphs.iter().filter(|g| (g.y - row_y).abs() < 0.5).collect();
+    let row: Vec<&LaidGlyph> = glyphs
+        .iter()
+        .filter(|g| (g.y - row_y).abs() < 0.5)
+        .collect();
     for g in &row {
         if x < g.x + g.advance / 2.0 {
             return g.byte_offset;

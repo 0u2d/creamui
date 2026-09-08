@@ -291,6 +291,7 @@ struct WindowState {
     caret_visible: Rc<Cell<bool>>,
     /// When the caret should next toggle visibility (see `about_to_wait`).
     next_blink: Instant,
+    next_animation: Instant,
     /// The system cursor icon last set on the window, so `CursorMoved`
     /// only calls into the backend when it actually changes.
     current_cursor: CursorIcon,
@@ -348,6 +349,8 @@ impl WindowState {
                     x: (position.x / scale) as f32,
                     y: (position.y / scale) as f32,
                 };
+                self.frame.borrow_mut().painter.pointer = Some(self.pointer_pos);
+                (self.repaint)();
 
                 let hovered_cursor = {
                     let frame = self.frame.borrow();
@@ -407,6 +410,8 @@ impl WindowState {
                 button: MouseButton::Left,
                 ..
             } => {
+                self.frame.borrow_mut().painter.press_origin = Some(self.pointer_pos);
+                (self.repaint)();
                 let frame = self.frame.borrow();
                 let Some(scene) = frame.scene.as_ref() else {
                     return;
@@ -461,6 +466,20 @@ impl WindowState {
                 ..
             } => {
                 self.dragging = None;
+                self.frame.borrow_mut().painter.press_origin = None;
+                (self.repaint)();
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.frame.borrow_mut().painter.pointer = None;
+                if let Some((_, callback)) = self.hovered.take() {
+                    callback(false);
+                }
+                (self.repaint)();
+            }
+            WindowEvent::Focused(false) => {
+                self.frame.borrow_mut().painter.press_origin = None;
+                self.dragging = None;
+                (self.repaint)();
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let scale = self.scale_factor.peek();
@@ -496,6 +515,14 @@ impl WindowState {
                 let Some(key) = translate_key(&event.logical_key) else {
                     return;
                 };
+                if key == Key::Tab {
+                    let next = self.frame.borrow().scene.as_ref().and_then(|scene| {
+                        scene.next_focus(self.focused.get(), self.modifiers.shift_key())
+                    });
+                    self.focused.set(next);
+                    (self.repaint)();
+                    return;
+                }
                 let Some(index) = self.focused.get() else {
                     return;
                 };
@@ -654,6 +681,7 @@ impl ApplicationHandler for AppHandler {
                     focused: spec.focused,
                     caret_visible: spec.caret_visible,
                     next_blink: Instant::now() + CARET_BLINK_INTERVAL,
+                    next_animation: Instant::now(),
                     current_cursor: CursorIcon::Default,
                     hovered: None,
                     dragging: None,
@@ -692,6 +720,14 @@ impl ApplicationHandler for AppHandler {
         let now = Instant::now();
         let mut next_wake: Option<Instant> = None;
         for state in self.windows.values_mut() {
+            if state.frame.borrow().painter.animated {
+                if now >= state.next_animation {
+                    state.next_animation = now + Duration::from_millis(32);
+                    (state.repaint)();
+                }
+                next_wake =
+                    Some(next_wake.map_or(state.next_animation, |t| t.min(state.next_animation)));
+            }
             if state.focused.get().is_none() {
                 continue;
             }

@@ -13,15 +13,16 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
-use creamui_widgets::layout::{column, fixed, margin_xy, padding, row};
+use creamui_theme::{Color, SelectionStyle, Theme};
+use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
-    Button, ButtonSize, ButtonState, RawText, RawView, Sidebar, SidebarItem, SidebarSeparator, Tab, TabColors, Tabs,
-    Switch, TextController, TextInput, TextSize,
+    tab_styles, Button, ButtonSize, ButtonState, Heading, RawText, RawView, Sidebar, SidebarItem,
+    Switch, Tab, TabColors, TabController, TabSizing, Tabs, Text, TextController, TextInput,
+    TextSize, View,
 };
+use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
-/// Sidebar entries, in display order. `SEPARATOR_AFTER` marks which of these
-/// get a divider drawn below them.
+/// Sidebar categories in display order.
 const NAV_LABELS: [&str; 7] = [
     "Appearance",
     "Input",
@@ -31,20 +32,12 @@ const NAV_LABELS: [&str; 7] = [
     "Sidebar",
     "Tabs",
 ];
-const SEPARATOR_AFTER: [usize; 2] = [0, 4];
-const NAV_ICON_COLORS: [Color; 7] = [
-    Color::rgb(0x7c, 0x5c, 0xff), Color::rgb(0x2f, 0x8a, 0xe6),
-    Color::rgb(0xff, 0x9f, 0x0a), Color::rgb(0x3d, 0xc9, 0x6f),
-    Color::rgb(0xff, 0x5a, 0xd8), Color::rgb(0x5a, 0xc8, 0xfa),
-    Color::rgb(0xe6, 0x8a, 0x2e),
-];
-
 const ACCENTS: [(&str, Color); 5] = [
-    ("Violet", Color::rgb(0x7c, 0x5c, 0xff)),
-    ("Blue", Color::rgb(0x2f, 0x8a, 0xe6)),
-    ("Green", Color::rgb(0x2e, 0xc9, 0x6f)),
-    ("Pink", Color::rgb(0xff, 0x5a, 0xd8)),
-    ("Orange", Color::rgb(0xe6, 0x8a, 0x2e)),
+    ("Lilac", Color::rgb(181, 139, 255)),
+    ("Sky", Color::rgb(118, 192, 255)),
+    ("Mint", Color::rgb(105, 218, 166)),
+    ("Berry", Color::rgb(248, 135, 181)),
+    ("Apricot", Color::rgb(255, 177, 109)),
 ];
 
 /// Shifts each color channel by `delta`, clamping at the `u8` bounds. Used to
@@ -54,11 +47,23 @@ fn shade(color: Color, delta: i32) -> Color {
     Color::rgb(shift(color.r), shift(color.g), shift(color.b))
 }
 
+fn accent_foreground(color: Color) -> Color {
+    let luminance =
+        (color.r as f32 * 0.2126 + color.g as f32 * 0.7152 + color.b as f32 * 0.0722) / 255.;
+    if luminance > 0.56 {
+        Color::rgb(0x2d, 0x29, 0x2b)
+    } else {
+        Color::rgb(0xff, 0xff, 0xff)
+    }
+}
+
 fn build_theme(dark: bool, accent: Color) -> Theme {
     let mut theme = if dark { Theme::dark() } else { Theme::light() };
     theme.colors.accent = accent;
-    theme.colors.accent_hover = shade(accent, if dark { 18 } else { -18 });
-    theme.colors.accent_pressed = shade(accent, if dark { -18 } else { 18 });
+    theme.colors.accent_hover = shade(accent, if dark { 20 } else { -12 });
+    theme.colors.accent_pressed = shade(accent, -26);
+    theme.colors.selection_background = accent;
+    theme.colors.selection_text = accent_foreground(accent);
     theme
 }
 
@@ -72,107 +77,84 @@ fn label_style() -> Style {
     }
 }
 
-/// A 1px divider spanning the sidebar's width, with a little breathing room
-/// above and below.
-fn separator(theme: &Theme, label: Option<&str>) -> BoxedWidget {
-    let style = margin_xy(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Percent(1.0),
-                height: Dimension::Length(if label.is_some() { 18.0 } else { 1.0 }),
-            },
-            flex_shrink: 0.0,
-            ..Default::default()
-        },
-        0.0,
-        6.0,
-    );
-    let separator = SidebarSeparator::new(TabColors::sidebar(theme), style);
-    Box::new(match label {
-        Some(label) => separator.label(label),
-        None => separator,
-    })
-}
-
-/// The left-hand navigation rail: `NAV_LABELS`, with dividers spliced in
-/// after the indices in `SEPARATOR_AFTER`.
+/// The showcase category rail.
 #[component]
-fn Nav(theme: Theme, active: Signal<usize>, hovered: Vec<Signal<bool>>) -> BoxedWidget {
-    let colors = TabColors::sidebar(&theme);
-    let item_style = padding(
+fn Nav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
+    let mut nav = RawView::new(padding(
         Style {
             size: creamui_core::layout::Size {
-                width: Dimension::Percent(1.0),
-                height: Dimension::Length(36.0),
+                width: Dimension::Length(212.),
+                height: Dimension::Percent(1.),
             },
-            align_items: Some(AlignItems::Center),
-            ..Default::default()
+            flex_shrink: 0.,
+            ..column(5.)
         },
-        theme.spacing_medium,
-    );
-    let sidebar_style = padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Length(180.0),
-                height: Dimension::Percent(1.0),
-            },
-            flex_shrink: 0.0,
-            ..column(2.0)
-        },
-        theme.spacing_small,
-    );
-    let brand_style = padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Percent(1.0),
-                height: Dimension::Length(44.0),
-            },
-            align_items: Some(AlignItems::Center),
-            ..Default::default()
-        },
-        theme.spacing_medium,
-    );
-    let mut sidebar = Sidebar::new(colors, sidebar_style);
-    sidebar = sidebar
-        .child(Box::new(
-            RawText::new("CreamUI", theme.text_primary, 20.0)
-                .align(TextAlign::Start)
-                .layout_style(brand_style),
-        ))
-        .child(separator(&theme, Some("GENERAL")));
-    for (index, label) in NAV_LABELS.iter().enumerate() {
-        let is_active = active.get() == index;
-        let select = active.clone();
-        let hover = hovered[index].clone();
-        sidebar = sidebar.child(Box::new(SidebarItem::with_icon_hover(
-            colors,
-            item_style.clone(),
-            *label,
-            NAV_ICON_COLORS[index],
-            is_active,
-            hover.get(),
-            move |is_hovered| hover.set(is_hovered),
-            move || select.set(index),
-        )));
-        if SEPARATOR_AFTER.contains(&index) {
-            let label = if index == 0 { "CONTROLS" } else { "EXAMPLES" };
-            sidebar = sidebar.child(separator(&theme, Some(label)));
+        16.,
+    ));
+    nav = nav.child(Box::new(
+        RawView::new(padding(row(8.), 8.))
+            .child(Box::new(
+                Icon::new(Symbol::Appearance, theme.accent).size(24.),
+            ))
+            .child(Box::new(
+                RawText::new("CreamUI", theme.text_primary, 19.)
+                    .bold(true)
+                    .align(TextAlign::Start),
+            )),
+    ));
+    let symbols = [
+        Symbol::Appearance,
+        Symbol::Keyboard,
+        Symbol::Controls,
+        Symbol::Sliders,
+        Symbol::Check,
+        Symbol::Folder,
+        Symbol::Grid,
+    ];
+    for (i, label) in NAV_LABELS.iter().enumerate() {
+        if i == 0 || i == 1 || i == 5 {
+            nav = nav.child(Box::new(
+                RawView::new(padding(column(0.), 8.)).child(Box::new(
+                    RawText::new(
+                        if i == 0 {
+                            "SHOWCASE"
+                        } else if i == 1 {
+                            "CONTROLS"
+                        } else {
+                            "NAVIGATION"
+                        },
+                        theme.text_secondary,
+                        10.,
+                    )
+                    .align(TextAlign::Start),
+                )),
+            ));
         }
+        let select = active.clone();
+        nav = nav.child(Box::new(NavigationItem::new(
+            &theme,
+            symbols[i],
+            *label,
+            active.get() == i,
+            move || select.set(i),
+        )));
     }
-    let outer_style = padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Length(180.0 + theme.spacing_medium * 2.0),
-                height: Dimension::Percent(1.0),
-            },
-            flex_shrink: 0.0,
+    nav = nav
+        .child(Box::new(RawView::new(Style {
+            flex_grow: 1.,
             ..Default::default()
-        },
-        theme.spacing_medium,
-    );
-    Box::new(RawView::new(outer_style)
-        .background(theme.surface)
-        .child(Box::new(sidebar)))
+        })))
+        .child(Box::new(
+            RawView::new(padding(column(5.), 8.))
+                .child(Box::new(
+                    RawText::new("Component library", theme.text_secondary, 11.)
+                        .align(TextAlign::Start),
+                ))
+                .child(Box::new(
+                    RawText::new("CreamUI · 0.1", theme.text_disabled, 11.).align(TextAlign::Start),
+                )),
+        ));
+    Box::new(nav)
 }
 
 /// A section heading: a bold title plus a muted one-line description.
@@ -197,33 +179,7 @@ fn SectionHeader(theme: Theme, title: String, subtitle: String) -> BoxedWidget {
 /// pickers on the Appearance page. Selection is fully controlled: it carries
 /// no state of its own.
 fn pill(theme: &Theme, label: &str, active: bool, on_click: impl Fn() + 'static) -> BoxedWidget {
-    let style = padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Auto,
-                height: Dimension::Length(34.0),
-            },
-            justify_content: Some(JustifyContent::Center),
-            align_items: Some(AlignItems::Center),
-            ..Default::default()
-        },
-        theme.spacing_medium * 1.5,
-    );
-    let text_color = if active {
-        theme.selection_text
-    } else {
-        theme.text_primary
-    };
-    let background = if active {
-        theme.accent
-    } else {
-        theme.surface_elevated
-    };
-    Box::new(jsx! {
-        <RawButton style={style.clone()} background={background} corner_radius={theme.radius_medium} on_click={on_click}>
-            <RawText color={text_color} font_size={14.0} align={TextAlign::Center} style={style}>{label.to_owned()}</RawText>
-        </RawButton>
-    })
+    Box::new(Choice::new(theme, label, active, on_click))
 }
 
 /// A single accent color swatch: a rounded square filled with the color
@@ -291,8 +247,8 @@ fn AppearancePanel(
     );
 
     Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Appearance".to_owned()} subtitle={"Edit the current theme: switch modes or pick an accent color.".to_owned()} />
+        <RawView style={column(24.)}>
+            <SectionHeader theme={theme} title={"Appearance".to_owned()} subtitle={"Explore the same components in a different light.".to_owned()} />
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Mode".to_owned()}</Text>
                 <RawView style={row(theme.spacing_medium)} children={mode_pills} />
@@ -302,6 +258,16 @@ fn AppearancePanel(
                 <RawView style={row(theme.spacing_medium)} children={swatches} />
             </RawView>
             <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{summary}</Text>
+            <View theme={&theme} style={padding(column(18.),20.)}>
+                <Heading theme={&theme} size={TextSize::Md}>"Component preview"</Heading>
+                <Text theme={&theme} align={TextAlign::Start}>"Open a category to explore sizes, states, and interactions."</Text>
+                <RawView style={row(10.)}>
+                    {Box::new(Button::new(&theme,"Primary",{let mode=dark_mode.clone();move || mode.update(|v| *v=!*v)})) as BoxedWidget}
+                    {Box::new(Button::secondary(&theme,ButtonSize::Md,"Secondary",{let mode=dark_mode.clone();move || mode.update(|v| *v=!*v)})) as BoxedWidget}
+                    {Box::new(Button::new(&theme,"Disabled",||{}).disabled(true)) as BoxedWidget}
+                </RawView>
+                <Text theme={&theme} align={TextAlign::Start} secondary={true}>"These preview buttons switch the color scheme."</Text>
+            </View>
         </RawView>
     })
 }
@@ -322,7 +288,7 @@ fn InputPanel(
     fn textarea_style() -> Style {
         Style {
             size: creamui_core::layout::Size {
-                width: Dimension::Length(320.0),
+                width: Dimension::Length(280.0),
                 height: Dimension::Length(180.0),
             },
             ..Default::default()
@@ -330,7 +296,7 @@ fn InputPanel(
     }
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"TextInput and TextArea, each bound to its own TextController.".to_owned()} />
+            <SectionHeader theme={theme} title={"Input".to_owned()} subtitle={"Write, select, and edit. Each field keeps its own content.".to_owned()} />
             <RawView style={column(theme.spacing_small)}>
                 <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"Default".to_owned()}</Text>
                 <TextInput theme={&theme} controller={&plain} />
@@ -351,11 +317,11 @@ fn InputPanel(
             </RawView>
             <RawView style={row(theme.spacing_large)}>
                 <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea — no wrap (scrolls)".to_owned()}</Text>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea · horizontal scrolling".to_owned()}</Text>
                     <TextArea theme={&theme} controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />
                 </RawView>
                 <RawView style={column(theme.spacing_small)}>
-                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea — wrap={true}".to_owned()}</Text>
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea · wrap to fit".to_owned()}</Text>
                     <TextArea theme={&theme} controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />
                 </RawView>
             </RawView>
@@ -368,53 +334,80 @@ fn InputPanel(
 /// disabled-looking one, plus a click counter to prove the handlers fire.
 #[component]
 fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
-    let count = clicks.get();
-    let default_clicks = clicks.clone();
-    let danger_clicks = clicks.clone();
-    let success_clicks = clicks.clone();
-
-    fn button_style() -> Style {
-        padding(
-            Style {
-                size: creamui_core::layout::Size {
-                    width: Dimension::Auto,
-                    height: Dimension::Length(38.0),
-                },
-                justify_content: Some(JustifyContent::Center),
-                align_items: Some(AlignItems::Center),
-                ..Default::default()
-            },
-            16.0,
-        )
+    let mut actions = RawView::new(row(10.));
+    for (label, variant) in [
+        ("Continue", creamui_widgets::ButtonVariant::Primary),
+        ("Cancel", creamui_widgets::ButtonVariant::Secondary),
+        ("Learn more", creamui_widgets::ButtonVariant::Tertiary),
+        ("Delete", creamui_widgets::ButtonVariant::Destructive),
+    ] {
+        let clicks = clicks.clone();
+        actions = actions.child(Box::new(Button::styled(
+            &theme,
+            variant,
+            ButtonSize::Md,
+            label,
+            ButtonState::Normal,
+            move || clicks.update(|c| *c += 1),
+        )));
     }
-
-    Box::new(jsx! {
-        <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Button".to_owned()} subtitle={"The default themed Button next to a few RawButton-built variants.".to_owned()} />
-            <RawView style={row(theme.spacing_medium)}>
-                <Button theme={&theme} on_click={move || default_clicks.update(|c| *c += 1)}>{"Default".to_owned()}</Button>
-                <RawButton style={button_style()} background={theme.danger} corner_radius={theme.radius_medium} on_click={move || danger_clicks.update(|c| *c += 1)}>
-                    <RawText color={theme.selection_text} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Delete".to_owned()}</RawText>
-                </RawButton>
-                <RawButton style={button_style()} background={theme.success} corner_radius={theme.radius_medium} on_click={move || success_clicks.update(|c| *c += 1)}>
-                    <RawText color={theme.selection_text} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Save".to_owned()}</RawText>
-                </RawButton>
-                <RawButton style={button_style()} background={theme.surface_hover} corner_radius={theme.radius_medium} on_click={|| {}} disabled={true}>
-                    <RawText color={theme.text_disabled} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Disabled".to_owned()}</RawText>
-                </RawButton>
-            </RawView>
-            <RawView style={row(theme.spacing_small)}>
-                {Box::new(Button::secondary(&theme, ButtonSize::Xs, "XS", || {})) as BoxedWidget}
-                {Box::new(Button::secondary(&theme, ButtonSize::Sm, "SM", || {})) as BoxedWidget}
-                {Box::new(Button::secondary(&theme, ButtonSize::Md, "MD", || {})) as BoxedWidget}
-                {Box::new(Button::secondary(&theme, ButtonSize::Lg, "LG", || {})) as BoxedWidget}
-                {Box::new(Button::secondary(&theme, ButtonSize::Xl, "XL", || {})) as BoxedWidget}
-                {Box::new(Button::state(&theme, ButtonSize::Md, "Loading", ButtonState::Loading, || {})) as BoxedWidget}
-                {Box::new(Button::state(&theme, ButtonSize::Md, "Saved", ButtonState::Success, || {})) as BoxedWidget}
-            </RawView>
-            <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{format!("Clicked {} time(s)", count)}</Text>
-        </RawView>
-    })
+    let mut sizes = RawView::new(row(10.));
+    for (label, size) in [
+        ("Extra small", ButtonSize::Xs),
+        ("Small", ButtonSize::Sm),
+        ("Medium", ButtonSize::Md),
+        ("Large", ButtonSize::Lg),
+    ] {
+        let clicks = clicks.clone();
+        sizes = sizes.child(Box::new(Button::secondary(
+            &theme,
+            size,
+            label,
+            move || clicks.update(|c| *c += 1),
+        )));
+    }
+    Box::new(
+        RawView::new(column(24.))
+            .child(SectionHeader(SectionHeaderProps {
+                theme,
+                title: "Buttons".into(),
+                subtitle: "A clear hierarchy, from everyday actions to important decisions.".into(),
+            }))
+            .child(Box::new(actions))
+            .child(Box::new(
+                RawText::new("One family, four sizes", theme.text_secondary, 13.)
+                    .align(TextAlign::Start),
+            ))
+            .child(Box::new(sizes))
+            .child(Box::new(
+                RawView::new(row(10.))
+                    .child(Box::new(
+                        Button::new(&theme, "Unavailable", || {}).disabled(true),
+                    ))
+                    .child(Box::new(Button::state(
+                        &theme,
+                        ButtonSize::Md,
+                        "Working",
+                        ButtonState::Loading,
+                        || {},
+                    )))
+                    .child(Box::new(Button::state(
+                        &theme,
+                        ButtonSize::Md,
+                        "Saved",
+                        ButtonState::Success,
+                        || {},
+                    ))),
+            ))
+            .child(Box::new(
+                RawText::new(
+                    format!("{} actions · Try Tab, then Enter or Space", clicks.get()),
+                    theme.text_secondary,
+                    12.,
+                )
+                .align(TextAlign::Start),
+            )),
+    )
 }
 
 fn slider_row(
@@ -445,7 +438,7 @@ fn SliderPanel(
 ) -> BoxedWidget {
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Slider".to_owned()} subtitle={"Three sliders, each bound to its own Signal<f32>.".to_owned()} />
+            <SectionHeader theme={theme} title={"Slider".to_owned()} subtitle={"Fine adjustments with immediate feedback.".to_owned()} />
             {slider_row(&theme, "Volume", volume, |v| format!("{:.0}%", v * 100.0))}
             {slider_row(&theme, "Brightness", brightness, |v| format!("{:.0}%", v * 100.0))}
             {slider_row(&theme, "Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5))}
@@ -487,7 +480,7 @@ fn CheckboxPanel(
 ) -> BoxedWidget {
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Checkbox".to_owned()} subtitle={"Three checkboxes, each toggling its own Signal<bool>.".to_owned()} />
+            <SectionHeader theme={theme} title={"Checkbox".to_owned()} subtitle={"Small preferences, clearly expressed.".to_owned()} />
             {checkbox_row(&theme, "Notifications", notifications)}
             {checkbox_row(&theme, "Auto-save", auto_save.clone())}
             {checkbox_row(&theme, "Beta features", beta_features)}
@@ -509,21 +502,24 @@ fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
         Style {
             size: creamui_core::layout::Size {
                 width: Dimension::Percent(1.0),
-                height: Dimension::Length(32.0),
+                height: Dimension::Length(36.0),
             },
             align_items: Some(AlignItems::Center),
             ..Default::default()
         },
-        theme.spacing_small,
+        theme.spacing_medium,
     );
-    let rail_style = Style {
-        size: creamui_core::layout::Size {
-            width: Dimension::Length(120.0),
-            height: Dimension::Length(120.0),
+    let rail_style = padding(
+        Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(176.0),
+                height: Dimension::Percent(1.0),
+            },
+            flex_shrink: 0.0,
+            ..column(theme.spacing_small)
         },
-        flex_shrink: 0.0,
-        ..column(2.0)
-    };
+        theme.spacing_medium,
+    );
     let mut rail = Sidebar::new(colors, rail_style);
     for (index, label) in ITEMS.iter().enumerate() {
         let is_active = active.get() == index;
@@ -539,83 +535,152 @@ fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
     let preview_style = padding(
         Style {
             size: creamui_core::layout::Size {
-                width: Dimension::Length(220.0),
-                height: Dimension::Length(120.0),
+                width: Dimension::Length(264.0),
+                height: Dimension::Percent(1.0),
             },
-            ..column(theme.spacing_small)
+            ..column(theme.spacing_medium)
         },
-        theme.spacing_medium,
+        theme.spacing_large,
     );
     let current_label = ITEMS[active.get()].to_owned();
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Sidebar".to_owned()} subtitle={"The Sidebar / SidebarItem pair, embedded here as its own live demo.".to_owned()} />
-            <RawView style={{ let mut s = row(theme.spacing_medium); s.align_items = Some(AlignItems::Stretch); s }}>
-                {Box::new(rail) as BoxedWidget}
-                <View theme={&theme} style={preview_style}>
-                    <Text theme={&theme} align={TextAlign::Start} style={label_style()}>{current_label}</Text>
-                </View>
-            </RawView>
+            <SectionHeader theme={theme} title={"Sidebar".to_owned()} subtitle={"A compact navigation rail with independent selection.".to_owned()} />
+            {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
+                size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(192.0) },
+                align_items: Some(AlignItems::Stretch),
+                ..row(theme.spacing_large)
+            }, theme.spacing_medium))
+                .child(Box::new(rail))
+                .child(Box::new(View::new(&theme, preview_style)
+                    .child(Box::new(Heading::new(&theme, current_label.clone())))
+                    .child(Box::new(Text::secondary(&theme, "The selected section is shown here.")))))
+            ) as BoxedWidget}
         </RawView>
     })
 }
 
-/// The "Tabs" panel: a small, self-contained `Tabs`/`Tab` demo, the
-/// horizontal counterpart of [`SidebarPanel`].
-#[component]
-fn TabsPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
-    const ITEMS: [&str; 3] = ["Overview", "Activity", "Settings"];
-    let colors = TabColors::dark(&theme);
-    let tab_style = padding(
-        Style {
-            size: creamui_core::layout::Size {
-                width: Dimension::Auto,
-                height: Dimension::Length(34.0),
-            },
-            justify_content: Some(JustifyContent::Center),
-            align_items: Some(AlignItems::Center),
-            flex_grow: 1.0,
-            ..Default::default()
-        },
-        theme.spacing_medium,
-    );
+const TAB_LABELS: [&str; 3] = ["Overview", "Activity", "Settings"];
+
+fn tab_bar(
+    controller: TabController,
+    colors: TabColors,
+    sizing: TabSizing,
+    height: f32,
+    padding: f32,
+) -> BoxedWidget {
     let bar_style = Style {
         size: creamui_core::layout::Size {
-            width: Dimension::Length(340.0),
+            width: if sizing == TabSizing::Fill {
+                Dimension::Percent(1.0)
+            } else {
+                Dimension::Auto
+            },
             height: Dimension::Auto,
         },
-        ..row(theme.spacing_small)
+        align_self: if sizing == TabSizing::Fill {
+            None
+        } else {
+            Some(creamui_core::layout::AlignSelf::Start)
+        },
+        ..row(colors.gap)
     };
+    let styles = tab_styles(&TAB_LABELS, sizing, height, padding);
     let mut bar = Tabs::new(colors, bar_style);
-    for (index, label) in ITEMS.iter().enumerate() {
-        let is_active = active.get() == index;
-        let select = active.clone();
+    for (index, label) in TAB_LABELS.iter().enumerate() {
+        let tabs = controller.clone();
         bar = bar.child(Box::new(Tab::new(
             colors,
-            tab_style.clone(),
+            styles[index].clone(),
             *label,
-            is_active,
-            move || select.set(index),
+            controller.is_selected(index),
+            move || tabs.select(index),
         )));
     }
+    Box::new(bar)
+}
+
+fn tab_example(theme: &Theme, label: &str, bar: BoxedWidget) -> BoxedWidget {
+    Box::new(
+        RawView::new(column(theme.spacing_small))
+            .child(Box::new(
+                RawText::new(label, theme.text_secondary, theme.typography.caption)
+                    .bold(true)
+                    .align(TextAlign::Start),
+            ))
+            .child(bar),
+    )
+}
+
+/// Filled, pill, and indicator treatments plus a content-linked tab set.
+#[component]
+fn TabsPanel(
+    theme: Theme,
+    filled: TabController,
+    pill: TabController,
+    indicator: TabController,
+    content: TabController,
+) -> BoxedWidget {
+    let filled_colors = TabColors::dark(&theme);
+
+    let mut pill_colors = filled_colors;
+    pill_colors.inactive_background = Some(theme.surface_hover);
+    pill_colors.active_background = theme.surface_elevated;
+    pill_colors.active_text = theme.text_primary;
+    pill_colors.radius = 16.0;
+    pill_colors.container_radius = 20.0;
+
+    let mut indicator_colors = filled_colors;
+    indicator_colors.background = theme.surface;
+    indicator_colors.inactive_background = None;
+    indicator_colors.selection = SelectionStyle::Indicator;
+    indicator_colors.radius = 0.0;
+    indicator_colors.container_radius = 0.0;
+    indicator_colors.gap = theme.spacing_large;
+
+    let content_selected = content.selected().min(TAB_LABELS.len() - 1);
     let preview_style = padding(
         Style {
             size: creamui_core::layout::Size {
-                width: Dimension::Length(340.0),
-                height: Dimension::Length(80.0),
+                width: Dimension::Percent(1.0),
+                height: Dimension::Auto,
             },
+            flex_grow: 1.0,
             ..column(theme.spacing_small)
         },
-        theme.spacing_medium,
+        theme.spacing_large,
     );
-    let current_label = ITEMS[active.get()].to_owned();
+    let current_label = TAB_LABELS[content_selected];
+    let (title, detail) = match content_selected {
+        0 => (
+            "Everything in one place",
+            "A calm overview of what matters right now.",
+        ),
+        1 => (
+            "You are all caught up",
+            "New activity will appear here as it happens.",
+        ),
+        _ => (
+            "Make it yours",
+            "Preferences stay close without leaving this view.",
+        ),
+    };
     Box::new(jsx! {
         <RawView style={column(theme.spacing_large)}>
-            <SectionHeader theme={theme} title={"Tabs".to_owned()} subtitle={"The Tabs / Tab pair, embedded here as its own live demo.".to_owned()} />
-            {Box::new(bar) as BoxedWidget}
-            <View theme={&theme} style={preview_style}>
-                <Text theme={&theme} align={TextAlign::Start} style={label_style()}>{current_label}</Text>
-            </View>
+            <SectionHeader theme={theme} title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
+            {tab_example(&theme, "Filled tabs · content width", tab_bar(filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium))}
+            {tab_example(&theme, "Pill tabs · equal width", tab_bar(pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium))}
+            {tab_example(&theme, "Indicator tabs · content width", tab_bar(indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium))}
+            {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
+                size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
+                ..column(theme.spacing_large)
+            }, theme.spacing_medium))
+                .child(tab_bar(content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium))
+                .child(Box::new(View::new(&theme, preview_style)
+                    .child(Box::new(Heading::new(&theme, title)))
+                    .child(Box::new(Text::secondary(&theme, detail)))
+                    .child(Box::new(RawText::new(current_label, theme.accent, 12.).bold(true).align(TextAlign::Start)))))
+            ) as BoxedWidget}
         </RawView>
     })
 }
@@ -624,7 +689,6 @@ fn main() {
     let dark_mode = Signal::new(true);
     let accent_index = Signal::new(0usize);
     let active_section = Signal::new(0usize);
-    let nav_hovered: Vec<_> = NAV_LABELS.iter().map(|_| Signal::new(false)).collect();
 
     let plain = TextController::default();
     let with_placeholder = TextController::default();
@@ -645,13 +709,16 @@ fn main() {
     let beta_features = Signal::new(false);
 
     let sidebar_demo_active = Signal::new(0usize);
-    let tabs_demo_active = Signal::new(0usize);
+    let tabs_filled = TabController::default();
+    let tabs_pill = TabController::new(1);
+    let tabs_indicator = TabController::new(2);
+    let tabs_content = TabController::default();
 
     run(
         WindowOptions {
             title: "CreamUI — Showcase".into(),
-            width: 960,
-            height: 620,
+            width: 1080,
+            height: 740,
             ..Default::default()
         },
         Theme::dark().surface,
@@ -677,18 +744,18 @@ fn main() {
                     },
                     ..column(0.0)
                 },
-                theme.spacing_medium,
+                24.,
             );
             let content_style = padding(
                 Style {
-                    flex_grow: 1.0,
+                    flex_grow: 0.0,
                     size: creamui_core::layout::Size {
                         width: Dimension::Percent(1.0),
-                        height: Dimension::Percent(1.0),
+                        height: Dimension::Auto,
                     },
                     ..column(0.0)
                 },
-                theme.spacing_large * 1.5,
+                28.,
             );
 
             // Every panel is built on every render, regardless of which one
@@ -737,7 +804,10 @@ fn main() {
                 }),
                 TabsPanel(TabsPanelProps {
                     theme,
-                    active: tabs_demo_active.clone(),
+                    filled: tabs_filled.clone(),
+                    pill: tabs_pill.clone(),
+                    indicator: tabs_indicator.clone(),
+                    content: tabs_content.clone(),
                 }),
             ];
             let panel = panels.into_iter().nth(active_section.get()).expect(
@@ -746,11 +816,9 @@ fn main() {
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Nav theme={theme} active={active_section.clone()} hovered={nav_hovered.clone()} />
+                    <Nav theme={theme} active={active_section.clone()} />
                     <RawView style={content_outer_style} background={theme.surface}>
-                        <View theme={&theme} style={content_style}>
-                            {panel}
-                        </View>
+                        {Box::new(Surface::new(&theme, SurfaceRole::Panel, content_style).child(panel)) as BoxedWidget}
                     </RawView>
                 </RawView>
             })

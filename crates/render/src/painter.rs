@@ -4,7 +4,7 @@
 //! the GPU even though shape/glyph rasterization happens on the CPU.
 
 use crate::font::Font;
-use creamui_core::{Painter, Rect, TextAlign};
+use creamui_core::{Painter, Point, Rect, TextAlign};
 use creamui_theme::Color;
 use fontdue::layout::HorizontalAlign;
 use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
@@ -17,6 +17,11 @@ use tiny_skia::{Mask, Paint, PathBuilder, Pixmap, Stroke, Transform};
 pub struct SkiaPainter {
     pub pixmap: Pixmap,
     font: Font,
+    bold_font: Font,
+    pub pointer: Option<Point>,
+    pub press_origin: Option<Point>,
+    pub animated: bool,
+    started: std::time::Instant,
     scale: f32,
     /// One [`Mask`] per active [`Painter::push_clip`], each already
     /// intersected with its parent so the top of the stack is always the
@@ -30,6 +35,11 @@ impl SkiaPainter {
         SkiaPainter {
             pixmap: Pixmap::new(width.max(1), height.max(1)).expect("non-zero pixmap size"),
             font: Font::load(),
+            bold_font: Font::bold(),
+            pointer: None,
+            press_origin: None,
+            animated: false,
+            started: std::time::Instant::now(),
             scale: 1.0,
             clip_stack: Vec::new(),
         }
@@ -60,6 +70,7 @@ impl SkiaPainter {
     }
 
     pub fn clear(&mut self, color: Color) {
+        self.animated = false;
         let [r, g, b, a] = color.to_f32();
         self.pixmap
             .fill(tiny_skia::Color::from_rgba(r, g, b, a).expect("valid color"));
@@ -73,6 +84,7 @@ impl SkiaPainter {
         selected: Option<(std::ops::Range<usize>, Color)>,
         font_size: f32,
         align: TextAlign,
+        bold: bool,
     ) {
         let horizontal_align = match align {
             TextAlign::Start => HorizontalAlign::Left,
@@ -80,7 +92,12 @@ impl SkiaPainter {
             TextAlign::End => HorizontalAlign::Right,
         };
         let rect = scale_rect(rect, self.scale);
-        let glyphs = self.font.layout_text(
+        let font = if bold {
+            &mut self.bold_font
+        } else {
+            &mut self.font
+        };
+        let glyphs = font.layout_text(
             text,
             font_size * self.scale,
             rect.x,
@@ -177,6 +194,48 @@ fn scale_rect(rect: Rect, scale: f32) -> Rect {
 }
 
 impl Painter for SkiaPainter {
+    fn hovered(&self, rect: Rect) -> bool {
+        self.pointer.is_some_and(|point| rect.contains(point))
+    }
+    fn pressed(&self, rect: Rect) -> bool {
+        self.hovered(rect) && self.press_origin.is_some_and(|point| rect.contains(point))
+    }
+    fn animation_time(&mut self) -> f32 {
+        self.animated = true;
+        self.started.elapsed().as_secs_f32()
+    }
+    fn stroke_line(&mut self, from: Point, to: Point, color: Color, width: f32) {
+        let mut path = PathBuilder::new();
+        path.move_to(from.x * self.scale, from.y * self.scale);
+        path.line_to(to.x * self.scale, to.y * self.scale);
+        if let Some(path) = path.finish() {
+            let mut paint = Paint::default();
+            paint.set_color_rgba8(color.r, color.g, color.b, color.a);
+            let stroke = Stroke {
+                width: width * self.scale,
+                line_cap: tiny_skia::LineCap::Round,
+                ..Default::default()
+            };
+            self.pixmap.stroke_path(
+                &path,
+                &paint,
+                &stroke,
+                Transform::identity(),
+                self.clip_stack.last(),
+            );
+        }
+    }
+    fn fill_text_weight(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        font_size: f32,
+        align: TextAlign,
+        bold: bool,
+    ) {
+        self.draw_text(rect, text, color, None, font_size, align, bold);
+    }
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
         let Some(path) =
             Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale)
@@ -280,7 +339,7 @@ impl Painter for SkiaPainter {
         font_size: f32,
         align: TextAlign,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align);
+        self.draw_text(rect, text, color, None, font_size, align, false);
     }
 
     fn fill_text_selected(
@@ -300,6 +359,7 @@ impl Painter for SkiaPainter {
             Some((selected, selected_color)),
             font_size,
             align,
+            false,
         );
     }
 }

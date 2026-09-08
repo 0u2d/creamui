@@ -52,7 +52,11 @@ fn reconcile(tree: &mut Tree, existing: Option<Instance>, mut widget: BoxedWidge
             .expect("taffy node creation is infallible for well-formed styles");
         tree.set_node_context(node_id, new_measure)
             .expect("setting the context of a freshly created node should not fail");
-        return Instance { widget, children, node_id };
+        return Instance {
+            widget,
+            children,
+            node_id,
+        };
     };
 
     tree.set_style(old.node_id, new_style)
@@ -214,6 +218,19 @@ pub struct Scene {
 }
 
 impl Scene {
+    /// Cycle through visible keyboard controls in layout order.
+    pub fn next_focus(&self, current: Option<usize>, backwards: bool) -> Option<usize> {
+        let count = self.focusables.len();
+        if count == 0 {
+            return None;
+        }
+        Some(match current.filter(|i| *i < count) {
+            Some(i) if backwards => (i + count - 1) % count,
+            Some(i) => (i + 1) % count,
+            None if backwards => count - 1,
+            None => 0,
+        })
+    }
     /// Returns the click handler for the topmost widget containing `point`, if any.
     pub fn hit_test(&self, point: Point) -> Option<&Rc<dyn Fn()>> {
         self.hits
@@ -317,7 +334,12 @@ impl Renderer {
     /// computes layout for `viewport`, paints via `painter`, and returns the
     /// resulting click hit-regions. Equivalent to [`Renderer::render_focused`]
     /// with no widget focused.
-    pub fn render(&mut self, root: BoxedWidget, viewport: Size, painter: &mut dyn Painter) -> Scene {
+    pub fn render(
+        &mut self,
+        root: BoxedWidget,
+        viewport: Size,
+        painter: &mut dyn Painter,
+    ) -> Scene {
         self.render_focused(root, viewport, painter, None, true)
     }
 
@@ -352,8 +374,20 @@ impl Renderer {
             .expect("layout computation should not fail for a well-formed tree");
 
         let mut out = PaintOutputs::default();
-        let mut focus = FocusContext { focused_index, caret_visible, counter: 0 };
-        paint_instance(&self.tree, &instance, painter, Point::default(), UNCLIPPED, &mut focus, &mut out);
+        let mut focus = FocusContext {
+            focused_index,
+            caret_visible,
+            counter: 0,
+        };
+        paint_instance(
+            &self.tree,
+            &instance,
+            painter,
+            Point::default(),
+            UNCLIPPED,
+            &mut focus,
+            &mut out,
+        );
         self.root = Some(instance);
         Scene {
             hits: out.hits,
@@ -393,7 +427,15 @@ mod tests {
     impl Painter for NoopPainter {
         fn fill_rect(&mut self, _rect: Rect, _color: Color, _corner_radius: f32) {}
         fn stroke_rect(&mut self, _rect: Rect, _color: Color, _width: f32, _corner_radius: f32) {}
-        fn fill_text(&mut self, _rect: Rect, _text: &str, _color: Color, _font_size: f32, _align: TextAlign) {}
+        fn fill_text(
+            &mut self,
+            _rect: Rect,
+            _text: &str,
+            _color: Color,
+            _font_size: f32,
+            _align: TextAlign,
+        ) {
+        }
     }
 
     struct Branch {
@@ -411,7 +453,10 @@ mod tests {
         }
     }
 
-    const VIEWPORT: Size = Size { width: 100.0, height: 100.0 };
+    const VIEWPORT: Size = Size {
+        width: 100.0,
+        height: 100.0,
+    };
 
     #[test]
     fn reconcile_reuses_taffy_nodes_when_tree_shape_is_unchanged() {

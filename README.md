@@ -52,11 +52,39 @@ done and what's next.
 ```sh
 cargo run -p hello-world
 cargo run -p calculator
+cargo run -p showcase
 ```
 
-Both examples are static Rust applications using `jsx!`. The calculator is
+The examples are static Rust applications using `jsx!`. The calculator is
 also a composition example: its screen and keys are custom components built
 from the headless widgets, without adding a calculator-specific crate.
+
+The showcase keeps a category sidebar for Appearance, Input, Button, Slider,
+Checkbox, Sidebar, and Tabs. Its styling comes from the library: shared type
+roles and regular/bold faces, consistent button sizes and disabled states,
+focus outlines, and keyboard activation. Tab / Shift+Tab cycle through
+focusable controls; Enter or Space activate buttons, checkboxes, and switches.
+Focused sliders accept arrows and Home / End. Loading spinners request frames
+only while painted, at a capped cadence.
+
+General-purpose `Icon`, `Surface`, `Choice`, and `NavigationItem` widgets are
+available alongside the existing raw and themed controls. `SurfaceRole`
+distinguishes panel, inset, and floating surfaces. These primitives contain no
+application layout or desktop-shell composition. New visual APIs are currently
+native Rust APIs; the existing C ABI layout is unchanged.
+
+`TabController` is the optional shared selected-index state for a tab bar and
+the content it controls. Pass clones to every `Tab` callback, then choose the
+visible content from `controller.selected()` during the reactive build.
+`Raw*` widgets expose their layout and paint tokens directly. The themed layer
+is a small theme-derived recipe, not a catalog of prescribed app designs; for
+example, `TabColors` remains public so each app can define its own treatment.
+`Tabs::new(colors, style)` preserves its `Style` exactly: set `width`,
+`align_self`, `margin`, `padding`, and `gap` just as you would for any layout
+node. `tab_styles(labels, TabSizing::Content | Equal | Fill, height, padding)`
+is only a convenience for natural label width, normalized equal width, or a
+justified bar; it never forces a width policy. `Tabs::gap(value)` is available
+when a fluent override reads better.
 
 Set `CUI_DEBUG=1` for verbose logging, or `CUI_DUMP_FRAME=<path.png>`
 to write every painted frame to a PNG (useful for headless verification with
@@ -206,6 +234,6 @@ with a reactive line-number gutter and document statistics.
 
 ## Credits
 
-CreamUI bundles [DejaVu Sans](https://dejavu-fonts.github.io/) as its
-default font (`assets/fonts/DejaVuSans.ttf`), licensed under the permissive
+CreamUI bundles the regular and bold faces of [DejaVu Sans](https://dejavu-fonts.github.io/) as its
+default fonts (`assets/fonts/DejaVuSans.ttf` and `DejaVuSans-Bold.ttf`), licensed under the permissive
 Bitstream Vera license — see `assets/fonts/DejaVuSans-LICENSE.txt`.

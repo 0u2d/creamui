@@ -2,18 +2,23 @@
 //! `creamui_core::render_frame` with a recording `Painter`, and verify both
 //! painting and click hit-testing work together.
 
-use creamui_core::layout::{AlignItems, JustifyContent, Style};
+use creamui_core::layout::{AlignItems, Dimension, JustifyContent, Style};
 use creamui_core::{
     render_frame, CursorIcon, Key, KeyInput, Modifiers, Painter, Point, Rect, Renderer, Size,
-    TextAlign,
+    TextAlign, Widget,
 };
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
 use creamui_widgets::raw::{RawButton, RawView, TextSelection};
-use creamui_widgets::themed::{Button, Checkbox, ScrollView, Slider, Text, TextArea, TextInput};
+use creamui_widgets::themed::{
+    tab_styles, Button, Checkbox, ScrollView, Slider, TabColors, TabSizing, Tabs, Text, TextArea,
+    TextInput,
+};
 
 #[derive(Default)]
 struct RecordingPainter {
+    hovered: bool,
+    pressed: bool,
     filled_rects: Vec<(Rect, Color)>,
     stroked_rects: Vec<(Rect, Color)>,
     texts: Vec<String>,
@@ -21,6 +26,12 @@ struct RecordingPainter {
 }
 
 impl Painter for RecordingPainter {
+    fn hovered(&self, _: Rect) -> bool {
+        self.hovered
+    }
+    fn pressed(&self, _: Rect) -> bool {
+        self.pressed
+    }
     fn fill_rect(&mut self, rect: Rect, color: Color, _corner_radius: f32) {
         self.filled_rects.push((rect, color));
     }
@@ -40,6 +51,115 @@ impl Painter for RecordingPainter {
         self.texts.push(text.to_string());
         self.text_rects.push(rect);
     }
+}
+
+#[test]
+fn button_interactions_use_theme_tokens_and_disabled_controls_skip_focus() {
+    let theme = Theme::light();
+    let clicks = Signal::new(0);
+    let build = || {
+        let count = clicks.clone();
+        Box::new(
+            RawView::new(creamui_widgets::layout::column(10.))
+                .child(Box::new(Button::new(&theme, "Enabled", move || {
+                    count.update(|v| *v += 1)
+                })))
+                .child(Box::new(
+                    Button::new(&theme, "Disabled", || panic!("disabled activated")).disabled(true),
+                )),
+        ) as creamui_core::BoxedWidget
+    };
+    let mut painter = RecordingPainter {
+        hovered: true,
+        ..Default::default()
+    };
+    let size = Size {
+        width: 320.,
+        height: 180.,
+    };
+    let scene = render_frame(build(), size, &mut painter);
+    assert!(painter
+        .filled_rects
+        .iter()
+        .any(|(_, color)| *color == theme.accent_hover));
+    assert_eq!(scene.next_focus(None, false), Some(0));
+    assert_eq!(scene.next_focus(Some(0), false), Some(0));
+    assert_eq!(scene.next_focus(None, true), Some(0));
+    scene.on_key_at(0).unwrap()(KeyInput {
+        key: Key::Enter,
+        modifiers: Modifiers::default(),
+    });
+    assert_eq!(clicks.get(), 1);
+    painter.filled_rects.clear();
+    painter.pressed = true;
+    render_frame(build(), size, &mut painter);
+    assert!(painter
+        .filled_rects
+        .iter()
+        .any(|(_, color)| *color == theme.accent_pressed));
+}
+
+#[test]
+fn switch_checkbox_and_slider_support_keyboard_navigation() {
+    let theme = Theme::dark();
+    let checked = Signal::new(false);
+    let switched = Signal::new(false);
+    let volume = Signal::new(0.5);
+    let a = checked.clone();
+    let b = switched.clone();
+    let c = volume.clone();
+    let root = RawView::new(creamui_widgets::layout::column(12.))
+        .child(Box::new(Checkbox::new(&theme, false, move || a.set(true))))
+        .child(Box::new(creamui_widgets::Switch::new(
+            &theme,
+            false,
+            move || b.set(true),
+        )))
+        .child(Box::new(Slider::new(&theme, 0.5, move |v| c.set(v))));
+    let mut painter = RecordingPainter::default();
+    let scene = render_frame(
+        Box::new(root),
+        Size {
+            width: 320.,
+            height: 200.,
+        },
+        &mut painter,
+    );
+    assert_eq!(scene.next_focus(Some(0), true), Some(2));
+    for index in [0, 1] {
+        scene.on_key_at(index).unwrap()(KeyInput {
+            key: Key::Char(' '),
+            modifiers: Modifiers::default(),
+        });
+    }
+    scene.on_key_at(2).unwrap()(KeyInput {
+        key: Key::End,
+        modifiers: Modifiers::default(),
+    });
+    assert!(checked.get() && switched.get());
+    assert_eq!(volume.get(), 1.);
+}
+
+#[test]
+fn tab_sizing_supports_content_equal_and_fill_widths() {
+    let labels = ["Short", "A much longer tab"];
+    let content = tab_styles(&labels, TabSizing::Content, 36.0, 10.0);
+    assert_eq!(content[0].size.width, Dimension::Auto);
+
+    let equal = tab_styles(&labels, TabSizing::Equal, 36.0, 10.0);
+    assert_eq!(equal[0].size.width, equal[1].size.width);
+
+    let fill = tab_styles(&labels, TabSizing::Fill, 36.0, 10.0);
+    assert_eq!(fill[0].flex_grow, 1.0);
+    assert_eq!(fill[0].flex_basis, Dimension::Length(0.0));
+}
+
+#[test]
+fn tabs_preserve_the_callers_layout_style() {
+    let theme = Theme::dark();
+    let style = creamui_widgets::layout::row(13.0);
+    let tabs = Tabs::new(TabColors::dark(&theme), style.clone());
+    assert_eq!(tabs.style().gap, style.gap);
 }
 
 #[test]

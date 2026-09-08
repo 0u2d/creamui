@@ -140,6 +140,44 @@ impl Default for TextController {
     }
 }
 
+/// Shared selected-index state for one tab bar and the content it controls.
+#[derive(Clone)]
+pub struct TabController {
+    selected: Signal<usize>,
+}
+
+impl TabController {
+    pub fn new(selected: usize) -> Self {
+        Self {
+            selected: Signal::new(selected),
+        }
+    }
+
+    /// Reads the selected index and subscribes the current reactive render.
+    pub fn selected(&self) -> usize {
+        self.selected.get()
+    }
+
+    /// Reads the selected index without subscribing.
+    pub fn peek(&self) -> usize {
+        self.selected.peek()
+    }
+
+    pub fn select(&self, index: usize) {
+        self.selected.set(index);
+    }
+
+    pub fn is_selected(&self, index: usize) -> bool {
+        self.selected() == index
+    }
+}
+
+impl Default for TabController {
+    fn default() -> Self {
+        Self::new(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -148,11 +186,20 @@ mod tests {
     fn set_value_updates_cursor_and_selection_when_they_fall_out_of_range() {
         let controller = TextController::new("hello");
         controller.set_cursor(5);
-        controller.set_selection(TextSelection { anchor: 2, focus: 5 });
+        controller.set_selection(TextSelection {
+            anchor: 2,
+            focus: 5,
+        });
         controller.set_value("hi");
         assert_eq!(controller.value(), "hi");
         assert_eq!(controller.cursor(), 2);
-        assert_eq!(controller.selection(), TextSelection { anchor: 2, focus: 2 });
+        assert_eq!(
+            controller.selection(),
+            TextSelection {
+                anchor: 2,
+                focus: 2
+            }
+        );
     }
 
     #[test]
@@ -166,7 +213,11 @@ mod tests {
             }
         });
         controller.set_value("still ok");
-        assert_eq!(controller.value(), "ok", "change longer than 5 chars should be rejected");
+        assert_eq!(
+            controller.value(),
+            "ok",
+            "change longer than 5 chars should be rejected"
+        );
         controller.set_value("short");
         assert_eq!(controller.value(), "short");
     }
@@ -185,5 +236,13 @@ mod tests {
         assert_eq!(controller.value(), "");
         controller.set_value("anything");
         assert_eq!(controller.value(), "anything");
+    }
+
+    #[test]
+    fn tab_controller_tracks_one_shared_selection() {
+        let tabs = TabController::new(1);
+        assert!(tabs.is_selected(1));
+        tabs.select(2);
+        assert_eq!(tabs.selected(), 2);
     }
 }

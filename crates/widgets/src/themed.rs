@@ -10,14 +10,14 @@
 //! new constructor function in the same shape.
 
 use crate::raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab, RawTabs, RawText,
-    RawTextArea, RawTextInput, RawView, TabIndicatorSide,
+    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab,
+    RawTabs, RawText, RawTextArea, RawTextInput, RawView, TabIndicatorSide,
 };
 use creamui_core::layout::{
-    AlignItems, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
+    AlignItems, Dimension, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
 };
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
-use creamui_theme::{SelectionStyle, Theme};
+use creamui_theme::{Color, SelectionStyle, Theme};
 use std::rc::Rc;
 
 fn centered_box_style(padding: f32) -> Style {
@@ -37,60 +37,181 @@ fn centered_box_style(padding: f32) -> Style {
 /// A themed, clickable button with a centered text label.
 pub struct Button {
     inner: RawButton,
+    theme: Theme,
+    label: String,
+    size: ButtonSize,
+    state: ButtonState,
+    enabled_children: Option<Vec<BoxedWidget>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ButtonSize { Xs, Sm, Md, Lg, Xl }
+pub enum ButtonSize {
+    Xs,
+    Sm,
+    Md,
+    Lg,
+    Xl,
+}
 impl ButtonSize {
-    fn padding(self) -> f32 { match self { Self::Xs => 6., Self::Sm => 9., Self::Md => 12., Self::Lg => 16., Self::Xl => 20. } }
-    fn font_size(self) -> f32 { match self { Self::Xs => 11., Self::Sm => 12., Self::Md => 14., Self::Lg => 16., Self::Xl => 18. } }
-    fn border_width(self) -> f32 { match self { Self::Xs | Self::Sm => 1., Self::Md => 1.25, Self::Lg => 1.5, Self::Xl => 2. } }
-    fn height(self) -> f32 { match self { Self::Xs => 24., Self::Sm => 28., Self::Md => 34., Self::Lg => 40., Self::Xl => 48. } }
+    fn padding(self) -> f32 {
+        match self {
+            Self::Xs => 6.,
+            Self::Sm => 9.,
+            Self::Md => 12.,
+            Self::Lg => 16.,
+            Self::Xl => 20.,
+        }
+    }
+    fn font_size(self) -> f32 {
+        match self {
+            Self::Xs => 11.,
+            Self::Sm => 12.,
+            Self::Md => 14.,
+            Self::Lg => 16.,
+            Self::Xl => 18.,
+        }
+    }
+    fn border_width(self) -> f32 {
+        1.
+    }
+    fn height(self) -> f32 {
+        match self {
+            Self::Xs => 24.,
+            Self::Sm => 28.,
+            Self::Md => 34.,
+            Self::Lg => 40.,
+            Self::Xl => 48.,
+        }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ButtonState { Normal, Loading, Success }
+pub enum ButtonState {
+    Normal,
+    Loading,
+    Success,
+}
 /// Visual hierarchy for native application actions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ButtonVariant { Primary, Secondary, Tertiary, Destructive, Success }
+pub enum ButtonVariant {
+    Primary,
+    Secondary,
+    Tertiary,
+    Destructive,
+    Success,
+}
 
 impl Button {
     /// A complete native-control button: variant, size and state are all
     /// semantic, so apps don't have to hand-pick raw rectangles.
-    pub fn styled(theme: &Theme, variant: ButtonVariant, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
+    pub fn styled(
+        theme: &Theme,
+        variant: ButtonVariant,
+        size: ButtonSize,
+        label: impl Into<String>,
+        state: ButtonState,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
         let (background, border, foreground) = match variant {
             ButtonVariant::Primary => (theme.accent, theme.accent_hover, theme.selection_text),
-            ButtonVariant::Secondary => (theme.surface_elevated, theme.border_strong, theme.text_primary),
-            ButtonVariant::Tertiary => (theme.surface_hover, theme.border, theme.text_primary),
+            ButtonVariant::Secondary => (
+                theme.surface_elevated,
+                theme.border_strong,
+                theme.text_primary,
+            ),
+            ButtonVariant::Tertiary => (theme.surface, theme.surface, theme.text_primary),
             ButtonVariant::Destructive => (theme.danger, theme.danger, theme.selection_text),
             ButtonVariant::Success => (theme.success, theme.success, theme.selection_text),
         };
-        let label = match state { ButtonState::Success => format!("✓ {}", label.into()), _ => label.into() };
+        let label = match state {
+            ButtonState::Success => format!("✓ {}", label.into()),
+            _ => label.into(),
+        };
         let mut style = centered_box_style(size.padding());
         style.size.height = creamui_core::layout::Dimension::Length(size.height());
-        let text = RawText::new(label, foreground, size.font_size());
+        let text = RawText::new(label.clone(), foreground, size.font_size());
         let child: BoxedWidget = if state == ButtonState::Loading {
-            let content = Style { display: creamui_core::layout::Display::Flex, flex_direction: creamui_core::layout::FlexDirection::Row, align_items: Some(AlignItems::Center), gap: creamui_core::layout::Size { width: LengthPercentage::Length(6.0), height: LengthPercentage::Length(6.0) }, ..Default::default() };
-            Box::new(RawView::new(content).child(Box::new(RawSpinner::new(foreground).size(size.font_size()))).child(Box::new(text)))
-        } else { Box::new(text) };
-        let mut button = Self { inner: RawButton::new(style, on_click).background(background).border(border, size.border_width()).corner_radius(theme.button_radius).child(child) };
-        if state == ButtonState::Loading { button = button.disabled(true); }
+            let content = Style {
+                display: creamui_core::layout::Display::Flex,
+                flex_direction: creamui_core::layout::FlexDirection::Row,
+                align_items: Some(AlignItems::Center),
+                gap: creamui_core::layout::Size {
+                    width: LengthPercentage::Length(6.0),
+                    height: LengthPercentage::Length(6.0),
+                },
+                ..Default::default()
+            };
+            Box::new(
+                RawView::new(content)
+                    .child(Box::new(RawSpinner::new(foreground).size(size.font_size())))
+                    .child(Box::new(text)),
+            )
+        } else {
+            Box::new(text)
+        };
+        let mut inner = RawButton::new(style, on_click)
+            .background(background)
+            .border(border, size.border_width())
+            .corner_radius(theme.button_radius.min(size.height() / 4.))
+            .child(child);
+        inner.hover_background = Some(if variant == ButtonVariant::Primary {
+            theme.accent_hover
+        } else {
+            background.mix(theme.text_primary, 0.07)
+        });
+        inner.pressed_background = Some(if variant == ButtonVariant::Primary {
+            theme.accent_pressed
+        } else {
+            background.mix(theme.text_primary, 0.14)
+        });
+        inner.focus_color = Some(theme.accent);
+        let mut button = Self {
+            inner,
+            theme: *theme,
+            label,
+            size,
+            state,
+            enabled_children: None,
+        };
+        if state == ButtonState::Loading {
+            button.inner.disabled = true;
+        }
         button
     }
 
     /// Sized primary button with built-in loading and success presentations.
-    pub fn state(theme: &Theme, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
+    pub fn state(
+        theme: &Theme,
+        size: ButtonSize,
+        label: impl Into<String>,
+        state: ButtonState,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
         Self::styled(theme, ButtonVariant::Primary, size, label, state, on_click)
     }
 
     /// A neutral, still-clickable button for secondary actions.
-    pub fn secondary(theme: &Theme, size: ButtonSize, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
-        Self::styled(theme, ButtonVariant::Secondary, size, label, ButtonState::Normal, on_click)
+    pub fn secondary(
+        theme: &Theme,
+        size: ButtonSize,
+        label: impl Into<String>,
+        on_click: impl Fn() + 'static,
+    ) -> Self {
+        Self::styled(
+            theme,
+            ButtonVariant::Secondary,
+            size,
+            label,
+            ButtonState::Normal,
+            on_click,
+        )
     }
     pub fn new(theme: &Theme, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
-        Self::with_style(
+        Self::styled(
             theme,
-            centered_box_style(theme.spacing_medium * 2.0),
+            ButtonVariant::Primary,
+            ButtonSize::Md,
             label,
+            ButtonState::Normal,
             on_click,
         )
     }
@@ -105,32 +226,51 @@ impl Button {
         label: impl Into<String>,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        let text = RawText::new(label, theme.selection_text, 16.0);
-        let inner = RawButton::new(style, on_click)
-            .background(theme.accent)
-            .corner_radius(theme.button_radius)
-            .child(Box::new(text));
-        Button { inner }
+        let mut button = Self::new(theme, label, on_click);
+        button.inner.style = style;
+        button
     }
 
-    /// While `true`, the button reports no click handler and shows a "not
-    /// allowed" cursor instead of a pointer. Purely behavioral — pass a
-    /// theme-derived muted background/text color to [`Button::with_style`]
-    /// (or build from [`RawButton`] directly, as this crate's examples do)
-    /// for a dimmed disabled look to match.
+    /// Disable activation and apply the shared muted control treatment.
     pub fn disabled(mut self, disabled: bool) -> Self {
-        self.inner = self.inner.disabled(disabled);
+        self.inner.disabled = disabled || self.state == ButtonState::Loading;
+        if disabled && self.enabled_children.is_none() {
+            self.enabled_children = Some(std::mem::take(&mut self.inner.children));
+            self.inner.children = vec![Box::new(RawText::new(
+                self.label.clone(),
+                self.theme.text_disabled,
+                self.size.font_size(),
+            ))];
+        } else if !disabled {
+            if let Some(children) = self.enabled_children.take() {
+                self.inner.children = children;
+            }
+        }
         self
     }
 }
 
 impl Widget for Button {
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret: bool) {
+        self.inner.paint_focused_overlay(painter, rect, caret);
+    }
     fn style(&self) -> Style {
         self.inner.style()
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        self.inner.paint(painter, rect);
+        if self.enabled_children.is_some() {
+            painter.fill_rect(rect, self.theme.surface_hover, self.inner.corner_radius);
+            painter.stroke_rect(rect, self.theme.border, 1., self.inner.corner_radius);
+        } else {
+            self.inner.paint(painter, rect);
+        }
     }
 
     fn children(&mut self) -> Vec<BoxedWidget> {
@@ -155,13 +295,22 @@ pub struct Checkbox {
 impl Checkbox {
     pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
         let mut inner =
-            RawCheckbox::new(20.0, checked, theme.accent, theme.border_strong, on_click);
+            RawCheckbox::new(18.0, checked, theme.accent, theme.border_strong, on_click);
         inner = inner.corner_radius(theme.checkbox_radius);
         Checkbox { inner }
     }
 }
 
 impl Widget for Checkbox {
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, c: bool) {
+        self.inner.paint_focused_overlay(p, r, c);
+    }
     fn style(&self) -> Style {
         self.inner.style()
     }
@@ -179,14 +328,73 @@ impl Widget for Checkbox {
     }
 }
 
-pub struct Spinner { inner: RawSpinner }
-impl Spinner { pub fn new(theme: &Theme) -> Self { Self { inner: RawSpinner::new(theme.accent) } } pub fn phase(mut self, phase: usize) -> Self { self.inner = self.inner.phase(phase); self } pub fn size(mut self, size: f32) -> Self { self.inner = self.inner.size(size); self } }
-impl Widget for Spinner { fn style(&self) -> Style { self.inner.style() } fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) } }
+pub struct Spinner {
+    inner: RawSpinner,
+}
+impl Spinner {
+    pub fn new(theme: &Theme) -> Self {
+        Self {
+            inner: RawSpinner::new(theme.accent),
+        }
+    }
+    pub fn phase(mut self, phase: usize) -> Self {
+        self.inner = self.inner.phase(phase);
+        self
+    }
+    pub fn size(mut self, size: f32) -> Self {
+        self.inner = self.inner.size(size);
+        self
+    }
+}
+impl Widget for Spinner {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+}
 
 /// A compact sliding boolean control, complementary to [`Checkbox`].
-pub struct Switch { inner: RawSwitch }
-impl Switch { pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self { Self { inner: RawSwitch::new(checked, theme.accent, theme.border_strong, theme.selection_text, on_click) } } }
-impl Widget for Switch { fn style(&self) -> Style { self.inner.style() } fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) } fn on_click(&self) -> Option<Rc<dyn Fn()>> { self.inner.on_click() } fn cursor_icon(&self) -> Option<CursorIcon> { self.inner.cursor_icon() } }
+pub struct Switch {
+    inner: RawSwitch,
+}
+impl Switch {
+    pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
+        Self {
+            inner: RawSwitch::new(
+                checked,
+                theme.accent,
+                theme.border_strong,
+                theme.selection_text,
+                on_click,
+            ),
+        }
+    }
+}
+impl Widget for Switch {
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, c: bool) {
+        self.inner.paint_focused_overlay(p, r, c);
+    }
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect)
+    }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+}
 
 /// A themed single-line text input.
 pub struct TextInput {
@@ -269,15 +477,27 @@ impl TextInput {
         Self::with_style(theme, style, controller.value(), move |next| {
             set.set_value(next)
         })
-        .cursor(controller.cursor(), { let set = controller.clone(); move |cursor| set.set_cursor(cursor) })
-        .selection(controller.selection(), { let set = controller.clone(); move |selection| set.set_selection(selection) })
+        .cursor(controller.cursor(), {
+            let set = controller.clone();
+            move |cursor| set.set_cursor(cursor)
+        })
+        .selection(controller.selection(), {
+            let set = controller.clone();
+            move |selection| set.set_selection(selection)
+        })
     }
 
     pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
-        self.inner = self.inner.cursor(cursor, on_change); self
+        self.inner = self.inner.cursor(cursor, on_change);
+        self
     }
-    pub fn selection(mut self, selection: crate::raw::TextSelection, on_change: impl Fn(crate::raw::TextSelection) + 'static) -> Self {
-        self.inner = self.inner.selection(selection, on_change); self
+    pub fn selection(
+        mut self,
+        selection: crate::raw::TextSelection,
+        on_change: impl Fn(crate::raw::TextSelection) + 'static,
+    ) -> Self {
+        self.inner = self.inner.selection(selection, on_change);
+        self
     }
 }
 
@@ -311,6 +531,9 @@ impl Widget for TextInput {
     }
 
     fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret_visible: bool) {
+        if let Some(color) = self.inner.selection_background {
+            painter.stroke_rect(rect, color, 2., self.inner.corner_radius);
+        }
         self.inner
             .paint_focused_overlay(painter, rect, caret_visible);
     }
@@ -524,6 +747,15 @@ impl Slider {
 }
 
 impl Widget for Slider {
+    fn focusable(&self) -> bool {
+        true
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, p: &mut dyn Painter, r: Rect, c: bool) {
+        self.inner.paint_focused_overlay(p, r, c);
+    }
     fn style(&self) -> Style {
         self.inner.style()
     }
@@ -587,16 +819,21 @@ pub struct Text {
 }
 
 impl Text {
+    /// Use the bundled bold face, measured with the same font as rendering.
+    pub fn bold(mut self, bold: bool) -> Self {
+        self.inner.bold = bold;
+        self
+    }
     pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
         Text {
-            inner: RawText::new(text, theme.text_primary, 14.0),
+            inner: RawText::new(text, theme.text_primary, theme.typography.body),
         }
     }
 
     /// Same as [`Text::new`] but using the theme's secondary (muted) text color.
     pub fn secondary(theme: &Theme, text: impl Into<String>) -> Self {
         Text {
-            inner: RawText::new(text, theme.text_secondary, 14.0),
+            inner: RawText::new(text, theme.text_secondary, theme.typography.body),
         }
     }
 
@@ -657,8 +894,17 @@ impl Heading {
     /// A heading at an explicit [`TextSize`] step.
     pub fn sized(theme: &Theme, size: TextSize, text: impl Into<String>) -> Self {
         Heading {
-            inner: RawText::new(text, theme.text_primary, size.heading_px())
-                .align(TextAlign::Start),
+            inner: RawText::new(
+                text,
+                theme.text_primary,
+                match size {
+                    TextSize::Xl => theme.typography.title,
+                    TextSize::Md => theme.typography.section,
+                    _ => size.heading_px(),
+                },
+            )
+            .bold(true)
+            .align(TextAlign::Start),
         }
     }
 
@@ -916,7 +1162,11 @@ impl Widget for View {
 /// individual colors if needed.
 #[derive(Clone, Copy)]
 pub struct TabColors {
+    /// Canvas behind the whole group, visible in the gaps between entries.
     pub background: creamui_theme::Color,
+    /// Optional background for inactive filled tabs. Set this to `None` for
+    /// text-only or indicator tabs.
+    pub inactive_background: Option<creamui_theme::Color>,
     pub active_background: creamui_theme::Color,
     pub hover_background: creamui_theme::Color,
     pub indicator: creamui_theme::Color,
@@ -939,11 +1189,12 @@ impl TabColors {
     pub fn dark(theme: &Theme) -> Self {
         Self {
             background: theme.surface,
+            inactive_background: Some(theme.surface_hover),
             active_background: theme.accent,
-            hover_background: theme.surface_hover,
+            hover_background: theme.surface_elevated,
             indicator: theme.accent,
             text: theme.text_primary,
-            active_text: theme.selection_text,
+            active_text: Color::rgb(0x33, 0x2e, 0x34),
             muted_text: theme.text_secondary,
             radius: theme.tab_radius,
             container_radius: theme.tabs_radius,
@@ -964,11 +1215,12 @@ impl TabColors {
             // Navigation remains integrated with the app canvas; the
             // encapsulated content card is the elevated material.
             background: theme.surface,
+            inactive_background: None,
             active_background: theme.accent,
             hover_background: theme.surface_elevated,
             indicator: theme.accent,
             text: theme.text_primary,
-            active_text: theme.selection_text,
+            active_text: Color::rgb(0x33, 0x2e, 0x34),
             muted_text: theme.text_secondary,
             radius: theme.sidebar_item_radius,
             container_radius: theme.sidebar_radius,
@@ -991,16 +1243,39 @@ pub struct Tabs {
 }
 
 impl Tabs {
-    pub fn new(colors: TabColors, mut style: Style) -> Self {
-        style.gap = creamui_core::layout::Size {
-            width: LengthPercentage::Length(colors.gap),
-            height: LengthPercentage::Length(colors.gap),
-        };
+    /// The supplied [`Style`] is preserved exactly, including `gap`, width,
+    /// margins, alignment, and padding.
+    pub fn new(colors: TabColors, style: Style) -> Self {
         Self {
             inner: RawTabs::new(style)
                 .background(colors.background)
                 .corner_radius(colors.container_radius),
         }
+    }
+
+    /// Replaces the container layout style after construction.
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+
+    pub fn background(mut self, color: Color) -> Self {
+        self.inner.background = Some(color);
+        self
+    }
+
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.inner.corner_radius = radius;
+        self
+    }
+
+    /// Sets horizontal and vertical space between tab entries.
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.inner.style.gap = creamui_core::layout::Size {
+            width: LengthPercentage::Length(gap),
+            height: LengthPercentage::Length(gap),
+        };
+        self
     }
 
     pub fn child(mut self, child: BoxedWidget) -> Self {
@@ -1034,6 +1309,51 @@ pub struct Tab {
     inner: RawTab,
 }
 
+/// How a group of tabs receives horizontal space.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TabSizing {
+    /// Each tab is only as wide as its label and padding.
+    #[default]
+    Content,
+    /// Every tab is normalized to the group's widest label.
+    Equal,
+    /// Tabs divide the full width of their container.
+    Fill,
+}
+
+/// Produces one layout style per tab label for the chosen width policy.
+pub fn tab_styles(
+    labels: &[&str],
+    sizing: TabSizing,
+    height: f32,
+    horizontal_padding: f32,
+) -> Vec<Style> {
+    let equal_width = labels
+        .iter()
+        .map(|label| {
+            crate::text_metrics::measure(label, 14.0, crate::text_metrics::unbounded_width()).0
+        })
+        .fold(0.0_f32, f32::max)
+        + horizontal_padding * 2.0;
+
+    labels
+        .iter()
+        .map(|_| {
+            let mut style = centered_box_style(horizontal_padding);
+            style.size.height = Dimension::Length(height);
+            match sizing {
+                TabSizing::Content => {}
+                TabSizing::Equal => style.size.width = Dimension::Length(equal_width),
+                TabSizing::Fill => {
+                    style.flex_grow = 1.0;
+                    style.flex_basis = Dimension::Length(0.0);
+                }
+            }
+            style
+        })
+        .collect()
+}
+
 impl Tab {
     pub fn new(
         colors: TabColors,
@@ -1057,8 +1377,12 @@ impl Tab {
             .child(Box::new(text));
         match colors.selection {
             SelectionStyle::Filled => {
-                if active {
-                    inner = inner.background(colors.active_background);
+                if let Some(background) = if active {
+                    Some(colors.active_background)
+                } else {
+                    colors.inactive_background
+                } {
+                    inner = inner.background(background);
                 }
             }
             SelectionStyle::Indicator => {
@@ -1069,11 +1393,25 @@ impl Tab {
                 );
             }
         }
+        if !active {
+            inner.hover_background = Some(colors.hover_background);
+            inner.pressed_background = Some(colors.hover_background);
+        }
+        inner.focus_color = Some(colors.indicator);
         Self { inner }
     }
 }
 
 impl Widget for Tab {
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret: bool) {
+        self.inner.paint_focused_overlay(painter, rect, caret)
+    }
     fn style(&self) -> Style {
         self.inner.style()
     }
@@ -1099,16 +1437,25 @@ pub struct Sidebar {
 }
 
 impl Sidebar {
-    pub fn new(colors: TabColors, mut style: Style) -> Self {
-        style.gap = creamui_core::layout::Size {
-            width: LengthPercentage::Length(colors.gap),
-            height: LengthPercentage::Length(colors.gap),
-        };
+    pub fn new(colors: TabColors, style: Style) -> Self {
         Self {
             inner: RawSidebar::new(style)
                 .background(colors.background)
                 .corner_radius(colors.container_radius),
         }
+    }
+
+    pub fn layout_style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+
+    pub fn gap(mut self, gap: f32) -> Self {
+        self.inner.style.gap = creamui_core::layout::Size {
+            width: LengthPercentage::Length(gap),
+            height: LengthPercentage::Length(gap),
+        };
+        self
     }
 
     pub fn child(mut self, child: BoxedWidget) -> Self {
@@ -1151,7 +1498,11 @@ pub struct SidebarSeparator {
 
 impl SidebarSeparator {
     pub fn new(colors: TabColors, style: Style) -> Self {
-        Self { colors, style, label: None }
+        Self {
+            colors,
+            style,
+            label: None,
+        }
     }
 
     pub fn label(mut self, label: impl Into<String>) -> Self {
@@ -1161,13 +1512,24 @@ impl SidebarSeparator {
 }
 
 impl Widget for SidebarSeparator {
-    fn style(&self) -> Style { self.style.clone() }
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
         if let Some(label) = &self.label {
             painter.fill_text(rect, label, self.colors.muted_text, 11.0, TextAlign::Start);
         } else {
             let y = rect.y + rect.height / 2.0;
-            painter.fill_rect(Rect { x: rect.x, y, width: rect.width, height: 1.0 }, self.colors.separator, 0.0);
+            painter.fill_rect(
+                Rect {
+                    x: rect.x,
+                    y,
+                    width: rect.width,
+                    height: 1.0,
+                },
+                self.colors.separator,
+                0.0,
+            );
         }
     }
 }
@@ -1180,7 +1542,16 @@ impl SidebarItem {
         active: bool,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        Self::build(colors, style, label.into(), None, active, false, None, on_click)
+        Self::build(
+            colors,
+            style,
+            label.into(),
+            None,
+            active,
+            false,
+            None,
+            on_click,
+        )
     }
 
     /// Adds a small rounded square icon before the item label.
@@ -1192,7 +1563,16 @@ impl SidebarItem {
         active: bool,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        Self::build(colors, style, label.into(), Some(icon_color), active, false, None, on_click)
+        Self::build(
+            colors,
+            style,
+            label.into(),
+            Some(icon_color),
+            active,
+            false,
+            None,
+            on_click,
+        )
     }
 
     /// A sidebar item with a real pointer-hover state. Keep `hovered` in a
@@ -1232,8 +1612,14 @@ impl SidebarItem {
         on_click: impl Fn() + 'static,
     ) -> Self {
         Self::build(
-            colors, style, label.into(), Some(icon_color), active, hovered,
-            Some(Rc::new(on_hover)), on_click,
+            colors,
+            style,
+            label.into(),
+            Some(icon_color),
+            active,
+            hovered,
+            Some(Rc::new(on_hover)),
+            on_click,
         )
     }
 
@@ -1278,10 +1664,17 @@ impl SidebarItem {
                 flex_shrink: 0.0,
                 ..Default::default()
             };
-            let text_style = Style { flex_grow: 1.0, ..Default::default() };
+            let text_style = Style {
+                flex_grow: 1.0,
+                ..Default::default()
+            };
             Box::new(
                 RawView::new(content_style)
-                    .child(Box::new(RawView::new(icon_style).background(icon_color).corner_radius(colors.icon_radius)))
+                    .child(Box::new(
+                        RawView::new(icon_style)
+                            .background(icon_color)
+                            .corner_radius(colors.icon_radius),
+                    ))
                     .child(Box::new(text.layout_style(text_style))),
             )
         } else {
@@ -1296,6 +1689,8 @@ impl SidebarItem {
                     inner = inner.background(colors.active_background);
                 } else if hovered {
                     inner = inner.background(colors.hover_background);
+                } else if let Some(background) = colors.inactive_background {
+                    inner = inner.background(background);
                 }
             }
             SelectionStyle::Indicator => {
@@ -1306,12 +1701,26 @@ impl SidebarItem {
                 );
             }
         }
+        if !active {
+            inner.hover_background = Some(colors.hover_background);
+            inner.pressed_background = Some(colors.hover_background);
+        }
+        inner.focus_color = Some(colors.indicator);
         inner.on_hover = on_hover;
         Self { inner }
     }
 }
 
 impl Widget for SidebarItem {
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+    fn paint_focused_overlay(&self, painter: &mut dyn Painter, rect: Rect, caret: bool) {
+        self.inner.paint_focused_overlay(painter, rect, caret)
+    }
     fn style(&self) -> Style {
         self.inner.style()
     }

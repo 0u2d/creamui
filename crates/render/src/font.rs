@@ -46,7 +46,15 @@ pub struct PositionedGlyph {
 impl Font {
     /// Loads CreamUI's bundled default font.
     pub fn load() -> Self {
-        let inner = FontdueFont::from_bytes(FONT_BYTES, fontdue::FontSettings::default())
+        Self::from_bytes(FONT_BYTES)
+    }
+
+    pub fn bold() -> Self {
+        Self::from_bytes(include_bytes!("../../../assets/fonts/DejaVuSans-Bold.ttf"))
+    }
+
+    fn from_bytes(bytes: &'static [u8]) -> Self {
+        let inner = FontdueFont::from_bytes(bytes, fontdue::FontSettings::default())
             .expect("bundled font bytes are a valid, fixed asset checked in at build time");
         Font {
             inner,
