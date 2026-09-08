@@ -197,6 +197,7 @@ pub struct RawButton {
     pub style: Style,
     pub background: Option<Color>,
     pub corner_radius: f32,
+    pub border: Option<(Color, f32)>,
     pub children: Vec<BoxedWidget>,
     pub on_click: Rc<dyn Fn()>,
     pub disabled: bool,
@@ -208,6 +209,7 @@ impl RawButton {
             style,
             background: None,
             corner_radius: 0.0,
+            border: None,
             children: Vec::new(),
             on_click: Rc::new(on_click),
             disabled: false,
@@ -223,6 +225,7 @@ impl RawButton {
         self.corner_radius = radius;
         self
     }
+    pub fn border(mut self, color: Color, width: f32) -> Self { self.border = Some((color, width)); self }
 
     pub fn layout_style(mut self, style: Style) -> Self {
         self.style = style;
@@ -257,6 +260,7 @@ impl Widget for RawButton {
         if let Some(color) = self.background {
             painter.fill_rect(rect, color, self.corner_radius);
         }
+        if let Some((color, width)) = self.border { painter.stroke_rect(rect, color, width, self.corner_radius); }
     }
 
     fn children(&mut self) -> Vec<BoxedWidget> {
@@ -278,6 +282,15 @@ impl Widget for RawButton {
             CursorIcon::Pointer
         })
     }
+}
+
+/// A compact segmented circular progress indicator. Each rebuild may choose a
+/// different phase to animate it; it remains useful as a static busy glyph.
+pub struct RawSpinner { pub color: Color, pub phase: usize, pub size: f32 }
+impl RawSpinner { pub fn new(color: Color) -> Self { Self { color, phase: 0, size: 14.0 } } pub fn phase(mut self, phase: usize) -> Self { self.phase = phase; self } pub fn size(mut self, size: f32) -> Self { self.size = size; self } }
+impl Widget for RawSpinner {
+    fn style(&self) -> Style { Style { size: creamui_core::layout::Size { width: creamui_core::layout::Dimension::Length(self.size), height: creamui_core::layout::Dimension::Length(self.size) }, ..Default::default() } }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { let cx = rect.x + rect.width / 2.0; let cy = rect.y + rect.height / 2.0; let radius = rect.width.min(rect.height) * 0.36; let dot = (self.size * 0.18).max(1.5); for index in 0..8 { let angle = (index as f32 / 8.0) * std::f32::consts::TAU; let alpha = if index == self.phase % 8 { 255 } else { 80 }; painter.fill_rect(Rect { x: cx + angle.cos() * radius - dot/2., y: cy + angle.sin() * radius - dot/2., width: dot, height: dot }, Color::rgba(self.color.r, self.color.g, self.color.b, alpha), dot/2.); } }
 }
 
 /// An unstyled single-line text input. The caller owns the current text
@@ -1322,6 +1335,18 @@ impl Widget for RawCheckbox {
     fn cursor_icon(&self) -> Option<CursorIcon> {
         Some(CursorIcon::Pointer)
     }
+}
+
+/// Headless iOS/macOS-style boolean switch: a pill track with a sliding thumb.
+pub struct RawSwitch { pub checked: bool, pub on_color: Color, pub off_color: Color, pub thumb_color: Color, pub on_click: Rc<dyn Fn()> }
+impl RawSwitch {
+    pub fn new(checked: bool, on_color: Color, off_color: Color, thumb_color: Color, on_click: impl Fn() + 'static) -> Self { Self { checked, on_color, off_color, thumb_color, on_click: Rc::new(on_click) } }
+}
+impl Widget for RawSwitch {
+    fn style(&self) -> Style { Style { size: creamui_core::layout::Size { width: creamui_core::layout::Dimension::Length(42.0), height: creamui_core::layout::Dimension::Length(24.0) }, ..Default::default() } }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) { let d = (rect.height - 4.0).max(0.0); painter.fill_rect(rect, if self.checked { self.on_color } else { self.off_color }, rect.height / 2.0); painter.fill_rect(Rect { x: if self.checked { rect.x + rect.width - d - 2.0 } else { rect.x + 2.0 }, y: rect.y + 2.0, width: d, height: d }, self.thumb_color, d / 2.0); }
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> { Some(self.on_click.clone()) }
+    fn cursor_icon(&self) -> Option<CursorIcon> { Some(CursorIcon::Pointer) }
 }
 
 /// An unstyled horizontal slider: drag (or click) anywhere along its track

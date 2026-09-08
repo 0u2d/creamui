@@ -10,7 +10,7 @@
 //! new constructor function in the same shape.
 
 use crate::raw::{
-    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawTab, RawTabs, RawText,
+    RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawSpinner, RawSwitch, RawTab, RawTabs, RawText,
     RawTextArea, RawTextInput, RawView, TabIndicatorSide,
 };
 use creamui_core::layout::{
@@ -39,7 +39,36 @@ pub struct Button {
     inner: RawButton,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonSize { Xs, Sm, Md, Lg, Xl }
+impl ButtonSize {
+    fn padding(self) -> f32 { match self { Self::Xs => 6., Self::Sm => 9., Self::Md => 12., Self::Lg => 16., Self::Xl => 20. } }
+    fn font_size(self) -> f32 { match self { Self::Xs => 11., Self::Sm => 12., Self::Md => 14., Self::Lg => 16., Self::Xl => 18. } }
+    fn border_width(self) -> f32 { match self { Self::Xs | Self::Sm => 1., Self::Md => 1.25, Self::Lg => 1.5, Self::Xl => 2. } }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ButtonState { Normal, Loading, Success }
+
 impl Button {
+    /// Sized button with built-in loading and success presentations.
+    pub fn state(theme: &Theme, size: ButtonSize, label: impl Into<String>, state: ButtonState, on_click: impl Fn() + 'static) -> Self {
+        let label = match state { ButtonState::Normal | ButtonState::Loading => label.into(), ButtonState::Success => format!("✓ {}", label.into()) };
+        let style = centered_box_style(size.padding());
+        let text = RawText::new(label, theme.selection_text, size.font_size());
+        let child: BoxedWidget = if state == ButtonState::Loading {
+            let content = Style { display: creamui_core::layout::Display::Flex, flex_direction: creamui_core::layout::FlexDirection::Row, align_items: Some(AlignItems::Center), gap: creamui_core::layout::Size { width: LengthPercentage::Length(6.0), height: LengthPercentage::Length(6.0) }, ..Default::default() };
+            Box::new(RawView::new(content).child(Box::new(RawSpinner::new(theme.selection_text).size(size.font_size()))).child(Box::new(text)))
+        } else { Box::new(text) };
+        let mut button = Self { inner: RawButton::new(style, on_click).background(theme.accent).border(theme.accent_hover, size.border_width()).corner_radius(theme.button_radius).child(child) };
+        if state == ButtonState::Loading { button = button.disabled(true); }
+        button
+    }
+
+    /// A neutral, still-clickable button for secondary actions.
+    pub fn secondary(theme: &Theme, size: ButtonSize, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+        let text = RawText::new(label, theme.text_primary, size.font_size());
+        Self { inner: RawButton::new(centered_box_style(size.padding()), on_click).background(theme.surface_hover).border(theme.border_strong, size.border_width()).corner_radius(theme.button_radius).child(Box::new(text)) }
+    }
     pub fn new(theme: &Theme, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
         Self::with_style(
             theme,
@@ -133,6 +162,15 @@ impl Widget for Checkbox {
     }
 }
 
+pub struct Spinner { inner: RawSpinner }
+impl Spinner { pub fn new(theme: &Theme) -> Self { Self { inner: RawSpinner::new(theme.accent) } } pub fn phase(mut self, phase: usize) -> Self { self.inner = self.inner.phase(phase); self } pub fn size(mut self, size: f32) -> Self { self.inner = self.inner.size(size); self } }
+impl Widget for Spinner { fn style(&self) -> Style { self.inner.style() } fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) } }
+
+/// A compact sliding boolean control, complementary to [`Checkbox`].
+pub struct Switch { inner: RawSwitch }
+impl Switch { pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self { Self { inner: RawSwitch::new(checked, theme.accent, theme.border_strong, theme.selection_text, on_click) } } }
+impl Widget for Switch { fn style(&self) -> Style { self.inner.style() } fn paint(&self, painter: &mut dyn Painter, rect: Rect) { self.inner.paint(painter, rect) } fn on_click(&self) -> Option<Rc<dyn Fn()>> { self.inner.on_click() } fn cursor_icon(&self) -> Option<CursorIcon> { self.inner.cursor_icon() } }
+
 /// A themed single-line text input.
 pub struct TextInput {
     inner: RawTextInput,
@@ -179,6 +217,13 @@ impl TextInput {
     /// Grayed-out text shown when the value is empty.
     pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
         self.inner = self.inner.placeholder(text, theme.text_disabled);
+        self
+    }
+
+    /// Overrides the outline for validation states such as warning/error.
+    pub fn border(mut self, color: creamui_theme::Color) -> Self {
+        let width = self.inner.border_width;
+        self.inner = self.inner.border(color, width);
         self
     }
 

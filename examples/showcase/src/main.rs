@@ -16,8 +16,8 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{Color, Theme};
 use creamui_widgets::layout::{column, fixed, margin_xy, padding, row};
 use creamui_widgets::{
-    RawText, RawView, Sidebar, SidebarItem, SidebarSeparator, Tab, TabColors, Tabs,
-    TextController, TextSize,
+    Button, ButtonSize, ButtonState, RawText, RawView, Sidebar, SidebarItem, SidebarSeparator, Tab, TabColors, Tabs,
+    Switch, TextController, TextInput, TextSize,
 };
 
 /// Sidebar entries, in display order. `SEPARATOR_AFTER` marks which of these
@@ -341,6 +341,16 @@ fn InputPanel(
             </RawView>
             <RawView style={row(theme.spacing_large)}>
                 <RawView style={column(theme.spacing_small)}>
+                    {Box::new(TextInput::new(&theme, "", |_| {}).border(theme.danger)) as BoxedWidget}
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.danger} style={label_style()}>{"Error: this field is required".to_owned()}</Text>
+                </RawView>
+                <RawView style={column(theme.spacing_small)}>
+                    {Box::new(TextInput::new(&theme, "", |_| {}).border(theme.warning)) as BoxedWidget}
+                    <Text theme={&theme} align={TextAlign::Start} color={theme.warning} style={label_style()}>{"Warning: verify this value".to_owned()}</Text>
+                </RawView>
+            </RawView>
+            <RawView style={row(theme.spacing_large)}>
+                <RawView style={column(theme.spacing_small)}>
                     <Text theme={&theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{"TextArea — no wrap (scrolls)".to_owned()}</Text>
                     <TextArea theme={&theme} controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />
                 </RawView>
@@ -392,6 +402,15 @@ fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
                 <RawButton style={button_style()} background={theme.surface_hover} corner_radius={theme.radius_medium} on_click={|| {}} disabled={true}>
                     <RawText color={theme.text_disabled} font_size={16.0} align={TextAlign::Center} style={button_style()}>{"Disabled".to_owned()}</RawText>
                 </RawButton>
+            </RawView>
+            <RawView style={row(theme.spacing_small)}>
+                {Box::new(Button::secondary(&theme, ButtonSize::Xs, "XS", || {})) as BoxedWidget}
+                {Box::new(Button::secondary(&theme, ButtonSize::Sm, "SM", || {})) as BoxedWidget}
+                {Box::new(Button::secondary(&theme, ButtonSize::Md, "MD", || {})) as BoxedWidget}
+                {Box::new(Button::secondary(&theme, ButtonSize::Lg, "LG", || {})) as BoxedWidget}
+                {Box::new(Button::secondary(&theme, ButtonSize::Xl, "XL", || {})) as BoxedWidget}
+                {Box::new(Button::state(&theme, ButtonSize::Md, "Loading", ButtonState::Loading, || {})) as BoxedWidget}
+                {Box::new(Button::state(&theme, ButtonSize::Md, "Saved", ButtonState::Success, || {})) as BoxedWidget}
             </RawView>
             <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{format!("Clicked {} time(s)", count)}</Text>
         </RawView>
@@ -470,8 +489,12 @@ fn CheckboxPanel(
         <RawView style={column(theme.spacing_large)}>
             <SectionHeader theme={theme} title={"Checkbox".to_owned()} subtitle={"Three checkboxes, each toggling its own Signal<bool>.".to_owned()} />
             {checkbox_row(&theme, "Notifications", notifications)}
-            {checkbox_row(&theme, "Auto-save", auto_save)}
+            {checkbox_row(&theme, "Auto-save", auto_save.clone())}
             {checkbox_row(&theme, "Beta features", beta_features)}
+            <RawView style={row(theme.spacing_medium)}>
+                {Box::new(Switch::new(&theme, auto_save.get(), { let set = auto_save.clone(); move || set.update(|value| *value = !*value) })) as BoxedWidget}
+                <Text theme={&theme} align={TextAlign::Start} style={label_style()}>{"Switch presentation".to_owned()}</Text>
+            </RawView>
         </RawView>
     })
 }

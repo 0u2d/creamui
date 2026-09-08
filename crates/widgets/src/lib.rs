@@ -15,10 +15,10 @@ pub mod themed;
 pub use controller::TextController;
 pub use raw::{
     RawButton, RawCheckbox, RawScrollView, RawSidebar, RawSlider, RawTab, RawTabs, RawText,
-    RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
+    RawSpinner, RawSwitch, RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
 };
 pub use themed::{
-    Button, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
-    SidebarItem, SidebarSeparator, Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput,
+    Button, ButtonSize, ButtonState, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
+    SidebarItem, SidebarSeparator, Slider, Spinner, Switch, Tab, TabColors, Tabs, Text, TextArea, TextInput,
     TextSize, View,
 };
