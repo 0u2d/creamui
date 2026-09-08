@@ -1,0 +1,36 @@
+[package]
+name = "creamui"
+description = "The main CreamUI crate: native reactive desktop UI for Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["gui", "ui", "desktop", "native"]
+categories = ["gui"]
+
+[features]
+default = []
+image = ["dep:creamui-image"]
+image-jpeg = ["image", "creamui-image/jpeg"]
+image-webp = ["image", "creamui-image/webp"]
+jsx = ["dep:creamui-jsx", "dep:creamui-macros"]
+abi = ["dep:creamui-abi"]
+dynamic = ["abi", "jsx", "dep:creamui-dynamic"]
+ffi = ["abi", "dep:creamui_ffi"]
+full = ["image-jpeg", "image-webp", "jsx", "dynamic", "ffi"]
+
+[dependencies]
+creamui-core = { workspace = true }
+creamui-reactive = { workspace = true }
+creamui-render = { workspace = true }
+creamui-theme = { workspace = true }
+creamui-widgets = { workspace = true }
+creamui-image = { workspace = true, optional = true }
+creamui-jsx = { workspace = true, optional = true }
+creamui-macros = { workspace = true, optional = true }
+creamui-abi = { workspace = true, optional = true }
+creamui-dynamic = { workspace = true, optional = true }
+creamui_ffi = { package = "creamui-ffi", version = "0.1.0", path = "../ffi", optional = true }

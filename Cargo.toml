@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/creamui",
     "crates/reactive",
     "crates/core",
     "crates/theme",
@@ -21,25 +22,30 @@ members = [
     "examples/showcase",
     "examples/pickers",
     "examples/images",
+    "examples/facade",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
-repository = "https://github.com/creamui-rs/creamui"
+license = "Apache-2.0"
+authors = ["Sammwy"]
+repository = "https://github.com/sammwyy/creamui"
+homepage = "https://github.com/sammwyy/creamui"
 
 [workspace.dependencies]
-creamui-reactive = { path = "crates/reactive" }
-creamui-core = { path = "crates/core" }
-creamui-theme = { path = "crates/theme" }
-creamui-widgets = { path = "crates/widgets" }
-creamui-render = { path = "crates/render" }
-creamui-jsx = { path = "crates/jsx" }
-creamui-macros = { path = "crates/macros" }
-creamui-abi = { path = "crates/abi" }
-creamui-ffi = { path = "crates/ffi" }
-creamui-dynamic = { path = "crates/dynamic" }
+creamui-reactive = { version = "0.1.0", path = "crates/reactive" }
+creamui = { version = "0.1.0", path = "crates/creamui" }
+creamui-core = { version = "0.1.0", path = "crates/core" }
+creamui-theme = { version = "0.1.0", path = "crates/theme" }
+creamui-widgets = { version = "0.1.0", path = "crates/widgets" }
+creamui-image = { version = "0.1.0", path = "crates/image" }
+creamui-render = { version = "0.1.0", path = "crates/render" }
+creamui-jsx = { version = "0.1.0", path = "crates/jsx" }
+creamui-macros = { version = "0.1.0", path = "crates/macros" }
+creamui-abi = { version = "0.1.0", path = "crates/abi" }
+creamui-ffi = { version = "0.1.0", path = "crates/ffi" }
+creamui-dynamic = { version = "0.1.0", path = "crates/dynamic" }
 
 taffy = "0.7"
 wgpu = "22"

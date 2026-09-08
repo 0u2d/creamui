@@ -15,7 +15,7 @@ use std::sync::OnceLock;
 
 /// CreamUI's bundled default font (DejaVu Sans) — identical bytes to
 /// `creamui-render`'s copy; see `assets/fonts/DejaVuSans-LICENSE.txt`.
-const FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSans.ttf");
+const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 
 fn font() -> &'static Font {
     static FONT: OnceLock<Font> = OnceLock::new();
@@ -49,7 +49,7 @@ pub fn measure_weight(text: &str, font_size: f32, max_width: f32, bold: bool) ->
     let face = if bold {
         BOLD.get_or_init(|| {
             Font::from_bytes(
-                include_bytes!("../../../assets/fonts/DejaVuSans-Bold.ttf") as &[u8],
+                include_bytes!("../assets/DejaVuSans-Bold.ttf") as &[u8],
                 fontdue::FontSettings::default(),
             )
             .expect("bundled bold font")

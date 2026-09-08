@@ -1,15 +1,47 @@
 //! Declarative JSX syntax for CreamUI's Rust widget API.
 //!
 //! `jsx!` is deliberately a thin syntax layer: it emits calls to
-//! `creamui_widgets` and does not own state, rendering, or an ABI.
+//! the native widget API and does not own state, rendering, or an ABI.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
+use proc_macro_crate::{crate_name, FoundCrate};
 use quote::{format_ident, quote};
 use syn::{
     braced, parse::Parse, parse::ParseStream, parse_macro_input, Error, Expr, FnArg, Ident, ItemFn,
     LitStr, Pat, Result, Token,
 };
+
+fn crate_path(facade_module: &str, standalone_crate: &str) -> TokenStream2 {
+    if let Ok(found) = crate_name("creamui") {
+        let module = format_ident!("{facade_module}");
+        return match found {
+            FoundCrate::Itself => quote!(crate::#module),
+            FoundCrate::Name(name) => {
+                let facade = format_ident!("{name}");
+                quote!(::#facade::#module)
+            }
+        };
+    }
+    let standalone = format_ident!("{standalone_crate}");
+    quote!(::#standalone)
+}
+
+fn widgets_path() -> TokenStream2 {
+    crate_path("widgets", "creamui_widgets")
+}
+
+fn jsx_path() -> TokenStream2 {
+    crate_path("jsx_runtime", "creamui_jsx")
+}
+
+fn image_path() -> TokenStream2 {
+    crate_path("image", "creamui_image")
+}
+
+fn dynamic_path() -> TokenStream2 {
+    crate_path("dynamic", "creamui_dynamic")
+}
 
 /// Builds a CreamUI widget using JSX-like syntax.
 ///
@@ -264,6 +296,7 @@ impl Element {
     }
 
     fn container_children(&self, initial: TokenStream2) -> Result<TokenStream2> {
+        let jsx = jsx_path();
         let mut output = initial;
         for child in &self.children {
             let child = match child {
@@ -272,11 +305,11 @@ impl Element {
                     if element.is_native_intrinsic() {
                         quote!(::std::boxed::Box::new(#expanded))
                     } else {
-                        quote!(::creamui_jsx::IntoWidget::into_widget(#expanded))
+                        quote!(#jsx::IntoWidget::into_widget(#expanded))
                     }
                 }
                 Child::Expression(expression) => {
-                    quote!(::creamui_jsx::IntoWidget::into_widget(#expression))
+                    quote!(#jsx::IntoWidget::into_widget(#expression))
                 }
                 Child::Text(text) => {
                     return Err(Error::new_spanned(
@@ -291,11 +324,13 @@ impl Element {
     }
 
     fn expand(&self) -> Result<TokenStream2> {
+        let widgets = widgets_path();
+        let image = image_path();
         match self.tag.to_string().as_str() {
             "RawView" => {
                 self.reject_unknown_props(&["style", "background", "corner_radius", "children"])?;
                 let style = self.required_prop("style")?;
-                let mut output = quote!(::creamui_widgets::raw::RawView::new(#style));
+                let mut output = quote!(#widgets::raw::RawView::new(#style));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }
@@ -319,8 +354,7 @@ impl Element {
                 let color = self.required_prop("color")?;
                 let font_size = self.required_prop("font_size")?;
                 let text = self.text_child()?;
-                let mut output =
-                    quote!(::creamui_widgets::raw::RawText::new(#text, #color, #font_size));
+                let mut output = quote!(#widgets::raw::RawText::new(#text, #color, #font_size));
                 if let Some(align) = self.prop("align")? {
                     output = quote!(#output.align(#align));
                 }
@@ -339,7 +373,7 @@ impl Element {
                 ])?;
                 let style = self.required_prop("style")?;
                 let on_click = self.required_prop("on_click")?;
-                let mut output = quote!(::creamui_widgets::raw::RawButton::new(#style, #on_click));
+                let mut output = quote!(#widgets::raw::RawButton::new(#style, #on_click));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }
@@ -355,9 +389,7 @@ impl Element {
                 self.reject_unknown_props(&["theme", "style"])?;
                 let theme = self.required_prop("theme")?;
                 let style = self.required_prop("style")?;
-                self.container_children(
-                    quote!(::creamui_widgets::themed::View::new(#theme, #style)),
-                )
+                self.container_children(quote!(#widgets::themed::View::new(#theme, #style)))
             }
             "ScrollView" => {
                 self.reject_unknown_props(&["theme", "style", "scroll_y", "on_scroll"])?;
@@ -365,7 +397,7 @@ impl Element {
                 let style = self.required_prop("style")?;
                 let scroll_y = self.required_prop("scroll_y")?;
                 let on_scroll = self.required_prop("on_scroll")?;
-                self.container_children(quote!(::creamui_widgets::themed::ScrollView::new(#theme, #style, #scroll_y, #on_scroll)))
+                self.container_children(quote!(#widgets::themed::ScrollView::new(#theme, #style, #scroll_y, #on_scroll)))
             }
             "Text" => {
                 self.reject_unknown_props(&[
@@ -380,9 +412,9 @@ impl Element {
                 let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(secondary) = self.prop("secondary")? {
-                    quote!(if #secondary { ::creamui_widgets::themed::Text::secondary(#theme, #text) } else { ::creamui_widgets::themed::Text::new(#theme, #text) })
+                    quote!(if #secondary { #widgets::themed::Text::secondary(#theme, #text) } else { #widgets::themed::Text::new(#theme, #text) })
                 } else {
-                    quote!(::creamui_widgets::themed::Text::new(#theme, #text))
+                    quote!(#widgets::themed::Text::new(#theme, #text))
                 };
                 if let Some(font_size) = self.prop("font_size")? {
                     output = quote!(#output.font_size(#font_size));
@@ -406,9 +438,9 @@ impl Element {
                 let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(size) = self.prop("size")? {
-                    quote!(::creamui_widgets::themed::Heading::sized(#theme, #size, #text))
+                    quote!(#widgets::themed::Heading::sized(#theme, #size, #text))
                 } else {
-                    quote!(::creamui_widgets::themed::Heading::new(#theme, #text))
+                    quote!(#widgets::themed::Heading::new(#theme, #text))
                 };
                 if let Some(align) = self.prop("align")? {
                     output = quote!(#output.align(#align));
@@ -427,9 +459,9 @@ impl Element {
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(::creamui_widgets::themed::Button::with_style(#theme, #style, #label, #on_click))
+                    quote!(#widgets::themed::Button::with_style(#theme, #style, #label, #on_click))
                 } else {
-                    quote!(::creamui_widgets::themed::Button::new(#theme, #label, #on_click))
+                    quote!(#widgets::themed::Button::new(#theme, #label, #on_click))
                 };
                 if let Some(disabled) = self.prop("disabled")? {
                     output = quote!(#output.disabled(#disabled));
@@ -447,7 +479,7 @@ impl Element {
                 let theme = self.required_prop("theme")?;
                 let checked = self.required_prop("checked")?;
                 let on_click = self.required_prop("on_click")?;
-                Ok(quote!(::creamui_widgets::themed::Checkbox::new(#theme, #checked, #on_click)))
+                Ok(quote!(#widgets::themed::Checkbox::new(#theme, #checked, #on_click)))
             }
             "TextInput" => {
                 self.reject_unknown_props(&[
@@ -469,14 +501,14 @@ impl Element {
                 let style = self.prop("style")?;
                 let mut output = match (self.prop("controller")?, self.prop("value")?, self.prop("on_change")?) {
                     (Some(controller), None, None) => if let Some(style) = &style {
-                        quote!(::creamui_widgets::themed::TextInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextInput::controlled_with_style(#theme, #style, #controller))
                     } else {
-                        quote!(::creamui_widgets::themed::TextInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextInput::controlled(#theme, #controller))
                     },
                     (None, Some(value), Some(on_change)) => if let Some(style) = &style {
-                        quote!(::creamui_widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
                     } else {
-                        quote!(::creamui_widgets::themed::TextInput::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::new(#theme, #value, #on_change))
                     },
                     (None, None, None) => return Err(Error::new_spanned(&self.tag, "`TextInput` requires either a `controller` prop or both `value` and `on_change`")),
                     _ => return Err(Error::new_spanned(&self.tag, "`TextInput`'s `controller` prop cannot be combined with `value`/`on_change`")),
@@ -539,17 +571,17 @@ impl Element {
                 }
                 let mut output = if let Some(controller) = &controller {
                     if let Some(style) = &style {
-                        quote!(::creamui_widgets::themed::TextArea::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextArea::controlled_with_style(#theme, #style, #controller))
                     } else {
-                        quote!(::creamui_widgets::themed::TextArea::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextArea::controlled(#theme, #controller))
                     }
                 } else {
                     let value = self.required_prop("value")?;
                     let on_change = self.required_prop("on_change")?;
                     if let Some(style) = &style {
-                        quote!(::creamui_widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
                     } else {
-                        quote!(::creamui_widgets::themed::TextArea::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::new(#theme, #value, #on_change))
                     }
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
@@ -621,10 +653,10 @@ impl Element {
                 let on_change = self.required_prop("on_change")?;
                 if let Some(style) = self.prop("style")? {
                     Ok(
-                        quote!(::creamui_widgets::themed::Slider::with_style(#theme, #style, #value, #on_change)),
+                        quote!(#widgets::themed::Slider::with_style(#theme, #style, #value, #on_change)),
                     )
                 } else {
-                    Ok(quote!(::creamui_widgets::themed::Slider::new(#theme, #value, #on_change)))
+                    Ok(quote!(#widgets::themed::Slider::new(#theme, #value, #on_change)))
                 }
             }
             "ColorPicker" => {
@@ -648,9 +680,9 @@ impl Element {
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(::creamui_widgets::themed::ColorPicker::controlled_with_style(#theme, #style, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled_with_style(#theme, #style, #value, #controller, #on_change))
                 } else {
-                    quote!(::creamui_widgets::themed::ColorPicker::controlled(#theme, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled(#theme, #value, #controller, #on_change))
                 };
                 if let Some(width) = self.prop("popup_width")? {
                     output = quote!(#output.popup_width(#width));
@@ -670,9 +702,9 @@ impl Element {
                 }
                 let data = self.required_prop("data")?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(::creamui_image::Image::with_style(#data, #style))
+                    quote!(#image::Image::with_style(#data, #style))
                 } else {
-                    quote!(::creamui_image::Image::new(#data))
+                    quote!(#image::Image::new(#data))
                 };
                 if let Some(fit) = self.prop("fit")? {
                     output = quote!(#output.fit(#fit));
@@ -710,22 +742,22 @@ impl Element {
                 }
                 let constructor = match (tag.as_str(), style) {
                     ("DateTimePicker", Some(style)) => {
-                        quote!(::creamui_widgets::themed::DateTimePicker::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled_with_style(#theme, #style, #controller))
                     }
                     ("DateTimePicker", None) => {
-                        quote!(::creamui_widgets::themed::DateTimePicker::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled(#theme, #controller))
                     }
                     ("DateInput", Some(style)) => {
-                        quote!(::creamui_widgets::themed::DateInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateInput::controlled_with_style(#theme, #style, #controller))
                     }
                     ("DateInput", None) => {
-                        quote!(::creamui_widgets::themed::DateInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateInput::controlled(#theme, #controller))
                     }
                     ("TimeInput", Some(style)) => {
-                        quote!(::creamui_widgets::themed::TimeInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled_with_style(#theme, #style, #controller))
                     }
                     _ => {
-                        quote!(::creamui_widgets::themed::TimeInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled(#theme, #controller))
                     }
                 };
                 let mut output = constructor;
@@ -751,6 +783,7 @@ impl Element {
     }
 
     fn expand_user_component(&self) -> Result<TokenStream2> {
+        let jsx = jsx_path();
         let tag = &self.tag;
         let children = self
             .children
@@ -761,11 +794,11 @@ impl Element {
                     if element.is_native_intrinsic() {
                         Ok(quote!(::std::boxed::Box::new(#expanded)))
                     } else {
-                        Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expanded)))
+                        Ok(quote!(#jsx::IntoWidget::into_widget(#expanded)))
                     }
                 }
                 Child::Expression(expression) => {
-                    Ok(quote!(::creamui_jsx::IntoWidget::into_widget(#expression)))
+                    Ok(quote!(#jsx::IntoWidget::into_widget(#expression)))
                 }
                 Child::Text(text) => Err(Error::new_spanned(
                     text,
@@ -833,12 +866,13 @@ impl Element {
     }
 
     fn expand_dynamic(&self) -> Result<TokenStream2> {
+        let dynamic = dynamic_path();
         match self.tag.to_string().as_str() {
             "RawView" | "View" => {
                 self.reject_unknown_props(&["ctx", "style", "background", "corner_radius"])?;
                 let ctx = self.required_prop("ctx")?;
                 let style = self.required_prop("style")?;
-                let mut output = quote!(::creamui_dynamic::view_styled(#ctx, #style));
+                let mut output = quote!(#dynamic::view_styled(#ctx, #style));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }
@@ -854,7 +888,9 @@ impl Element {
                 let style = self.required_prop("style")?;
                 let scroll_y = self.required_prop("scroll_y")?;
                 let on_scroll = self.required_prop("on_scroll")?;
-                self.dynamic_container_children(quote!(::creamui_dynamic::scroll_view(#ctx, #theme, #style, #scroll_y, #on_scroll)))
+                self.dynamic_container_children(
+                    quote!(#dynamic::scroll_view(#ctx, #theme, #style, #scroll_y, #on_scroll)),
+                )
             }
             "Text" => {
                 self.reject_unknown_props(&["ctx", "theme", "font_size", "secondary"])?;
@@ -869,14 +905,12 @@ impl Element {
                         "the ABI Text component cannot combine `secondary` and `font_size` yet",
                     )),
                     (Some(secondary), None) => Ok(
-                        quote!(if #secondary { ::creamui_dynamic::themed_text_secondary(#ctx, #theme, &(#text)) } else { ::creamui_dynamic::themed_text(#ctx, #theme, &(#text)) }),
+                        quote!(if #secondary { #dynamic::themed_text_secondary(#ctx, #theme, &(#text)) } else { #dynamic::themed_text(#ctx, #theme, &(#text)) }),
                     ),
-                    (None, Some(font_size)) => Ok(
-                        quote!(::creamui_dynamic::themed_text_sized(#ctx, #theme, &(#text), #font_size)),
-                    ),
-                    (None, None) => {
-                        Ok(quote!(::creamui_dynamic::themed_text(#ctx, #theme, &(#text))))
+                    (None, Some(font_size)) => {
+                        Ok(quote!(#dynamic::themed_text_sized(#ctx, #theme, &(#text), #font_size)))
                     }
+                    (None, None) => Ok(quote!(#dynamic::themed_text(#ctx, #theme, &(#text)))),
                 }
             }
             "Button" => {
@@ -885,7 +919,7 @@ impl Element {
                 let theme = self.required_prop("theme")?;
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
-                Ok(quote!(::creamui_dynamic::button(#ctx, #theme, &(#label), #on_click)))
+                Ok(quote!(#dynamic::button(#ctx, #theme, &(#label), #on_click)))
             }
             "Checkbox" => {
                 self.reject_unknown_props(&["ctx", "theme", "checked", "on_click"])?;
@@ -899,7 +933,7 @@ impl Element {
                 let theme = self.required_prop("theme")?;
                 let checked = self.required_prop("checked")?;
                 let on_click = self.required_prop("on_click")?;
-                Ok(quote!(::creamui_dynamic::checkbox(#ctx, #theme, #checked, #on_click)))
+                Ok(quote!(#dynamic::checkbox(#ctx, #theme, #checked, #on_click)))
             }
             "TextInput" => {
                 self.reject_unknown_props(&[
@@ -921,7 +955,8 @@ impl Element {
                 let style = self.required_prop("style")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
-                let mut output = quote!(::creamui_dynamic::text_input(#ctx, #theme, #style, &(#value), #on_change));
+                let mut output =
+                    quote!(#dynamic::text_input(#ctx, #theme, #style, &(#value), #on_change));
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.placeholder(#theme, &(#placeholder)));
                 }
@@ -947,7 +982,8 @@ impl Element {
                 let style = self.required_prop("style")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
-                let mut output = quote!(::creamui_dynamic::text_area(#ctx, #theme, #style, &(#value), #on_change));
+                let mut output =
+                    quote!(#dynamic::text_area(#ctx, #theme, #style, &(#value), #on_change));
                 if let Some(placeholder) = self.prop("placeholder")? {
                     output = quote!(#output.area_placeholder(#theme, &(#placeholder)));
                 }
@@ -976,7 +1012,7 @@ impl Element {
                 let style = self.required_prop("style")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
-                Ok(quote!(::creamui_dynamic::slider(#ctx, #theme, #style, #value, #on_change)))
+                Ok(quote!(#dynamic::slider(#ctx, #theme, #style, #value, #on_change)))
             }
             _ => self.expand_dynamic_user_component(),
         }

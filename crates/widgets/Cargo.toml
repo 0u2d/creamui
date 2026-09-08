@@ -5,6 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["gui", "ui", "widgets", "desktop"]
+categories = ["gui"]
 
 [dependencies]
 creamui-core = { workspace = true }

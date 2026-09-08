@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 /// CreamUI's bundled default font (DejaVu Sans).
-const FONT_BYTES: &[u8] = include_bytes!("../../../assets/fonts/DejaVuSans.ttf");
+const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 
 /// A loaded font ready for rasterization, plus a reusable text layout buffer.
 ///
@@ -50,7 +50,7 @@ impl Font {
     }
 
     pub fn bold() -> Self {
-        Self::from_bytes(include_bytes!("../../../assets/fonts/DejaVuSans-Bold.ttf"))
+        Self::from_bytes(include_bytes!("../assets/DejaVuSans-Bold.ttf"))
     }
 
     fn from_bytes(bytes: &'static [u8]) -> Self {
