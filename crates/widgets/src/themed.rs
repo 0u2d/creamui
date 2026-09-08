@@ -392,7 +392,47 @@ impl Widget for Slider {
     }
 }
 
-/// Themed body text using the theme's primary text color.
+/// A five-step type scale shared by [`Text`] and [`Heading`], in the spirit
+/// of Tailwind's `text-xs`..`text-xl` steps or HTML's h5..h1 headings: `Xs`
+/// is smallest, `Xl` is largest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextSize {
+    Xl,
+    Lg,
+    Md,
+    Sm,
+    Xs,
+}
+
+impl TextSize {
+    /// Point size for body copy ([`Text`]).
+    fn text_px(self) -> f32 {
+        match self {
+            TextSize::Xl => 20.0,
+            TextSize::Lg => 17.0,
+            TextSize::Md => 14.0,
+            TextSize::Sm => 12.0,
+            TextSize::Xs => 11.0,
+        }
+    }
+
+    /// Point size for block headings ([`Heading`]), noticeably larger than
+    /// the body scale at every step since a heading needs to read as a
+    /// heading even at its smallest (`Xs`, an h5-equivalent).
+    fn heading_px(self) -> f32 {
+        match self {
+            TextSize::Xl => 28.0, // h1
+            TextSize::Lg => 22.0, // h2
+            TextSize::Md => 18.0, // h3
+            TextSize::Sm => 15.0, // h4
+            TextSize::Xs => 13.0, // h5
+        }
+    }
+}
+
+/// Themed body text using the theme's primary text color. Centered by
+/// default (handy for standalone labels and captions); call [`Text::align`]
+/// for left/right-aligned copy.
 pub struct Text {
     inner: RawText,
 }
@@ -416,6 +456,13 @@ impl Text {
         self
     }
 
+    /// Sets the font size from the shared [`TextSize`] scale (`Md` matches
+    /// the 14px default from [`Text::new`]).
+    pub fn size(mut self, size: TextSize) -> Self {
+        self.inner.font_size = size.text_px();
+        self
+    }
+
     pub fn align(mut self, align: TextAlign) -> Self {
         self.inner.align = align;
         self
@@ -436,6 +483,88 @@ impl Text {
 }
 
 impl Widget for Text {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn measure(&self) -> Option<creamui_core::MeasureFn> {
+        self.inner.measure()
+    }
+}
+
+/// A themed block heading, the h1-h5 equivalent of [`Text`]: same five-step
+/// [`TextSize`] scale, but left-aligned by default (a heading reads as a
+/// block-level title, not a centered caption) and sized up so even its
+/// smallest step (`Xs`, an h5) still reads as a heading next to body copy.
+pub struct Heading {
+    inner: RawText,
+}
+
+impl Heading {
+    /// A heading at an explicit [`TextSize`] step.
+    pub fn sized(theme: &Theme, size: TextSize, text: impl Into<String>) -> Self {
+        Heading {
+            inner: RawText::new(text, theme.text_primary, size.heading_px())
+                .align(TextAlign::Start),
+        }
+    }
+
+    /// Shorthand for [`Heading::sized`] with [`TextSize::Md`] (an
+    /// h3-equivalent), a reasonable default for a section heading.
+    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Md, text)
+    }
+
+    /// h1-equivalent: [`TextSize::Xl`].
+    pub fn xl(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Xl, text)
+    }
+
+    /// h2-equivalent: [`TextSize::Lg`].
+    pub fn lg(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Lg, text)
+    }
+
+    /// h3-equivalent: [`TextSize::Md`].
+    pub fn md(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Md, text)
+    }
+
+    /// h4-equivalent: [`TextSize::Sm`].
+    pub fn sm(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Sm, text)
+    }
+
+    /// h5-equivalent: [`TextSize::Xs`].
+    pub fn xs(theme: &Theme, text: impl Into<String>) -> Self {
+        Self::sized(theme, TextSize::Xs, text)
+    }
+
+    pub fn align(mut self, align: TextAlign) -> Self {
+        self.inner.align = align;
+        self
+    }
+
+    /// Overrides the theme's primary text color, e.g. for an accent-colored
+    /// heading.
+    pub fn color(mut self, color: creamui_theme::Color) -> Self {
+        self.inner.color = color;
+        self
+    }
+
+    /// Gives the heading a layout style for width, margin, flex/grid
+    /// placement, etc.
+    pub fn style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+}
+
+impl Widget for Heading {
     fn style(&self) -> Style {
         self.inner.style()
     }

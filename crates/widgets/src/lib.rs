@@ -15,6 +15,6 @@ pub use raw::{
     RawTextArea, RawTextInput, RawView, TabIndicatorSide, TextSelection,
 };
 pub use themed::{
-    Button, Checkbox, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar, SidebarItem,
-    Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput, View,
+    Button, Checkbox, Heading, MenuBar, MenuColors, MenuItem, MenuPopup, ScrollView, Sidebar,
+    SidebarItem, Slider, Tab, TabColors, Tabs, Text, TextArea, TextInput, TextSize, View,
 };

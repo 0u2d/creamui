@@ -16,6 +16,7 @@ members = [
     "examples/text-editor",
     "examples/tabs",
     "examples/sidebar",
+    "examples/showcase",
 ]
 
 [workspace.package]

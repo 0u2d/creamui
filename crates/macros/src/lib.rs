@@ -192,6 +192,7 @@ impl Element {
                 | "View"
                 | "ScrollView"
                 | "Text"
+                | "Heading"
                 | "Button"
                 | "Checkbox"
                 | "TextArea"
@@ -356,6 +357,7 @@ impl Element {
                 self.reject_unknown_props(&[
                     "theme",
                     "font_size",
+                    "size",
                     "secondary",
                     "align",
                     "color",
@@ -371,6 +373,29 @@ impl Element {
                 if let Some(font_size) = self.prop("font_size")? {
                     output = quote!(#output.font_size(#font_size));
                 }
+                if let Some(size) = self.prop("size")? {
+                    output = quote!(#output.size(#size));
+                }
+                if let Some(align) = self.prop("align")? {
+                    output = quote!(#output.align(#align));
+                }
+                if let Some(color) = self.prop("color")? {
+                    output = quote!(#output.color(#color));
+                }
+                if let Some(style) = self.prop("style")? {
+                    output = quote!(#output.style(#style));
+                }
+                Ok(output)
+            }
+            "Heading" => {
+                self.reject_unknown_props(&["theme", "size", "align", "color", "style"])?;
+                let theme = self.required_prop("theme")?;
+                let text = self.text_child()?;
+                let mut output = if let Some(size) = self.prop("size")? {
+                    quote!(::creamui_widgets::themed::Heading::sized(#theme, #size, #text))
+                } else {
+                    quote!(::creamui_widgets::themed::Heading::new(#theme, #text))
+                };
                 if let Some(align) = self.prop("align")? {
                     output = quote!(#output.align(#align));
                 }
