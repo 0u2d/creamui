@@ -415,7 +415,13 @@ fn scrollbar_thumb_is_draggable_and_tracks_the_wheel() {
     assert_eq!(controller.peek(), 160.0);
 
     // Dragging back to the top should return it to zero.
-    handler(Point { x: 113.0 - rect.x, y: 0.0 }, rect);
+    handler(
+        Point {
+            x: 113.0 - rect.x,
+            y: 0.0,
+        },
+        rect,
+    );
     assert_eq!(controller.peek(), 0.0);
 }
 
@@ -1235,7 +1241,10 @@ fn list_view_stacks_arbitrary_rows_and_scrolls_like_raw_scroll_view() {
 fn table_renders_header_labels_and_clicking_a_row_reports_its_index() {
     let theme = Theme::dark();
     let selected = Signal::new(0usize);
-    let columns = vec![TableColumn::new("Name", 80.0), TableColumn::new("Score", 60.0)];
+    let columns = vec![
+        TableColumn::new("Name", 80.0),
+        TableColumn::new("Score", 60.0),
+    ];
     let build = |selected: Signal<usize>| {
         let set_selected = selected.clone();
         Table::new(

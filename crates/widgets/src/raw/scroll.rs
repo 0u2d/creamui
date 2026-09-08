@@ -181,11 +181,15 @@ impl Widget for RawScrollView {
         // unless the caller set one explicitly.
         let min_size = creamui_core::layout::Size {
             width: match self.style.min_size.width {
-                creamui_core::layout::Dimension::Auto => creamui_core::layout::Dimension::Length(0.0),
+                creamui_core::layout::Dimension::Auto => {
+                    creamui_core::layout::Dimension::Length(0.0)
+                }
                 explicit => explicit,
             },
             height: match self.style.min_size.height {
-                creamui_core::layout::Dimension::Auto => creamui_core::layout::Dimension::Length(0.0),
+                creamui_core::layout::Dimension::Auto => {
+                    creamui_core::layout::Dimension::Length(0.0)
+                }
                 explicit => explicit,
             },
         };
@@ -267,7 +271,8 @@ impl Widget for RawScrollView {
                     },
                     ..Default::default()
                 };
-                let mut bar = RawScrollbar::new(bar_style, controller.clone(), self.scrollbar_color);
+                let mut bar =
+                    RawScrollbar::new(bar_style, controller.clone(), self.scrollbar_color);
                 bar.hover_color = self.scrollbar_hover_color;
                 bar.pressed_color = self.scrollbar_pressed_color;
                 bar.track_color = self.scrollbar_track_color;
@@ -337,7 +342,12 @@ impl Widget for ScrollClip {
 /// (including the not-yet-measured `max_offset == f32::INFINITY` case).
 /// Shared between [`RawScrollbar::paint`] and its drag handler so both
 /// agree on exactly where the thumb is.
-fn thumb_geometry(track_length: f32, max_offset: f32, offset: f32, min_length: f32) -> Option<(f32, f32)> {
+fn thumb_geometry(
+    track_length: f32,
+    max_offset: f32,
+    offset: f32,
+    min_length: f32,
+) -> Option<(f32, f32)> {
     if !max_offset.is_finite() || max_offset <= 0.5 || track_length <= 0.0 {
         return None;
     }
@@ -420,7 +430,11 @@ impl Widget for RawScrollbar {
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
         if let Some(track_color) = self.track_color {
-            painter.fill_rect(rect, track_color, self.thumb_radius.unwrap_or(rect.width / 2.0));
+            painter.fill_rect(
+                rect,
+                track_color,
+                self.thumb_radius.unwrap_or(rect.width / 2.0),
+            );
         }
         let Some((thumb_length, thumb_offset)) = thumb_geometry(
             rect.height,
@@ -437,7 +451,9 @@ impl Widget for RawScrollbar {
             height: thumb_length,
         };
         let color = if painter.pressed(rect) {
-            self.pressed_color.or(self.hover_color).unwrap_or(self.color)
+            self.pressed_color
+                .or(self.hover_color)
+                .unwrap_or(self.color)
         } else if painter.hovered(rect) {
             self.hover_color.unwrap_or(self.color)
         } else {

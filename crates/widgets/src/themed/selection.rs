@@ -513,9 +513,10 @@ impl Widget for ListBox {
     fn paint(&self, _painter: &mut dyn Painter, _rect: Rect) {}
 
     fn children(&mut self) -> Vec<BoxedWidget> {
-        let mut scroll_view = RawScrollView::controlled(fill(Style::default()), self.scroll.clone())
-            .background(self.theme.surface_elevated)
-            .corner_radius(self.theme.input_radius);
+        let mut scroll_view =
+            RawScrollView::controlled(fill(Style::default()), self.scroll.clone())
+                .background(self.theme.surface_elevated)
+                .corner_radius(self.theme.input_radius);
         for (index, label) in self.options.iter().enumerate() {
             let selected = index == self.selected;
             let on_change = self.on_change.clone();
@@ -541,7 +542,8 @@ impl Widget for ListBox {
             } else {
                 self.theme.text_primary
             };
-            let mut item = RawButton::new(row_style, move || on_change(index)).background(background);
+            let mut item =
+                RawButton::new(row_style, move || on_change(index)).background(background);
             item.hover_background = Some(if selected {
                 self.theme.accent_hover
             } else {

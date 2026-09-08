@@ -89,19 +89,22 @@ impl Widget for RawListView {
             stacked.push(row);
             if let Some(color) = self.divider_color {
                 if index + 1 < count {
-                    stacked.push(Box::new(RawView::new(Style {
-                        size: creamui_core::layout::Size {
-                            width: creamui_core::layout::Dimension::Percent(1.0),
-                            height: creamui_core::layout::Dimension::Length(self.divider_width),
-                        },
-                        flex_shrink: 0.0,
-                        ..Default::default()
-                    }).background(color)));
+                    stacked.push(Box::new(
+                        RawView::new(Style {
+                            size: creamui_core::layout::Size {
+                                width: creamui_core::layout::Dimension::Percent(1.0),
+                                height: creamui_core::layout::Dimension::Length(self.divider_width),
+                            },
+                            flex_shrink: 0.0,
+                            ..Default::default()
+                        })
+                        .background(color),
+                    ));
                 }
             }
         }
-        let mut scroll_view =
-            RawScrollView::controlled(fill_style(), self.scroll.clone()).corner_radius(self.corner_radius);
+        let mut scroll_view = RawScrollView::controlled(fill_style(), self.scroll.clone())
+            .corner_radius(self.corner_radius);
         if let Some(color) = self.background {
             scroll_view = scroll_view.background(color);
         }
@@ -269,7 +272,11 @@ impl RawTable {
     /// Makes rows clickable: `selected` (if any) highlights that row with
     /// [`RawTable::selected_row_background`], and clicking any row calls
     /// `on_click` with its index.
-    pub fn on_row_click(mut self, selected: Option<usize>, on_click: impl Fn(usize) + 'static) -> Self {
+    pub fn on_row_click(
+        mut self,
+        selected: Option<usize>,
+        on_click: impl Fn(usize) + 'static,
+    ) -> Self {
         self.selected_row = selected;
         self.on_row_click = Some(Rc::new(on_click));
         self
@@ -310,7 +317,8 @@ impl RawTable {
         }
         if let Some(on_click) = &self.on_row_click {
             let on_click = on_click.clone();
-            let mut row = RawButton::new(style, move || on_click(index)).with_children(cell_widgets);
+            let mut row =
+                RawButton::new(style, move || on_click(index)).with_children(cell_widgets);
             if let Some(color) = background {
                 row = row.background(color);
             }
@@ -339,14 +347,17 @@ impl Widget for RawTable {
     fn children(&mut self) -> Vec<BoxedWidget> {
         let mut children: Vec<BoxedWidget> = vec![self.build_header()];
         if let Some(color) = self.divider_color {
-            children.push(Box::new(RawView::new(Style {
-                size: creamui_core::layout::Size {
-                    width: creamui_core::layout::Dimension::Percent(1.0),
-                    height: creamui_core::layout::Dimension::Length(1.0),
-                },
-                flex_shrink: 0.0,
-                ..Default::default()
-            }).background(color)));
+            children.push(Box::new(
+                RawView::new(Style {
+                    size: creamui_core::layout::Size {
+                        width: creamui_core::layout::Dimension::Percent(1.0),
+                        height: creamui_core::layout::Dimension::Length(1.0),
+                    },
+                    flex_shrink: 0.0,
+                    ..Default::default()
+                })
+                .background(color),
+            ));
         }
         let rows = std::mem::take(&mut self.rows);
         let body_rows: Vec<BoxedWidget> = rows

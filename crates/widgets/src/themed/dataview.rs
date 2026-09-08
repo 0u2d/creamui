@@ -190,7 +190,8 @@ impl TreeView {
 
         let controller = self.controller.clone();
         let id = row.id;
-        let mut item = RawButton::new(row_style, move || controller.select(id)).background(background);
+        let mut item =
+            RawButton::new(row_style, move || controller.select(id)).background(background);
         item.hover_background = Some(if row.selected {
             self.theme.accent_hover
         } else {
@@ -208,9 +209,10 @@ impl Widget for TreeView {
     fn paint(&self, _painter: &mut dyn Painter, _rect: Rect) {}
 
     fn children(&mut self) -> Vec<BoxedWidget> {
-        let mut scroll_view = RawScrollView::controlled(fill(Style::default()), self.scroll.clone())
-            .background(self.theme.surface_elevated)
-            .corner_radius(self.theme.input_radius);
+        let mut scroll_view =
+            RawScrollView::controlled(fill(Style::default()), self.scroll.clone())
+                .background(self.theme.surface_elevated)
+                .corner_radius(self.theme.input_radius);
         for row in &self.rows {
             scroll_view = scroll_view.child(self.build_row(row));
         }
@@ -246,7 +248,9 @@ impl Widget for TreeView {
                     controller.select(ids[next]);
                 }
                 Key::Right | Key::Left => {
-                    let Some(id) = controller.peek_selected() else { return };
+                    let Some(id) = controller.peek_selected() else {
+                        return;
+                    };
                     let Some((_, has_children, expanded)) =
                         expandable.iter().find(|(row_id, _, _)| *row_id == id)
                     else {
@@ -327,7 +331,12 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(theme: &Theme, style: Style, scroll: ScrollController, columns: Vec<TableColumn>) -> Self {
+    pub fn new(
+        theme: &Theme,
+        style: Style,
+        scroll: ScrollController,
+        columns: Vec<TableColumn>,
+    ) -> Self {
         let selected_tint = Color::rgba(theme.accent.r, theme.accent.g, theme.accent.b, 60);
         let inner = RawTable::new(style, scroll, columns)
             .header_background(theme.surface_elevated)
@@ -350,7 +359,11 @@ impl Table {
         self
     }
 
-    pub fn on_row_click(mut self, selected: Option<usize>, on_click: impl Fn(usize) + 'static) -> Self {
+    pub fn on_row_click(
+        mut self,
+        selected: Option<usize>,
+        on_click: impl Fn(usize) + 'static,
+    ) -> Self {
         self.inner = self.inner.on_row_click(selected, on_click);
         self
     }
