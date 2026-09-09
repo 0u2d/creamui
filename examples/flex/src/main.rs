@@ -3,14 +3,15 @@
 use creamui_core::{BoxedWidget, Size};
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, Theme};
-use creamui_widgets::layout::{Align, Block, Flex, Grid, GridItem, Justify, StyleExt, Track};
+use creamui_widgets::layout::{Align, Flex, Justify, StyleExt, Wrap};
 use creamui_widgets::{RawText, Text};
 
 fn card(title: &'static str, description: &'static str, accent: Color) -> BoxedWidget {
     let theme = use_theme();
     Box::new(
-        Block::new()
-            .size(190.0, 142.0)
+        Flex::column()
+            .size(220.0, 142.0)
+            .gap(8.0)
             .padding(16.0)
             .background(theme.surface_elevated)
             .corner_radius(theme.card_radius)
@@ -47,38 +48,37 @@ fn main() {
                         .layout_style(creamui_core::layout::Style::default().padding_all(8.0)),
                 ));
 
-            let cards = Grid::new()
+            let cards = Flex::row()
                 .grow(1.0)
-                .gap_x(14.0)
-                .gap_y(14.0)
-                .template_columns([Track::fr(1.0), Track::fr(1.0), Track::fr(1.0)])
+                .gap(14.0)
+                .wrap(Wrap::Wrap)
                 .align_content(Justify::Start)
-                .child(Box::new(GridItem::new().child(card(
+                .child(card(
                     "Grid",
-                    "Three proportional columns use fr tracks.",
+                    "Cards wrap onto another line when space runs out.",
                     theme.accent,
-                ))))
-                .child(Box::new(GridItem::new().child(card(
+                ))
+                .child(card(
                     "Gap",
                     "Horizontal and vertical gaps are independent.",
                     Color::rgb(0x8b, 0x5c, 0xf6),
-                ))))
-                .child(Box::new(GridItem::new().child(card(
-                    "Placement",
-                    "Grid items can opt into an explicit cell or span.",
+                ))
+                .child(card(
+                    "Alignment",
+                    "Items stay centered on the cross axis.",
                     Color::rgb(0x22, 0xc5, 0x5e),
-                ))))
-                .child(Box::new(GridItem::new().column_span(2).child(card(
+                ))
+                .child(card(
                     "Grow",
-                    "The grid area takes the remaining height.",
+                    "The gallery takes the remaining height.",
                     Color::rgb(0xf5, 0x9e, 0x0b),
-                ))));
+                ));
 
             let footer = Flex::row()
                 .justify(Justify::End)
                 .align(Align::Center)
                 .child(Box::new(RawText::new(
-                    "Block · Flex · Grid · StyleExt",
+                    "Flex · Wrap · Gap · StyleExt",
                     theme.text_disabled,
                     12.0,
                 )));

@@ -667,6 +667,15 @@ impl GridItem {
         self
     }
 
+    /// Allows the item to shrink below its contents' intrinsic width.
+    ///
+    /// This is useful for responsive `fr` tracks: use `0.0` when text should
+    /// wrap within a narrow cell instead of forcing the whole grid wider.
+    pub fn min_width(mut self, value: f32) -> Self {
+        self.style.min_size.width = Dimension::Length(value);
+        self
+    }
+
     /// Adds the item's content.
     pub fn child(mut self, child: BoxedWidget) -> Self {
         self.children.push(child);
@@ -1198,7 +1207,12 @@ mod tests {
             .template_rows([Track::Px(40.0), Track::Fr(1.0)])
             .gap(12.0)
             .style();
-        let item = GridItem::new().at(2, 1).column_span(2).row_span(3).style();
+        let item = GridItem::new()
+            .at(2, 1)
+            .column_span(2)
+            .row_span(3)
+            .min_width(0.0)
+            .style();
 
         assert_eq!(style.display, creamui_core::layout::Display::Grid);
         assert_eq!(style.grid_template_columns.len(), 2);
@@ -1208,5 +1222,6 @@ mod tests {
         assert_eq!(item.grid_column.end, GridPlacement::Span(2));
         assert_eq!(item.grid_row.start, GridPlacement::from_line_index(1));
         assert_eq!(item.grid_row.end, GridPlacement::Span(3));
+        assert_eq!(item.min_size.width, Dimension::Length(0.0));
     }
 }
