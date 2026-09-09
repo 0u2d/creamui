@@ -14,6 +14,7 @@ categories = ["gui"]
 [dependencies]
 creamui-core = { workspace = true }
 creamui-theme = { workspace = true }
+creamui-fonts = { workspace = true }
 creamui-reactive = { workspace = true }
 fontdue = "0.9"
 

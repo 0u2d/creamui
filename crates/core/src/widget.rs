@@ -112,6 +112,26 @@ pub trait Painter {
     ) {
         self.fill_text(rect, text, color, font_size, align);
     }
+
+    /// Like [`Painter::fill_text_weight`], resolving `family` (a CSS-style
+    /// stack, e.g. `"Inter, sans-serif"`) against the font registry instead
+    /// of the bundled default. `None` behaves exactly like
+    /// [`Painter::fill_text_weight`].
+    #[allow(clippy::too_many_arguments)]
+    fn fill_text_font(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: creamui_theme::Color,
+        font_size: f32,
+        align: TextAlign,
+        family: Option<&str>,
+        bold: bool,
+        italic: bool,
+    ) {
+        let _ = family;
+        self.fill_text_weight(rect, text, color, font_size, align, bold, italic);
+    }
     fn fill_rect(&mut self, rect: Rect, color: creamui_theme::Color, corner_radius: f32);
     fn stroke_rect(
         &mut self,

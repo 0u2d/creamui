@@ -152,6 +152,9 @@ impl Typography {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Theme {
     pub typography: Typography,
+    /// CSS-style default family stack (e.g. `"Inter, sans-serif"`) themed
+    /// text widgets resolve against unless overridden per-widget.
+    pub font_family: &'static str,
     /// Kept as a nested value for ergonomic backwards compatibility. New
     /// code should keep and swap a `ColorScheme` independently (or use the
     /// two providers); style tokens below never encode a colour decision.
@@ -189,6 +192,7 @@ impl Theme {
     const fn base() -> Self {
         Self {
             typography: Typography::DEFAULT,
+            font_family: creamui_fonts::DEFAULT_FAMILY,
             colors: ColorScheme::dark(),
             name: "Default",
             radius_small: 8.,
@@ -265,6 +269,13 @@ impl Default for ThemeProvider {
     fn default() -> Self {
         Self::new(Theme::default())
     }
+}
+
+/// Reads the current window's theme. Only callable while a
+/// `creamui_reactive::with_context_scope` is active (e.g. during a window's
+/// `build_ui`); panics otherwise.
+pub fn use_theme() -> Theme {
+    creamui_reactive::use_context::<ThemeProvider>().get()
 }
 
 /// Reactive provider for an independently configurable colour scheme.

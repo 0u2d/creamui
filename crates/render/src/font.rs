@@ -1,10 +1,7 @@
-//! Glyph rasterization via `fontdue`, using CreamUI's bundled default font.
-//!
-//! The font is embedded at compile time (see [`FONT_BYTES`]) rather than
-//! probed from system paths, so text rendering doesn't depend on what's
-//! installed on the target machine. See `assets/fonts/DejaVuSans-LICENSE.txt`
-//! for the bundled font's license (Bitstream Vera, permissive/redistributable).
+//! Glyph rasterization via `fontdue`, resolving faces through
+//! `creamui-fonts`'s registry.
 
+use creamui_fonts::{FontWeight, DEFAULT_FAMILY};
 use fontdue::layout::{
     CoordinateSystem, GlyphRasterConfig, HorizontalAlign, Layout, LayoutSettings, TextStyle,
     VerticalAlign,
@@ -12,9 +9,6 @@ use fontdue::layout::{
 use fontdue::Font as FontdueFont;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// CreamUI's bundled default font (DejaVu Sans).
-const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 
 /// A loaded font ready for rasterization, plus a reusable text layout buffer.
 ///
@@ -25,7 +19,7 @@ const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
 /// glyph from scratch via `fontdue`, which was the dominant cost behind
 /// laggy scrolling on any screen with a non-trivial amount of text.
 pub struct Font {
-    inner: FontdueFont,
+    inner: Rc<FontdueFont>,
     layout: Layout,
     glyph_cache: HashMap<GlyphRasterConfig, (fontdue::Metrics, Rc<Vec<u8>>)>,
 }
@@ -46,16 +40,19 @@ pub struct PositionedGlyph {
 impl Font {
     /// Loads CreamUI's bundled default font.
     pub fn load() -> Self {
-        Self::from_bytes(FONT_BYTES)
+        Self::from_family(DEFAULT_FAMILY, FontWeight::Regular)
     }
 
     pub fn bold() -> Self {
-        Self::from_bytes(include_bytes!("../assets/DejaVuSans-Bold.ttf"))
+        Self::from_family(DEFAULT_FAMILY, FontWeight::Bold)
     }
 
-    fn from_bytes(bytes: &'static [u8]) -> Self {
-        let inner = FontdueFont::from_bytes(bytes, fontdue::FontSettings::default())
-            .expect("bundled font bytes are a valid, fixed asset checked in at build time");
+    /// Resolves `spec` (a CSS-style family stack) against the font registry.
+    pub fn from_family(spec: &str, weight: FontWeight) -> Self {
+        Self::from_face(creamui_fonts::resolve(spec, weight))
+    }
+
+    fn from_face(inner: Rc<FontdueFont>) -> Self {
         Font {
             inner,
             layout: Layout::new(CoordinateSystem::PositiveYDown),
@@ -86,7 +83,7 @@ impl Font {
             ..LayoutSettings::default()
         });
         self.layout
-            .append(&[&self.inner], &TextStyle::new(text, font_size, 0));
+            .append(&[self.inner.as_ref()], &TextStyle::new(text, font_size, 0));
 
         let inner = &self.inner;
         let cache = &mut self.glyph_cache;

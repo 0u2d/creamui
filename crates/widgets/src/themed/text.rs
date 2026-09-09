@@ -69,15 +69,23 @@ impl Text {
 
     pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
         Text {
-            inner: RawText::new(text, theme.text_primary, theme.typography.body),
+            inner: RawText::new(text, theme.text_primary, theme.typography.body)
+                .font_family(theme.font_family),
         }
     }
 
     /// Same as [`Text::new`] but using the theme's secondary (muted) text color.
     pub fn secondary(theme: &Theme, text: impl Into<String>) -> Self {
         Text {
-            inner: RawText::new(text, theme.text_secondary, theme.typography.body),
+            inner: RawText::new(text, theme.text_secondary, theme.typography.body)
+                .font_family(theme.font_family),
         }
+    }
+
+    /// Overrides the theme's default family stack for this text only.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
+        self
     }
 
     pub fn font_size(mut self, size: f32) -> Self {
@@ -147,8 +155,15 @@ impl Heading {
                 },
             )
             .bold(true)
-            .align(TextAlign::Start),
+            .align(TextAlign::Start)
+            .font_family(theme.font_family),
         }
+    }
+
+    /// Overrides the theme's default family stack for this heading only.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
+        self
     }
 
     /// Shorthand for [`Heading::sized`] with [`TextSize::Md`] (an

@@ -5,15 +5,17 @@
 //! needed, such as `image`, `jsx`, `dynamic`, or `ffi`.
 
 pub use creamui_core as core;
+pub use creamui_fonts as fonts;
 pub use creamui_reactive as reactive;
 pub use creamui_render as render;
 pub use creamui_theme as theme;
 pub use creamui_widgets as widgets;
 
 pub use creamui_core::{BoxedWidget, Painter, Size, Widget};
+pub use creamui_fonts::{include_font, use_font, FontHandle, FontWeight};
 pub use creamui_reactive::{create_effect, Effect, Signal};
-pub use creamui_render::{run, AppBuilder, RenderBackend, WindowHandle, WindowOptions};
-pub use creamui_theme::{Color, ColorScheme, Theme, ThemeProvider, Typography};
+pub use creamui_render::{run, AppBuilder, PanicDetails, RenderBackend, WindowHandle, WindowOptions};
+pub use creamui_theme::{use_theme, Color, ColorScheme, Theme, ThemeProvider, Typography};
 pub use creamui_widgets::*;
 
 #[cfg(feature = "image")]

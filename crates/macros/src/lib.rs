@@ -403,6 +403,7 @@ impl Element {
                 self.reject_unknown_props(&[
                     "theme",
                     "font_size",
+                    "font_family",
                     "size",
                     "secondary",
                     "align",
@@ -428,13 +429,23 @@ impl Element {
                 if let Some(color) = self.prop("color")? {
                     output = quote!(#output.color(#color));
                 }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
+                }
                 if let Some(style) = self.prop("style")? {
                     output = quote!(#output.style(#style));
                 }
                 Ok(output)
             }
             "Heading" => {
-                self.reject_unknown_props(&["theme", "size", "align", "color", "style"])?;
+                self.reject_unknown_props(&[
+                    "theme",
+                    "size",
+                    "align",
+                    "color",
+                    "style",
+                    "font_family",
+                ])?;
                 let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(size) = self.prop("size")? {
@@ -447,6 +458,9 @@ impl Element {
                 }
                 if let Some(color) = self.prop("color")? {
                     output = quote!(#output.color(#color));
+                }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
                 }
                 if let Some(style) = self.prop("style")? {
                     output = quote!(#output.style(#style));

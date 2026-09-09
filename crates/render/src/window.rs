@@ -28,7 +28,7 @@ use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size,
 };
 use creamui_reactive::{create_effect, Effect, Signal};
-use creamui_theme::Color;
+use creamui_theme::{Color, Theme, ThemeProvider};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -108,6 +108,8 @@ pub struct WindowOptions {
     /// force-overridden at launch with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu`
     /// regardless of what's set here — see [`RenderBackend::resolve`].
     pub backend: RenderBackend,
+    /// Made available to `use_theme()` while this window's `build_ui` runs.
+    pub theme: Theme,
 }
 
 impl Default for WindowOptions {
@@ -120,8 +122,85 @@ impl Default for WindowOptions {
             decorations: true,
             transparent: false,
             backend: RenderBackend::default(),
+            theme: Theme::default(),
         }
     }
+}
+
+/// Panic payload and source location captured by the panic hook installed
+/// in [`install_panic_dispatch`], passed to an [`AppBuilder::on_panic`]
+/// handler.
+pub struct PanicDetails {
+    pub message: String,
+    pub location: Option<String>,
+}
+
+type PanicHandler = Rc<dyn Fn(&PanicDetails)>;
+
+thread_local! {
+    static PANIC_HANDLER: RefCell<Option<PanicHandler>> = const { RefCell::new(None) };
+}
+
+/// Wraps the process's current panic hook with a dispatcher that checks
+/// `PANIC_HANDLER` first: if set, calls it with the panic's details instead
+/// of running the previous hook; otherwise runs the previous hook
+/// unchanged. Installed at most once per process via `Once`.
+fn install_panic_dispatch() {
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    INSTALLED.call_once(|| {
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let handled = PANIC_HANDLER.with(|cell| {
+                let handler = cell.borrow().clone();
+                match handler {
+                    Some(handler) => {
+                        handler(&PanicDetails {
+                            message: panic_payload_message(info.payload()),
+                            location: info.location().map(|l| l.to_string()),
+                        });
+                        true
+                    }
+                    None => false,
+                }
+            });
+            if !handled {
+                previous_hook(info);
+            }
+        }));
+    });
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
+/// Runs `build(size)`, catching a panic when a handler is registered via
+/// [`AppBuilder::on_panic`] and returning a blank widget in that case
+/// instead of unwinding past the caller. Runs `build` directly (no
+/// `catch_unwind` overhead) when no handler is registered.
+fn build_ui_with_recovery(build: &Rc<dyn Fn(Size) -> BoxedWidget>, size: Size) -> BoxedWidget {
+    let has_handler = PANIC_HANDLER.with(|cell| cell.borrow().is_some());
+    if !has_handler {
+        return build(size);
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| build(size))) {
+        Ok(widget) => widget,
+        Err(_) => Box::new(BlankWidget),
+    }
+}
+
+struct BlankWidget;
+impl creamui_core::Widget for BlankWidget {
+    fn style(&self) -> creamui_core::layout::Style {
+        creamui_core::layout::Style::default()
+    }
+    fn paint(&self, _painter: &mut dyn creamui_core::Painter, _rect: creamui_core::Rect) {}
 }
 
 /// Enables verbose logging when `CUI_DEBUG=1` is set in the environment,
@@ -253,6 +332,7 @@ struct WindowSpec {
 #[derive(Default)]
 pub struct AppBuilder {
     specs: Vec<PendingWindow>,
+    on_panic: Option<PanicHandler>,
 }
 
 /// Everything [`AppBuilder::window`] needs to defer construction to
@@ -268,7 +348,19 @@ struct PendingWindow {
 
 impl AppBuilder {
     pub fn new() -> Self {
-        AppBuilder { specs: Vec::new() }
+        AppBuilder {
+            specs: Vec::new(),
+            on_panic: None,
+        }
+    }
+
+    /// Registers a handler for panics raised inside `build_ui`. Without one,
+    /// a panic crashes the app as usual. With one, the panic is caught, the
+    /// handler runs instead of the default output, the frame is replaced
+    /// with a blank one, and the app keeps running.
+    pub fn on_panic(mut self, handler: impl Fn(&PanicDetails) + 'static) -> Self {
+        self.on_panic = Some(Rc::new(handler));
+        self
     }
 
     /// Queues a window to be opened when [`run`](AppBuilder::run) starts the
@@ -292,7 +384,7 @@ impl AppBuilder {
     /// Opens every queued window and runs one shared event loop until all of
     /// them have closed.
     pub fn run(self) {
-        run_windows(self.specs);
+        run_windows(self.specs, self.on_panic);
     }
 }
 
@@ -867,11 +959,16 @@ pub fn run(
         .run();
 }
 
-fn run_windows(specs: Vec<PendingWindow>) {
+fn run_windows(specs: Vec<PendingWindow>, on_panic: Option<PanicHandler>) {
     assert!(
         !specs.is_empty(),
         "creamui-render: AppBuilder::run() called with no windows queued"
     );
+
+    if let Some(handler) = on_panic {
+        install_panic_dispatch();
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = Some(handler));
+    }
 
     init_logging();
     let t_run = Instant::now();
@@ -979,7 +1076,17 @@ fn build_window_spec(
         scene: None,
     }));
     let shared_window: SharedWindow = Rc::new(RefCell::new(None));
-    let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::from(build_ui);
+    let theme_provider = ThemeProvider::new(options.theme);
+    let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = {
+        let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::from(build_ui);
+        let theme_provider = theme_provider.clone();
+        Rc::new(move |size: Size| {
+            creamui_reactive::with_context_scope(|| {
+                creamui_reactive::provide_context(theme_provider.clone());
+                build_ui_with_recovery(&build_ui, size)
+            })
+        })
+    };
     let focused: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
     let caret_visible: Rc<Cell<bool>> = Rc::new(Cell::new(true));
 
@@ -1156,5 +1263,44 @@ fn build_window_spec(
         shared_window,
         focused,
         caret_visible,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+
+    fn window_size() -> Size {
+        Size {
+            width: 100.0,
+            height: 100.0,
+        }
+    }
+
+    #[test]
+    fn build_ui_with_recovery_passes_through_without_a_registered_handler() {
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = None);
+        let build: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::new(|_size| Box::new(BlankWidget));
+        let _widget = build_ui_with_recovery(&build, window_size());
+    }
+
+    #[test]
+    fn build_ui_with_recovery_catches_a_panic_and_calls_the_handler() {
+        install_panic_dispatch();
+        let called = Rc::new(Cell::new(false));
+        let handler_called = called.clone();
+        PANIC_HANDLER.with(|cell| {
+            *cell.borrow_mut() = Some(Rc::new(move |details: &PanicDetails| {
+                handler_called.set(true);
+                assert_eq!(details.message, "boom");
+            }));
+        });
+
+        let build: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::new(|_size| panic!("boom"));
+        let _widget = build_ui_with_recovery(&build, window_size());
+
+        assert!(called.get(), "on_panic handler must run for a caught panic");
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = None);
     }
 }
