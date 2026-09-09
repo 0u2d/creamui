@@ -188,7 +188,7 @@ impl Default for FrameStats {
 /// Process CPU/RAM sampling, resampled at most every 200ms.
 pub struct ProcessStats {
     last_sample: Instant,
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
     last_cpu_time: Duration,
     cpu_percent: Option<f32>,
     ram_mb: Option<f32>,
@@ -201,7 +201,7 @@ impl ProcessStats {
         let (cpu_time, ram_mb) = read_raw();
         Self {
             last_sample: Instant::now(),
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
             last_cpu_time: cpu_time.unwrap_or(Duration::ZERO),
             cpu_percent: None,
             ram_mb,
@@ -216,7 +216,7 @@ impl ProcessStats {
         let (cpu_time, ram_mb) = read_raw();
         self.last_sample = Instant::now();
         self.ram_mb = ram_mb;
-        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
         if let Some(cpu_time) = cpu_time {
             let delta = cpu_time.saturating_sub(self.last_cpu_time);
             self.cpu_percent = Some(delta.as_secs_f32() / elapsed.as_secs_f32() * 100.0);
@@ -259,7 +259,49 @@ fn read_raw() -> (Option<Duration>, Option<f32>) {
     )
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "macos")))]
+#[cfg(target_os = "windows")]
+fn read_raw() -> (Option<Duration>, Option<f32>) {
+    use windows_sys::Win32::Foundation::FILETIME;
+    use windows_sys::Win32::System::ProcessStatus::{
+        GetProcessMemoryInfo, PROCESS_MEMORY_COUNTERS,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
+
+    let mut creation = FILETIME::default();
+    let mut exit = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    let process = unsafe { GetCurrentProcess() };
+    let cpu_time =
+        if unsafe { GetProcessTimes(process, &mut creation, &mut exit, &mut kernel, &mut user) }
+            != 0
+        {
+            let filetime =
+                |time: FILETIME| ((time.dwHighDateTime as u64) << 32) | time.dwLowDateTime as u64;
+            Some(Duration::from_nanos(
+                (filetime(kernel) + filetime(user)) * 100,
+            ))
+        } else {
+            None
+        };
+
+    let mut memory = PROCESS_MEMORY_COUNTERS {
+        cb: std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+        ..Default::default()
+    };
+    let ram_mb = (unsafe {
+        GetProcessMemoryInfo(
+            process,
+            &mut memory,
+            std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32,
+        )
+    } != 0)
+        .then(|| memory.WorkingSetSize as f32 / (1024.0 * 1024.0));
+
+    (cpu_time, ram_mb)
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 fn read_raw() -> (Option<Duration>, Option<f32>) {
     (None, None)
 }
