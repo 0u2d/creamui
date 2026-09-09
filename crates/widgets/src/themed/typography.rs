@@ -8,7 +8,8 @@ pub struct Quote {
 }
 
 impl Quote {
-    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<String>) -> Self {
+        let theme = use_theme();
         let bar_width = 3.0;
         let style = Style {
             size: creamui_core::layout::Size {
@@ -62,7 +63,8 @@ pub struct Pre {
 }
 
 impl Pre {
-    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<String>) -> Self {
+        let theme = use_theme();
         let style = Style {
             size: creamui_core::layout::Size {
                 width: Dimension::Percent(1.0),
@@ -107,7 +109,8 @@ pub struct Link {
 }
 
 impl Link {
-    pub fn new(theme: &Theme, text: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(text: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         let style = Style {
             size: creamui_core::layout::Size {
                 width: Dimension::Auto,

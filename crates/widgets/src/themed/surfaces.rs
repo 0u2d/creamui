@@ -20,7 +20,8 @@ pub struct MenuColors {
 }
 
 impl MenuColors {
-    pub fn dark(theme: &Theme) -> Self {
+    pub fn dark() -> Self {
+        let theme = use_theme();
         Self {
             bar: theme.surface,
             popup: theme.surface_hover,
@@ -150,7 +151,8 @@ impl Widget for MenuItem {
 }
 
 impl View {
-    pub fn new(theme: &Theme, style: Style) -> Self {
+    pub fn new(style: Style) -> Self {
+        let theme = use_theme();
         View {
             inner: RawView::new(style)
                 .background(theme.surface_elevated)

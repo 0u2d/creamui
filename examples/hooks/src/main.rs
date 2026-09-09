@@ -76,15 +76,15 @@ fn main() {
                     let click_crash = crash_trigger.clone();
                     Box::new(jsx! {
                         <RawView style={style} background={theme.surface}>
-                            <Heading theme={&theme}>"use_theme() / AppBuilder::on_panic"</Heading>
-                            <Text theme={&theme}>{format!("Clicked {} times", count.get())}</Text>
-                            <Button theme={&theme} on_click={move || click_count.update(|value| *value += 1)}>
+                            <Heading>"use_theme() / AppBuilder::on_panic"</Heading>
+                            <Text>{format!("Clicked {} times", count.get())}</Text>
+                            <Button on_click={move || click_count.update(|value| *value += 1)}>
                                 "Click me"
                             </Button>
-                            <Button theme={&theme} on_click={move || click_crash.update(|c| *c += 1)}>
+                            <Button on_click={move || click_crash.update(|c| *c += 1)}>
                                 "Crash build_ui"
                             </Button>
-                            <Text theme={&theme}>
+                            <Text>
                                 {format!("Recovered panics: {recovered} — last: {last_panic}")}
                             </Text>
                         </RawView>

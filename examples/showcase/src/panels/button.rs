@@ -4,7 +4,8 @@ use crate::prelude::*;
 /// semantically-colored variants built straight from `RawButton`, and a
 /// disabled-looking one, plus a click counter to prove the handlers fire.
 #[component]
-pub fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
+pub fn ButtonPanel(clicks: Signal<i32>) -> BoxedWidget {
+    let theme = use_theme();
     let mut actions = RawView::new(row(10.));
     for (label, variant) in [
         ("Continue", creamui_widgets::ButtonVariant::Primary),
@@ -14,7 +15,6 @@ pub fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
     ] {
         let clicks = clicks.clone();
         actions = actions.child(Box::new(Button::styled(
-            &theme,
             variant,
             ButtonSize::Md,
             label,
@@ -30,47 +30,39 @@ pub fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
         ("Large", ButtonSize::Lg),
     ] {
         let clicks = clicks.clone();
-        sizes = sizes.child(Box::new(Button::secondary(
-            &theme,
-            size,
-            label,
-            move || clicks.update(|c| *c += 1),
-        )));
+        sizes = sizes.child(Box::new(Button::secondary(size, label, move || {
+            clicks.update(|c| *c += 1)
+        })));
     }
     Box::new(
-        RawView::new(column(section_gap(&theme)))
+        RawView::new(column(section_gap()))
             .child(SectionHeader(SectionHeaderProps {
-                theme,
                 title: "Buttons".into(),
                 subtitle: "A clear hierarchy, from everyday actions to important decisions.".into(),
             }))
             .child(Box::new(
-                card(&theme, theme.spacing_medium)
-                    .child(field_label(&theme, "Variants"))
+                card(theme.spacing_medium)
+                    .child(field_label("Variants"))
                     .child(Box::new(actions)),
             ))
             .child(Box::new(
-                card(&theme, theme.spacing_medium)
-                    .child(field_label(&theme, "One family, four sizes"))
+                card(theme.spacing_medium)
+                    .child(field_label("One family, four sizes"))
                     .child(Box::new(sizes)),
             ))
             .child(Box::new(
-                card(&theme, theme.spacing_medium)
-                    .child(field_label(&theme, "States"))
+                card(theme.spacing_medium)
+                    .child(field_label("States"))
                     .child(Box::new(
                         RawView::new(row(10.))
-                            .child(Box::new(
-                                Button::new(&theme, "Unavailable", || {}).disabled(true),
-                            ))
+                            .child(Box::new(Button::new("Unavailable", || {}).disabled(true)))
                             .child(Box::new(Button::state(
-                                &theme,
                                 ButtonSize::Md,
                                 "Working",
                                 ButtonState::Loading,
                                 || {},
                             )))
                             .child(Box::new(Button::state(
-                                &theme,
                                 ButtonSize::Md,
                                 "Saved",
                                 ButtonState::Success,

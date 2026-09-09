@@ -6,12 +6,12 @@ use crate::prelude::*;
 /// controlled values in the showcase's regular reactive state.
 #[component]
 pub fn PickersPanel(
-    theme: Theme,
     date_time: DateTimeController,
     color: Signal<Color>,
     color_picker: ColorPickerController,
     file: Signal<String>,
 ) -> BoxedWidget {
+    let theme = use_theme();
     let selected_color = color.get();
     let file_label = file.get();
     let set_color = color.clone();
@@ -26,41 +26,36 @@ pub fn PickersPanel(
         file_label.clone()
     };
     Box::new(
-        RawView::new(column(section_gap(&theme)))
+        RawView::new(column(section_gap()))
             .child(SectionHeader(SectionHeaderProps {
-                theme,
                 title: "Pickers".into(),
                 subtitle: "Structured values, controlled by the application and styled from the active theme.".into(),
             }))
             .child(field_card(
-                &theme,
                 "Date & time · arrows or upper/lower portions adjust it",
-                Box::new(DateTimePicker::controlled(&theme, &date_time)),
+                Box::new(DateTimePicker::controlled(&date_time)),
             ))
             .child(card_row(
-                &theme,
                 vec![
                     field_card(
-                        &theme,
                         &format!("Color · {color_label}"),
-                        Box::new(ColorPicker::controlled(&theme, selected_color, &color_picker, move |next| {
+                        Box::new(ColorPicker::controlled(selected_color, &color_picker, move |next| {
                             set_color.set(next)
                         })),
                     ),
                     field_card(
-                        &theme,
                         "File · native system dialog",
                         Box::new(
                             RawView::new(column(theme.spacing_small))
                                 .child(Box::new(
-                                    FilePicker::new(&theme, file_label, move |path| {
+                                    FilePicker::new(file_label, move |path| {
                                         set_file.set(path.display().to_string())
                                     })
                                     .title("Choose an asset")
                                     .filter("Images", ["png", "jpg", "jpeg", "webp"]),
                                 ))
                                 .child(Box::new(
-                                    Text::secondary(&theme, file_caption).align(TextAlign::Start),
+                                    Text::secondary(file_caption).align(TextAlign::Start),
                                 )),
                         ),
                     ),

@@ -1,18 +1,14 @@
 use crate::prelude::*;
 
-fn slider_row(
-    theme: &Theme,
-    label: &str,
-    value: Signal<f32>,
-    format: impl Fn(f32) -> String,
-) -> BoxedWidget {
+fn slider_row(label: &str, value: Signal<f32>, format: impl Fn(f32) -> String) -> BoxedWidget {
+    let theme = use_theme();
     let current = value.get();
     let set = value.clone();
     Box::new(jsx! {
         <RawView style={column(theme.spacing_small)}>
-            <Text theme={theme} align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{label.to_owned()}</Text>
-            <Slider theme={theme} value={current} on_change={move |v| set.set(v)} />
-            <Text theme={theme} align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{format(current)}</Text>
+            <Text align={TextAlign::Start} color={theme.text_secondary} style={label_style()}>{label.to_owned()}</Text>
+            <Slider value={current} on_change={move |v| set.set(v)} />
+            <Text align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{format(current)}</Text>
         </RawView>
     })
 }
@@ -20,20 +16,16 @@ fn slider_row(
 /// The "Slider" panel: three independent sliders, each with its live value
 /// printed underneath.
 #[component]
-pub fn SliderPanel(
-    theme: Theme,
-    volume: Signal<f32>,
-    brightness: Signal<f32>,
-    zoom: Signal<f32>,
-) -> BoxedWidget {
+pub fn SliderPanel(volume: Signal<f32>, brightness: Signal<f32>, zoom: Signal<f32>) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Slider".to_owned()} subtitle={"Fine adjustments with immediate feedback.".to_owned()} />
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Slider".to_owned()} subtitle={"Fine adjustments with immediate feedback.".to_owned()} />
             {Box::new(
-                card(&theme, theme.spacing_large)
-                    .child(slider_row(&theme, "Volume", volume, |v| format!("{:.0}%", v * 100.0)))
-                    .child(slider_row(&theme, "Brightness", brightness, |v| format!("{:.0}%", v * 100.0)))
-                    .child(slider_row(&theme, "Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5)))
+                card(theme.spacing_large)
+                    .child(slider_row("Volume", volume, |v| format!("{:.0}%", v * 100.0)))
+                    .child(slider_row("Brightness", brightness, |v| format!("{:.0}%", v * 100.0)))
+                    .child(slider_row("Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5)))
             ) as BoxedWidget}
         </RawView>
     })

@@ -5,11 +5,7 @@ use crate::prelude::*;
 /// parsed from a plain comma-separated string with `str::split` below, not
 /// a CSV crate — however an application gets to that shape is up to it.
 #[component]
-pub fn TablePanel(
-    theme: Theme,
-    table_scroll: ScrollController,
-    table_selected: Signal<usize>,
-) -> BoxedWidget {
+pub fn TablePanel(table_scroll: ScrollController, table_selected: Signal<usize>) -> BoxedWidget {
     const CSV: &str = "Ada Lovelace,Mathematician,1815
 Grace Hopper,Programmer,1906
 Alan Turing,Mathematician,1912
@@ -36,13 +32,13 @@ Radia Perlman,Engineer,1951";
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let table = Table::new(&theme, table_style, table_scroll, columns)
+    let table = Table::new(table_style, table_scroll, columns)
         .rows(rows)
         .on_row_click(Some(selected), move |index| set_selected.set(index));
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Table".to_owned()} subtitle={"A CSV-shaped grid: fixed columns, a header that stays put, and a scrollable body. Click a row to select it.".to_owned()} />
-            {field_card(&theme, "Notable computer scientists", Box::new(table))}
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Table".to_owned()} subtitle={"A CSV-shaped grid: fixed columns, a header that stays put, and a scrollable body. Click a row to select it.".to_owned()} />
+            {field_card("Notable computer scientists", Box::new(table))}
         </RawView>
     })
 }

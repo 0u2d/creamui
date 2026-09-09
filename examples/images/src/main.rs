@@ -17,10 +17,10 @@ fn image_style(width: f32, height: f32) -> Style {
     }
 }
 
-fn image_card(theme: &Theme, title: &str, description: &str, image: Image) -> BoxedWidget {
+fn image_card(title: &str, description: &str, image: Image) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
         Surface::new(
-            theme,
             SurfaceRole::Inset,
             padding(
                 Style {
@@ -41,7 +41,7 @@ fn image_card(theme: &Theme, title: &str, description: &str, image: Image) -> Bo
         ))
         .child(Box::new(image))
         .child(Box::new(
-            Text::secondary(theme, description).align(TextAlign::Start),
+            Text::secondary(description).align(TextAlign::Start),
         )),
     )
 }
@@ -75,10 +75,9 @@ fn main() {
             };
             Box::new(
                 RawView::new(padding(root, 32.))
-                    .child(Box::new(Heading::xl(&theme, "Images")))
+                    .child(Box::new(Heading::xl("Images")))
                     .child(Box::new(
                         Text::secondary(
-                            &theme,
                             "One decoded asset type, three file formats, and three independent shapes.",
                         )
                         .align(TextAlign::Start),
@@ -86,14 +85,12 @@ fn main() {
                     .child(Box::new(
                         RawView::new(row(theme.spacing_large))
                             .child(image_card(
-                                &theme,
                                 "PNG · square",
                                 "Cover fit without clipping the corners.",
                                 Image::with_style(png.clone(), image_style(190., 190.))
                                     .fit(ImageFit::Cover),
                             ))
                             .child(image_card(
-                                &theme,
                                 "JPEG · rounded",
                                 "A 4:3 crop with the active theme's radius.",
                                 Image::with_style(jpeg.clone(), image_style(230., 172.))
@@ -101,7 +98,6 @@ fn main() {
                                     .corner_radius(theme.card_radius),
                             ))
                             .child(image_card(
-                                &theme,
                                 "WebP · circle",
                                 "A square crop clipped into a complete circle.",
                                 Image::with_style(webp.clone(), image_style(190., 190.))

@@ -88,7 +88,8 @@ fn list_style() -> Style {
 /// square before the label, so the eye can tell the three demos apart at a
 /// glance without reading the text.
 #[component]
-fn Card(theme: Theme, chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
+fn Card(chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
+    let theme = use_theme();
     let outer_style = Style {
         flex_grow: 1.0,
         size: creamui_core::layout::Size {
@@ -126,10 +127,10 @@ fn Card(theme: Theme, chip: Color, label: String, list: BoxedWidget) -> BoxedWid
     let header = Box::new(jsx! {
         <RawView style={header_style}>
             <RawView style={chip_style} background={chip} corner_radius={2.0} />
-            <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
+            <Text align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
         </RawView>
     });
-    let card = View::new(&theme, card_style).child(list);
+    let card = View::new(card_style).child(list);
     Box::new(
         RawView::new(outer_style)
             .child(header)
@@ -167,7 +168,7 @@ fn main() {
             );
 
             let themed_list = Box::new(
-                ScrollView::controlled(&theme, list_style(), themed_scroll.clone())
+                ScrollView::controlled(list_style(), themed_scroll.clone())
                     .with_children(rows(&theme, theme.text_primary)),
             ) as BoxedWidget;
 
@@ -192,9 +193,9 @@ fn main() {
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Card theme={theme} chip={theme.accent} label={"THEMED — ScrollView".to_owned()} list={themed_list} />
-                    <Card theme={theme} chip={NEON} label={"CUSTOM — RawScrollView".to_owned()} list={custom_list} />
-                    <Card theme={theme} chip={theme.text_disabled} label={"WHEEL ONLY — scrollbar(false)".to_owned()} list={wheel_only_list} />
+                    <Card chip={theme.accent} label={"THEMED — ScrollView".to_owned()} list={themed_list} />
+                    <Card chip={NEON} label={"CUSTOM — RawScrollView".to_owned()} list={custom_list} />
+                    <Card chip={theme.text_disabled} label={"WHEEL ONLY — scrollbar(false)".to_owned()} list={wheel_only_list} />
                 </RawView>
             })
         },

@@ -82,11 +82,11 @@ fn main() {
                             .child(Box::new(jsx! {
                                 <RawView style={column(10.)}>
                                     <RawText color={theme.text_primary} font_size={theme.typography.section} align={TextAlign::Start}>"Themed · JSX"</RawText>
-                                    <DateInput theme={&theme} controller={&date} popup_width={316.} />
-                                    <TimeInput theme={&theme} controller={&time} minute_step={15} popup_width={250.} />
-                                    <ColorPicker theme={&theme} controller={&color_picker} value={selected_color} on_change={move |next| color_set.set(next)} popup_width={292.} />
+                                    <DateInput controller={&date} popup_width={316.} />
+                                    <TimeInput controller={&time} minute_step={15} popup_width={250.} />
+                                    <ColorPicker controller={&color_picker} value={selected_color} on_change={move |next| color_set.set(next)} popup_width={292.} />
                                     {Box::new(
-                                        FilePicker::new(&theme, file_name, move |path| file_set.set(path.display().to_string()))
+                                        FilePicker::new(file_name, move |path| file_set.set(path.display().to_string()))
                                             .title("Select an image")
                                             .filter("Images", ["png", "jpg", "jpeg", "webp"]),
                                     ) as BoxedWidget}
@@ -119,7 +119,7 @@ fn main() {
                             )),
                     ))
                     .child(Box::new(
-                        Text::secondary(&theme, "Date/time: upper/lower halves increment or decrement. Color: drag in the field or hue strip. FilePicker uses the platform dialog; RawFilePicker only reports activation.")
+                        Text::secondary("Date/time: upper/lower halves increment or decrement. Color: drag in the field or hue strip. FilePicker uses the platform dialog; RawFilePicker only reports activation.")
                             .align(TextAlign::Start),
                     )),
             )

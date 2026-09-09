@@ -3,9 +3,10 @@ use crate::prelude::*;
 /// The "Sidebar" panel: a small, self-contained `Sidebar`/`SidebarItem` demo
 /// with its own selection state, next to the panel it controls.
 #[component]
-pub fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
+pub fn SidebarPanel(active: Signal<usize>) -> BoxedWidget {
+    let theme = use_theme();
     const ITEMS: [&str; 3] = ["Inbox", "Drafts", "Sent"];
-    let colors = TabColors::sidebar(&theme);
+    let colors = TabColors::sidebar();
     let item_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -52,17 +53,17 @@ pub fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
     );
     let current_label = ITEMS[active.get()].to_owned();
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Sidebar".to_owned()} subtitle={"A compact navigation rail with independent selection.".to_owned()} />
-            {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Sidebar".to_owned()} subtitle={"A compact navigation rail with independent selection.".to_owned()} />
+            {Box::new(Surface::new(SurfaceRole::Inset, padding(Style {
                 size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(192.0) },
                 align_items: Some(AlignItems::Stretch),
                 ..row(theme.spacing_large)
             }, theme.spacing_medium))
                 .child(Box::new(rail))
-                .child(Box::new(View::new(&theme, preview_style)
-                    .child(Box::new(Heading::new(&theme, current_label.clone())))
-                    .child(Box::new(Text::secondary(&theme, "The selected section is shown here.")))))
+                .child(Box::new(View::new(preview_style)
+                    .child(Box::new(Heading::new(current_label.clone())))
+                    .child(Box::new(Text::secondary("The selected section is shown here.")))))
             ) as BoxedWidget}
         </RawView>
     })

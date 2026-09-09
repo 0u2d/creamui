@@ -15,13 +15,10 @@ pub struct Select {
 }
 
 impl Select {
-    pub fn controlled(
-        theme: &Theme,
-        options: &[&str],
-        controller: crate::SelectController,
-    ) -> Self {
+    pub fn controlled(options: &[&str], controller: crate::SelectController) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             options: options.iter().map(|option| (*option).to_owned()).collect(),
             controller,
             style: Self::default_style(),
@@ -145,7 +142,11 @@ impl Widget for Select {
             },
             3.0,
         );
-        let mut popup = Popover::new(&self.theme, popup_style);
+        let theme = self.theme;
+        // `children()` runs outside `build_ui`'s context scope; `Popover`
+        // still calls `use_theme()`, so re-enter a scope with the theme
+        // snapshot this `Select` was built with.
+        let mut popup = with_cached_theme(theme, || Popover::new(popup_style));
         for (index, label) in self.options.iter().enumerate() {
             let selected = self.controller.selected() == index;
             let controller = self.controller.clone();
@@ -244,14 +245,10 @@ pub struct Radio {
 }
 
 impl Radio {
-    pub fn new(
-        theme: &Theme,
-        label: impl Into<String>,
-        selected: bool,
-        on_click: impl Fn() + 'static,
-    ) -> Self {
+    pub fn new(label: impl Into<String>, selected: bool, on_click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             label: label.into(),
             selected,
             style: Self::default_style(),
@@ -360,9 +357,10 @@ pub struct RadioGroup {
 }
 
 impl RadioGroup {
-    pub fn new(theme: &Theme, selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+    pub fn new(selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             selected,
             on_change: Rc::new(on_change),
             options: Vec::new(),
@@ -385,19 +383,22 @@ impl Widget for RadioGroup {
     }
     fn paint(&self, _: &mut dyn Painter, _: Rect) {}
     fn children(&mut self) -> Vec<BoxedWidget> {
-        self.options
-            .iter()
-            .enumerate()
-            .map(|(index, label)| {
-                let on_change = self.on_change.clone();
-                Box::new(Radio::new(
-                    &self.theme,
-                    label.clone(),
-                    self.selected == index,
-                    move || on_change(index),
-                )) as BoxedWidget
-            })
-            .collect()
+        let theme = self.theme;
+        let selected = self.selected;
+        let options = &self.options;
+        let on_change = &self.on_change;
+        with_cached_theme(theme, || {
+            options
+                .iter()
+                .enumerate()
+                .map(|(index, label)| {
+                    let on_change = on_change.clone();
+                    Box::new(Radio::new(label.clone(), selected == index, move || {
+                        on_change(index)
+                    })) as BoxedWidget
+                })
+                .collect()
+        })
     }
 }
 
@@ -413,9 +414,10 @@ pub struct SegmentedControl {
 }
 
 impl SegmentedControl {
-    pub fn new(theme: &Theme, selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+    pub fn new(selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             selected,
             on_change: Rc::new(on_change),
             options: Vec::new(),
@@ -438,19 +440,24 @@ impl Widget for SegmentedControl {
     }
     fn paint(&self, _: &mut dyn Painter, _: Rect) {}
     fn children(&mut self) -> Vec<BoxedWidget> {
-        self.options
-            .iter()
-            .enumerate()
-            .map(|(index, label)| {
-                let on_change = self.on_change.clone();
-                Box::new(crate::Choice::new(
-                    &self.theme,
-                    label.clone(),
-                    self.selected == index,
-                    move || on_change(index),
-                )) as BoxedWidget
-            })
-            .collect()
+        let theme = self.theme;
+        let selected = self.selected;
+        let options = &self.options;
+        let on_change = &self.on_change;
+        with_cached_theme(theme, || {
+            options
+                .iter()
+                .enumerate()
+                .map(|(index, label)| {
+                    let on_change = on_change.clone();
+                    Box::new(crate::Choice::new(
+                        label.clone(),
+                        selected == index,
+                        move || on_change(index),
+                    )) as BoxedWidget
+                })
+                .collect()
+        })
     }
 }
 
@@ -472,14 +479,14 @@ pub struct ListBox {
 
 impl ListBox {
     pub fn new(
-        theme: &Theme,
         style: Style,
         scroll: ScrollController,
         selected: usize,
         on_change: impl Fn(usize) + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             style,
             scroll,
             options: Vec::new(),

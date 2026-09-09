@@ -68,7 +68,8 @@ pub fn label_style() -> Style {
 /// Vertical rhythm between the cards inside a panel — wider than the
 /// theme's own `spacing_large` so each topic reads as a separate block
 /// instead of one continuous, undifferentiated column.
-pub fn section_gap(theme: &Theme) -> f32 {
+pub fn section_gap() -> f32 {
+    let theme = use_theme();
     theme.spacing_large * 1.75
 }
 
@@ -76,9 +77,9 @@ pub fn section_gap(theme: &Theme) -> f32 {
 /// elevated background (see `SurfaceRole::Inset`), so one topic's controls
 /// are framed as a single modular unit rather than running directly into
 /// the next. `gap` spaces the children stacked inside it.
-pub fn card(theme: &Theme, gap: f32) -> Surface {
+pub fn card(gap: f32) -> Surface {
+    let theme = use_theme();
     Surface::new(
-        theme,
         SurfaceRole::Inset,
         padding(
             Style {
@@ -95,9 +96,9 @@ pub fn card(theme: &Theme, gap: f32) -> Surface {
 
 /// A muted, left-aligned caption used to label a group of controls within a
 /// card (e.g. "Mode", "Accent color").
-pub fn field_label(theme: &Theme, text: impl Into<String>) -> BoxedWidget {
+pub fn field_label(text: impl Into<String>) -> BoxedWidget {
     Box::new(
-        Text::secondary(theme, text)
+        Text::secondary(text)
             .align(TextAlign::Start)
             .style(label_style()),
     )
@@ -105,26 +106,29 @@ pub fn field_label(theme: &Theme, text: impl Into<String>) -> BoxedWidget {
 
 /// A caption stacked over one control, without its own card — used to pack
 /// several related fields into one bigger card (see [`card`]).
-pub fn stacked_field(theme: &Theme, label: &str, control: BoxedWidget) -> BoxedWidget {
+pub fn stacked_field(label: &str, control: BoxedWidget) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
         RawView::new(column(theme.spacing_small))
-            .child(field_label(theme, label))
+            .child(field_label(label))
             .child(control),
     )
 }
 
 /// The most common card shape on this page: one caption over one control.
-pub fn field_card(theme: &Theme, label: &str, control: BoxedWidget) -> BoxedWidget {
+pub fn field_card(label: &str, control: BoxedWidget) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
-        card(theme, theme.spacing_small)
-            .child(field_label(theme, label))
+        card(theme.spacing_small)
+            .child(field_label(label))
             .child(control),
     )
 }
 
 /// Lays out same-height cards side by side with a comfortable gutter
 /// between them.
-pub fn card_row(theme: &Theme, children: Vec<BoxedWidget>) -> BoxedWidget {
+pub fn card_row(children: Vec<BoxedWidget>) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
         RawView::new(Style {
             align_items: Some(AlignItems::Stretch),
@@ -136,7 +140,8 @@ pub fn card_row(theme: &Theme, children: Vec<BoxedWidget>) -> BoxedWidget {
 
 /// A section heading: a bold title plus a muted one-line description.
 #[component]
-pub fn SectionHeader(theme: Theme, title: String, subtitle: String) -> BoxedWidget {
+pub fn SectionHeader(title: String, subtitle: String) -> BoxedWidget {
+    let theme = use_theme();
     let heading_style = Style {
         size: creamui_core::layout::Size {
             width: Dimension::Percent(1.0),
@@ -146,8 +151,8 @@ pub fn SectionHeader(theme: Theme, title: String, subtitle: String) -> BoxedWidg
     };
     Box::new(jsx! {
         <RawView style={column(4.0)}>
-            <Heading theme={&theme} size={TextSize::Xl} style={heading_style}>{title}</Heading>
-            <Text theme={&theme} color={theme.text_secondary} align={TextAlign::Start} style={label_style()}>{subtitle}</Text>
+            <Heading size={TextSize::Xl} style={heading_style}>{title}</Heading>
+            <Text color={theme.text_secondary} align={TextAlign::Start} style={label_style()}>{subtitle}</Text>
         </RawView>
     })
 }

@@ -1,8 +1,7 @@
 //! Themed widgets: opinionated, styled wrappers around the headless widgets
-//! in [`crate::raw`]. Each one reads its appearance from a
-//! [`creamui_theme::Theme`] passed in at construction time — either a fixed
-//! value, or `creamui_theme::ThemeProvider::get()`'s result each render, to
-//! support runtime theme switching.
+//! in [`crate::raw`]. Each one reads its appearance via `use_theme()` at
+//! construction time — see `creamui_reactive::with_context_scope` — so it
+//! always reflects the window's current theme, including runtime switches.
 //!
 //! These are meant to be copied and adapted: a themed `Button` is nothing
 //! more than a [`crate::raw::RawButton`] with theme-derived style baked in,
@@ -18,8 +17,21 @@ use creamui_core::layout::{
     AlignItems, Dimension, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
 };
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
-use creamui_theme::{Color, SelectionStyle, Theme};
+use creamui_theme::{use_theme, Color, SelectionStyle, Theme, ThemeProvider};
 use std::rc::Rc;
+
+/// Re-enters a context scope with `theme` as the current theme. For widgets
+/// that construct themed children lazily — inside `Widget::children`,
+/// `paint`, or `measure`, which run during layout/scene reconciliation,
+/// outside the `with_context_scope` that wraps `build_ui` — using a `Theme`
+/// snapshot cached at construction time, so those children's own
+/// `use_theme()` calls don't panic.
+pub(crate) fn with_cached_theme<R>(theme: Theme, f: impl FnOnce() -> R) -> R {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(ThemeProvider::new(theme));
+        f()
+    })
+}
 
 fn centered_box_style(padding: f32) -> Style {
     Style {

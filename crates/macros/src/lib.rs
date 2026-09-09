@@ -386,22 +386,21 @@ impl Element {
                 self.container_children(output)
             }
             "View" => {
-                self.reject_unknown_props(&["theme", "style"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["style"])?;
                 let style = self.required_prop("style")?;
-                self.container_children(quote!(#widgets::themed::View::new(#theme, #style)))
+                self.container_children(quote!(#widgets::themed::View::new(#style)))
             }
             "ScrollView" => {
-                self.reject_unknown_props(&["theme", "style", "scroll_y", "on_scroll"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["style", "scroll_y", "on_scroll"])?;
                 let style = self.required_prop("style")?;
                 let scroll_y = self.required_prop("scroll_y")?;
                 let on_scroll = self.required_prop("on_scroll")?;
-                self.container_children(quote!(#widgets::themed::ScrollView::new(#theme, #style, #scroll_y, #on_scroll)))
+                self.container_children(
+                    quote!(#widgets::themed::ScrollView::new(#style, #scroll_y, #on_scroll)),
+                )
             }
             "Text" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "font_size",
                     "font_family",
                     "size",
@@ -410,12 +409,11 @@ impl Element {
                     "color",
                     "style",
                 ])?;
-                let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(secondary) = self.prop("secondary")? {
-                    quote!(if #secondary { #widgets::themed::Text::secondary(#theme, #text) } else { #widgets::themed::Text::new(#theme, #text) })
+                    quote!(if #secondary { #widgets::themed::Text::secondary(#text) } else { #widgets::themed::Text::new(#text) })
                 } else {
-                    quote!(#widgets::themed::Text::new(#theme, #text))
+                    quote!(#widgets::themed::Text::new(#text))
                 };
                 if let Some(font_size) = self.prop("font_size")? {
                     output = quote!(#output.font_size(#font_size));
@@ -438,20 +436,12 @@ impl Element {
                 Ok(output)
             }
             "Heading" => {
-                self.reject_unknown_props(&[
-                    "theme",
-                    "size",
-                    "align",
-                    "color",
-                    "style",
-                    "font_family",
-                ])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["size", "align", "color", "style", "font_family"])?;
                 let text = self.text_child()?;
                 let mut output = if let Some(size) = self.prop("size")? {
-                    quote!(#widgets::themed::Heading::sized(#theme, #size, #text))
+                    quote!(#widgets::themed::Heading::sized(#size, #text))
                 } else {
-                    quote!(#widgets::themed::Heading::new(#theme, #text))
+                    quote!(#widgets::themed::Heading::new(#text))
                 };
                 if let Some(align) = self.prop("align")? {
                     output = quote!(#output.align(#align));
@@ -468,14 +458,13 @@ impl Element {
                 Ok(output)
             }
             "Button" => {
-                self.reject_unknown_props(&["theme", "on_click", "style", "disabled"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["on_click", "style", "disabled"])?;
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(#widgets::themed::Button::with_style(#theme, #style, #label, #on_click))
+                    quote!(#widgets::themed::Button::with_style(#style, #label, #on_click))
                 } else {
-                    quote!(#widgets::themed::Button::new(#theme, #label, #on_click))
+                    quote!(#widgets::themed::Button::new(#label, #on_click))
                 };
                 if let Some(disabled) = self.prop("disabled")? {
                     output = quote!(#output.disabled(#disabled));
@@ -483,21 +472,19 @@ impl Element {
                 Ok(output)
             }
             "Checkbox" => {
-                self.reject_unknown_props(&["theme", "checked", "on_click"])?;
+                self.reject_unknown_props(&["checked", "on_click"])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
                         &self.tag,
                         "`Checkbox` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let checked = self.required_prop("checked")?;
                 let on_click = self.required_prop("on_click")?;
-                Ok(quote!(#widgets::themed::Checkbox::new(#theme, #checked, #on_click)))
+                Ok(quote!(#widgets::themed::Checkbox::new(#checked, #on_click)))
             }
             "TextInput" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
@@ -511,24 +498,23 @@ impl Element {
                         "`TextInput` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let style = self.prop("style")?;
                 let mut output = match (self.prop("controller")?, self.prop("value")?, self.prop("on_change")?) {
                     (Some(controller), None, None) => if let Some(style) = &style {
-                        quote!(#widgets::themed::TextInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextInput::controlled_with_style(#style, #controller))
                     } else {
-                        quote!(#widgets::themed::TextInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextInput::controlled(#controller))
                     },
                     (None, Some(value), Some(on_change)) => if let Some(style) = &style {
-                        quote!(#widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::with_style(#style, #value, #on_change))
                     } else {
-                        quote!(#widgets::themed::TextInput::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::new(#value, #on_change))
                     },
                     (None, None, None) => return Err(Error::new_spanned(&self.tag, "`TextInput` requires either a `controller` prop or both `value` and `on_change`")),
                     _ => return Err(Error::new_spanned(&self.tag, "`TextInput`'s `controller` prop cannot be combined with `value`/`on_change`")),
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
-                    output = quote!(#output.placeholder(#theme, #placeholder));
+                    output = quote!(#output.placeholder(#placeholder));
                 }
                 if let Some(enabled) = self.prop("clipboard_enabled")? {
                     output = quote!(#output.clipboard_enabled(#enabled));
@@ -537,7 +523,6 @@ impl Element {
             }
             "TextArea" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
@@ -565,7 +550,6 @@ impl Element {
                         "`TextArea` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let style = self.prop("style")?;
                 let controller = self.prop("controller")?;
                 if let Some(controller) = &controller {
@@ -585,21 +569,21 @@ impl Element {
                 }
                 let mut output = if let Some(controller) = &controller {
                     if let Some(style) = &style {
-                        quote!(#widgets::themed::TextArea::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextArea::controlled_with_style(#style, #controller))
                     } else {
-                        quote!(#widgets::themed::TextArea::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextArea::controlled(#controller))
                     }
                 } else {
                     let value = self.required_prop("value")?;
                     let on_change = self.required_prop("on_change")?;
                     if let Some(style) = &style {
-                        quote!(#widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::with_style(#style, #value, #on_change))
                     } else {
-                        quote!(#widgets::themed::TextArea::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::new(#value, #on_change))
                     }
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
-                    output = quote!(#output.placeholder(#theme, #placeholder));
+                    output = quote!(#output.placeholder(#placeholder));
                 }
                 if let Some(color) = self.prop("alternating_line_background")? {
                     output = quote!(#output.alternating_line_background(#color));
@@ -655,27 +639,23 @@ impl Element {
                 Ok(output)
             }
             "Slider" => {
-                self.reject_unknown_props(&["theme", "value", "on_change", "style"])?;
+                self.reject_unknown_props(&["value", "on_change", "style"])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
                         &self.tag,
                         "`Slider` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
                 if let Some(style) = self.prop("style")? {
-                    Ok(
-                        quote!(#widgets::themed::Slider::with_style(#theme, #style, #value, #on_change)),
-                    )
+                    Ok(quote!(#widgets::themed::Slider::with_style(#style, #value, #on_change)))
                 } else {
-                    Ok(quote!(#widgets::themed::Slider::new(#theme, #value, #on_change)))
+                    Ok(quote!(#widgets::themed::Slider::new(#value, #on_change)))
                 }
             }
             "ColorPicker" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
@@ -689,14 +669,13 @@ impl Element {
                         "`ColorPicker` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let controller = self.required_prop("controller")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(#widgets::themed::ColorPicker::controlled_with_style(#theme, #style, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled_with_style(#style, #value, #controller, #on_change))
                 } else {
-                    quote!(#widgets::themed::ColorPicker::controlled(#theme, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled(#value, #controller, #on_change))
                 };
                 if let Some(width) = self.prop("popup_width")? {
                     output = quote!(#output.popup_width(#width));
@@ -730,7 +709,6 @@ impl Element {
             }
             "DateTimePicker" | "DateInput" | "TimeInput" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "style",
                     "show_date",
@@ -745,7 +723,6 @@ impl Element {
                         "picker inputs cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let controller = self.required_prop("controller")?;
                 let style = self.prop("style")?;
                 let tag = self.tag.to_string();
@@ -756,22 +733,22 @@ impl Element {
                 }
                 let constructor = match (tag.as_str(), style) {
                     ("DateTimePicker", Some(style)) => {
-                        quote!(#widgets::themed::DateTimePicker::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled_with_style(#style, #controller))
                     }
                     ("DateTimePicker", None) => {
-                        quote!(#widgets::themed::DateTimePicker::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled(#controller))
                     }
                     ("DateInput", Some(style)) => {
-                        quote!(#widgets::themed::DateInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateInput::controlled_with_style(#style, #controller))
                     }
                     ("DateInput", None) => {
-                        quote!(#widgets::themed::DateInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateInput::controlled(#controller))
                     }
                     ("TimeInput", Some(style)) => {
-                        quote!(#widgets::themed::TimeInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled_with_style(#style, #controller))
                     }
                     _ => {
-                        quote!(#widgets::themed::TimeInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled(#controller))
                     }
                 };
                 let mut output = constructor;

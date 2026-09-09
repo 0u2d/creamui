@@ -14,19 +14,16 @@ pub struct ScrollView {
 }
 
 impl ScrollView {
-    pub fn new(
-        theme: &Theme,
-        style: Style,
-        scroll_y: f32,
-        on_scroll: impl Fn(f32) + 'static,
-    ) -> Self {
+    pub fn new(style: Style, scroll_y: f32, on_scroll: impl Fn(f32) + 'static) -> Self {
+        let theme = use_theme();
         let inner = RawScrollView::new(style, scroll_y, on_scroll)
             .background(theme.surface)
             .corner_radius(theme.radius_medium);
         ScrollView { inner }
     }
 
-    pub fn controlled(theme: &Theme, style: Style, controller: ScrollController) -> Self {
+    pub fn controlled(style: Style, controller: ScrollController) -> Self {
+        let theme = use_theme();
         let inner = RawScrollView::controlled(style, controller)
             .background(theme.surface)
             .corner_radius(theme.radius_medium)

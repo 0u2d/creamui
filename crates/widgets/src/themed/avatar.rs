@@ -19,10 +19,11 @@ pub struct Avatar {
 }
 
 impl Avatar {
-    pub fn new(theme: &Theme, size: f32) -> Self {
+    pub fn new(size: f32) -> Self {
+        let theme = use_theme();
         Self {
             size,
-            theme: *theme,
+            theme,
             background: theme.surface_hover,
             content: None,
             initials: None,

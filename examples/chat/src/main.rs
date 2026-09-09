@@ -52,7 +52,8 @@ fn tint(color: Color, alpha: u8) -> Color {
     Color::rgba(color.r, color.g, color.b, alpha)
 }
 
-fn hairline(theme: &Theme) -> BoxedWidget {
+fn hairline() -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
         RawView::new(Style {
             size: LayoutSize {
@@ -369,8 +370,9 @@ fn box_style(width: f32, height: f32) -> Style {
     }
 }
 
-fn contact_avatar(theme: &Theme, contact: &Contact, size: f32) -> Avatar {
-    let mut avatar = Avatar::new(theme, size)
+fn contact_avatar(contact: &Contact, size: f32) -> Avatar {
+    let theme = use_theme();
+    let mut avatar = Avatar::new(size)
         .background(contact.color)
         .initials(contact.initials.clone())
         .initials_color(Color::rgb(0x1c, 0x1b, 0x1d));
@@ -452,12 +454,8 @@ fn attachment_from_path(path: &std::path::Path) -> Attachment {
 }
 
 #[component]
-fn ContactRow(
-    theme: Theme,
-    conversation: Conversation,
-    active: bool,
-    on_select: Rc<dyn Fn()>,
-) -> BoxedWidget {
+fn ContactRow(conversation: Conversation, active: bool, on_select: Rc<dyn Fn()>) -> BoxedWidget {
+    let theme = use_theme();
     let messages = conversation.messages.get();
     let unread = conversation.unread.get();
     let is_typing = conversation.typing.get();
@@ -544,11 +542,7 @@ fn ContactRow(
         RawButton::new(row_style, move || on_select())
             .background(background)
             .corner_radius(theme.radius_medium)
-            .child(Box::new(contact_avatar(
-                &theme,
-                &conversation.contact,
-                44.0,
-            )))
+            .child(Box::new(contact_avatar(&conversation.contact, 44.0)))
             .child(Box::new(
                 RawView::new(text_column_style)
                     .child(Box::new(
@@ -559,7 +553,7 @@ fn ContactRow(
                     .child(Box::new(
                         RawView::new(preview_row_style)
                             .child(Box::new(preview_text))
-                            .child(Box::new(Badge::count(&theme, unread))),
+                            .child(Box::new(Badge::count(unread))),
                     )),
             )),
     )
@@ -567,12 +561,12 @@ fn ContactRow(
 
 #[component]
 fn ContactSidebar(
-    theme: Theme,
     conversations: Vec<Conversation>,
     active_index: usize,
     filter: TextController,
     on_select: Rc<dyn Fn(usize)>,
 ) -> BoxedWidget {
+    let theme = use_theme();
     let query = filter.value().to_lowercase();
     let header_style = padding(
         Style {
@@ -601,7 +595,6 @@ fn ContactSidebar(
         }
         let select = on_select.clone();
         rows.push(ContactRow(ContactRowProps {
-            theme,
             conversation: conversation.clone(),
             active: active_index == index,
             on_select: Rc::new(move || select(index)),
@@ -620,7 +613,7 @@ fn ContactSidebar(
                 14.0,
             ))
             .child(Box::new(
-                Text::secondary(&theme, "No conversations match.").align(TextAlign::Start),
+                Text::secondary("No conversations match.").align(TextAlign::Start),
             )),
         ));
     }
@@ -641,16 +634,16 @@ fn ContactSidebar(
         },
         ..Default::default()
     });
-    let search_input = TextInput::controlled_with_style(&theme, search_style, &filter)
-        .placeholder(&theme, "Search people…");
-    let list = ScrollView::new(&theme, list_style, 0.0, |_| {}).with_children(rows);
+    let search_input =
+        TextInput::controlled_with_style(search_style, &filter).placeholder("Search people…");
+    let list = ScrollView::new(list_style, 0.0, |_| {}).with_children(rows);
 
     Box::new(
         RawView::new(sidebar_style)
             .background(theme.surface)
             .child(Box::new(
                 RawView::new(header_style)
-                    .child(Box::new(Heading::sized(&theme, TextSize::Lg, "Chats")))
+                    .child(Box::new(Heading::sized(TextSize::Lg, "Chats")))
                     .child(Box::new(search_input)),
             ))
             .child(Box::new(list)),
@@ -658,7 +651,8 @@ fn ContactSidebar(
 }
 
 #[component]
-fn ConversationHeader(theme: Theme, conversation: Conversation) -> BoxedWidget {
+fn ConversationHeader(conversation: Conversation) -> BoxedWidget {
+    let theme = use_theme();
     let status = if conversation.typing.get() {
         "Typing…".to_owned()
     } else if conversation.contact.online {
@@ -696,11 +690,7 @@ fn ConversationHeader(theme: Theme, conversation: Conversation) -> BoxedWidget {
         .background(theme.surface_elevated)
         .child(Box::new(
             RawView::new(identity_style)
-                .child(Box::new(contact_avatar(
-                    &theme,
-                    &conversation.contact,
-                    40.0,
-                )))
+                .child(Box::new(contact_avatar(&conversation.contact, 40.0)))
                 .child(Box::new(
                     RawView::new(column(2.0))
                         .child(Box::new(
@@ -746,11 +736,12 @@ fn ConversationHeader(theme: Theme, conversation: Conversation) -> BoxedWidget {
     Box::new(
         RawView::new(wrapper_style)
             .child(Box::new(bar))
-            .child(hairline(&theme)),
+            .child(hairline()),
     )
 }
 
-fn attachment_widget(theme: &Theme, attachment: &Attachment) -> BoxedWidget {
+fn attachment_widget(attachment: &Attachment) -> BoxedWidget {
+    let theme = use_theme();
     match attachment {
         Attachment::Image(data) => {
             let aspect = data.width() as f32 / data.height() as f32;
@@ -824,7 +815,8 @@ impl Widget for ReadReceipt {
     }
 }
 
-fn message_bubble(theme: &Theme, message: &ChatMessage) -> BoxedWidget {
+fn message_bubble(message: &ChatMessage) -> BoxedWidget {
+    let theme = use_theme();
     let bubble_background = if message.mine {
         theme.accent
     } else {
@@ -894,7 +886,7 @@ fn message_bubble(theme: &Theme, message: &ChatMessage) -> BoxedWidget {
         .corner_radius(theme.card_radius);
 
     if let Some(attachment) = &message.attachment {
-        bubble = bubble.child(attachment_widget(theme, attachment));
+        bubble = bubble.child(attachment_widget(attachment));
     }
     if !message.text.is_empty() {
         bubble = bubble.child(Box::new(
@@ -925,7 +917,8 @@ fn message_bubble(theme: &Theme, message: &ChatMessage) -> BoxedWidget {
 }
 
 #[component]
-fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollController) -> BoxedWidget {
+fn MessageList(conversation: Conversation, scroll: ScrollController) -> BoxedWidget {
+    let theme = use_theme();
     let messages = conversation.messages.get();
     let is_typing = conversation.typing.get();
     let list_style = Style {
@@ -936,10 +929,10 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
         },
         ..Default::default()
     };
-    let mut view = ScrollView::controlled(&theme, list_style, scroll)
+    let mut view = ScrollView::controlled(list_style, scroll)
         .background(theme.surface_elevated)
         .content_gap(10.0)
-        .with_children(messages.iter().map(|m| message_bubble(&theme, m)).collect());
+        .with_children(messages.iter().map(|m| message_bubble(m)).collect());
     if is_typing {
         let typing_row_style = Style {
             size: LayoutSize {
@@ -964,7 +957,7 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
                 RawView::new(bubble_style)
                     .background(theme.surface_hover)
                     .corner_radius(theme.card_radius)
-                    .child(Box::new(TypingIndicator::new(&theme))),
+                    .child(Box::new(TypingIndicator::new())),
             )),
         ));
     }
@@ -995,11 +988,8 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
 
 // Sized to sit inside the composer's one-row bar rather than a second row
 // above it, so an attached/cleared file never changes the bar's height.
-fn inline_attachment_chip(
-    theme: &Theme,
-    attachment: &Attachment,
-    on_remove: impl Fn() + 'static,
-) -> BoxedWidget {
+fn inline_attachment_chip(attachment: &Attachment, on_remove: impl Fn() + 'static) -> BoxedWidget {
+    let theme = use_theme();
     let chip_style = padding_xy(
         Style {
             align_items: Some(AlignItems::Center),
@@ -1048,12 +1038,12 @@ fn inline_attachment_chip(
 
 #[component]
 fn Composer(
-    theme: Theme,
     composer: TextController,
     pending_attachment: Signal<Option<Attachment>>,
     on_attach: Rc<dyn Fn()>,
     on_send: Rc<dyn Fn()>,
 ) -> BoxedWidget {
+    let theme = use_theme();
     let bar_style = padding_xy(
         Style {
             size: LayoutSize {
@@ -1088,14 +1078,12 @@ fn Composer(
 
     if let Some(attachment) = pending_attachment.get() {
         let clear = pending_attachment.clone();
-        bar = bar.child(inline_attachment_chip(&theme, &attachment, move || {
-            clear.set(None)
-        }));
+        bar = bar.child(inline_attachment_chip(&attachment, move || clear.set(None)));
     }
 
     let submit = on_send.clone();
-    let input = TextInput::controlled_with_style(&theme, input_style, &composer)
-        .placeholder(&theme, "Message")
+    let input = TextInput::controlled_with_style(input_style, &composer)
+        .placeholder("Message")
         .background(theme.surface_hover)
         .on_submit(move || submit());
     bar = bar.child(Box::new(input));
@@ -1117,7 +1105,7 @@ fn Composer(
     };
     Box::new(
         RawView::new(wrapper_style)
-            .child(hairline(&theme))
+            .child(hairline())
             .child(Box::new(bar)),
     )
 }
@@ -1206,7 +1194,6 @@ fn main() {
             });
 
             let sidebar = ContactSidebar(ContactSidebarProps {
-                theme,
                 conversations: conversations.clone(),
                 active_index,
                 filter: filter.clone(),
@@ -1214,12 +1201,10 @@ fn main() {
             });
 
             let header = ConversationHeader(ConversationHeaderProps {
-                theme,
                 conversation: conversations[active_index].clone(),
             });
 
             let message_list = MessageList(MessageListProps {
-                theme,
                 conversation: conversations[active_index].clone(),
                 scroll: content_scroll.scroll(),
             });
@@ -1267,7 +1252,6 @@ fn main() {
             });
 
             let composer_bar = Composer(ComposerProps {
-                theme,
                 composer: composer.clone(),
                 pending_attachment: pending_attachment.clone(),
                 on_attach,

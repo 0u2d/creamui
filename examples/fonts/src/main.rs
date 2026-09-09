@@ -63,14 +63,14 @@ fn main() {
 
             Box::new(jsx! {
                 <RawView style={style} background={theme.surface}>
-                    <Heading theme={&theme}>"register_file() / use_font() / .font_family()"</Heading>
-                    <Text theme={&theme} align={TextAlign::Start}>
+                    <Heading>"register_file() / use_font() / .font_family()"</Heading>
+                    <Text align={TextAlign::Start}>
                         {format!("Default theme family: {}", theme.font_family)}
                     </Text>
-                    <Text theme={&theme} font_family={format!("{CUSTOM_FAMILY}, {DEFAULT_FAMILY}")}>
+                    <Text font_family={format!("{CUSTOM_FAMILY}, {DEFAULT_FAMILY}")}>
                         {format!("This line asks for \"{CUSTOM_FAMILY}, {DEFAULT_FAMILY}\"")}
                     </Text>
-                    <Text theme={&theme} align={TextAlign::Start}>{font_status}</Text>
+                    <Text align={TextAlign::Start}>{font_status}</Text>
                 </RawView>
             })
         },

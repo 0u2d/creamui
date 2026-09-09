@@ -2,12 +2,8 @@ use crate::prelude::*;
 
 /// A row of numbered list items long enough to overflow a fixed-height
 /// scroll view, used by both lists in [`ScrollPanel`].
-fn scroll_rows(
-    theme: &Theme,
-    count: usize,
-    row_style: Style,
-    text_color: Color,
-) -> Vec<BoxedWidget> {
+fn scroll_rows(count: usize, row_style: Style, text_color: Color) -> Vec<BoxedWidget> {
+    let theme = use_theme();
     let text_style = Style {
         size: creamui_core::layout::Size {
             width: Dimension::Percent(1.0),
@@ -41,10 +37,10 @@ fn scroll_rows(
 /// the mouse wheel over either list, and they stay in sync.
 #[component]
 pub fn ScrollPanel(
-    theme: Theme,
     themed_scroll: ScrollController,
     custom_scroll: ScrollController,
 ) -> BoxedWidget {
+    let theme = use_theme();
     const ROWS: usize = 28;
     let list_style = Style {
         size: creamui_core::layout::Size {
@@ -66,10 +62,8 @@ pub fn ScrollPanel(
         theme.spacing_medium,
     );
 
-    let themed_list =
-        ScrollView::controlled(&theme, list_style.clone(), themed_scroll).with_children(
-            scroll_rows(&theme, ROWS, row_style.clone(), theme.text_primary),
-        );
+    let themed_list = ScrollView::controlled(list_style.clone(), themed_scroll)
+        .with_children(scroll_rows(ROWS, row_style.clone(), theme.text_primary));
 
     const NEON: Color = Color::rgb(0x5c, 0xe1, 0xff);
     let custom_list = RawScrollView::controlled(list_style, custom_scroll)
@@ -78,19 +72,14 @@ pub fn ScrollPanel(
         .scrollbar_width(7.0)
         .scrollbar_color(Color::rgba(NEON.r, NEON.g, NEON.b, 150))
         .scrollbar_hover_color(Color::rgba(NEON.r, NEON.g, NEON.b, 220))
-        .with_children(scroll_rows(
-            &theme,
-            ROWS,
-            row_style,
-            Color::rgb(0xbf, 0xef, 0xff),
-        ));
+        .with_children(scroll_rows(ROWS, row_style, Color::rgb(0xbf, 0xef, 0xff)));
 
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Scroll".to_owned()} subtitle={"A draggable scrollbar thumb tracks the mouse wheel automatically, and vice versa.".to_owned()} />
-            {card_row(&theme, vec![
-                field_card(&theme, "Themed · ScrollView", Box::new(themed_list)),
-                field_card(&theme, "Custom · RawScrollView", Box::new(custom_list)),
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Scroll".to_owned()} subtitle={"A draggable scrollbar thumb tracks the mouse wheel automatically, and vice versa.".to_owned()} />
+            {card_row(vec![
+                field_card("Themed · ScrollView", Box::new(themed_list)),
+                field_card("Custom · RawScrollView", Box::new(custom_list)),
             ])}
         </RawView>
     })

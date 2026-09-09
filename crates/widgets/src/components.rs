@@ -5,7 +5,7 @@ use creamui_core::layout::{AlignItems, Style};
 use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug)]
@@ -209,9 +209,10 @@ pub struct Surface {
     children: Vec<BoxedWidget>,
 }
 impl Surface {
-    pub fn new(theme: &Theme, role: SurfaceRole, style: Style) -> Self {
+    pub fn new(role: SurfaceRole, style: Style) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             role,
             style,
             children: vec![],
@@ -274,14 +275,14 @@ pub struct NavigationItem {
 }
 impl NavigationItem {
     pub fn new(
-        theme: &Theme,
         symbol: Symbol,
         label: impl Into<String>,
         active: bool,
         click: impl Fn() + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             symbol,
             label: label.into(),
             active,
@@ -389,12 +390,8 @@ pub struct Choice {
     inner: crate::RawButton,
 }
 impl Choice {
-    pub fn new(
-        theme: &Theme,
-        label: impl Into<String>,
-        selected: bool,
-        click: impl Fn() + 'static,
-    ) -> Self {
+    pub fn new(label: impl Into<String>, selected: bool, click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         let style = padding(
             Style {
                 min_size: crate::layout::fixed(72., 30.),

@@ -273,6 +273,19 @@ fn theme_from_c(t: CTheme) -> Theme {
     Theme::default().with_colors(colors)
 }
 
+/// Runs `f` inside a context scope providing `theme`, so the themed widget
+/// constructors it calls (which read `use_theme()`, not an explicit
+/// parameter) resolve it correctly. C callers construct one widget per call
+/// rather than a whole tree inside `build_ui`, so each such FFI function
+/// opens its own short-lived scope instead of relying on one already being
+/// active.
+fn with_theme_scope<R>(theme: Theme, f: impl FnOnce() -> R) -> R {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(theme));
+        f()
+    })
+}
+
 /// Returns the bundled default dark theme's tokens.
 #[no_mangle]
 pub extern "C" fn creamui_theme_dark() -> CTheme {
@@ -532,10 +545,10 @@ pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut 
 /// reference via a throwaway placeholder so both `creamui_view_add_child`
 /// and [`creamui_scroll_view_add_child`] can share this one code path.
 fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
-    let taken = std::mem::replace(
-        view,
-        ThemedScrollView::new(&Theme::dark(), Style::default(), 0.0, |_| {}),
-    );
+    let placeholder = with_theme_scope(Theme::dark(), || {
+        ThemedScrollView::new(Style::default(), 0.0, |_| {})
+    });
+    let taken = std::mem::replace(view, placeholder);
     *view = taken.child(child);
 }
 
@@ -588,7 +601,9 @@ pub unsafe extern "C" fn creamui_themed_text_new(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text)));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::new(text)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -604,7 +619,9 @@ pub unsafe extern "C" fn creamui_themed_text_secondary_new(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(ThemedText::secondary(&theme, text)));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::secondary(text)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -621,9 +638,9 @@ pub unsafe extern "C" fn creamui_themed_text_new_sized(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(
-        ThemedText::new(&theme, text).font_size(font_size),
-    ));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::new(text).font_size(font_size)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -649,8 +666,10 @@ pub unsafe extern "C" fn creamui_button_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let button = ThemedButton::new(&theme, text, move || {
-        on_click(userdata.0);
+    let button = with_theme_scope(theme, || {
+        ThemedButton::new(text, move || {
+            on_click(userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedButton(button))))
 }
@@ -675,8 +694,10 @@ pub unsafe extern "C" fn creamui_checkbox_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let checkbox = ThemedCheckbox::new(&theme, checked != 0, move || {
-        on_click(userdata.0);
+    let checkbox = with_theme_scope(theme, || {
+        ThemedCheckbox::new(checked != 0, move || {
+            on_click(userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedCheckbox(checkbox))))
 }
@@ -704,19 +725,16 @@ pub unsafe extern "C" fn creamui_text_input_new(
 
     let value = cstr_to_string(value);
     let theme_owned: Theme = theme_from_c(theme);
-    let inner = ThemedTextInput::with_style(
-        &theme_owned,
-        style_from_c(style),
-        value,
-        move |next: String| {
+    let inner = with_theme_scope(theme_owned, || {
+        ThemedTextInput::with_style(style_from_c(style), value, move |next: String| {
             // CString::new fails only on interior NULs, which a text input's
             // keystroke-built value can never contain (Key::Char never yields
             // '\0'), so this is infallible in practice.
             if let Ok(c_next) = CString::new(next) {
                 on_change(c_next.as_ptr(), userdata.0);
             }
-        },
-    );
+        })
+    });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextInput(inner))))
 }
 
@@ -739,8 +757,10 @@ pub unsafe extern "C" fn creamui_text_input_set_placeholder(
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextInput(w) = &mut (*input).0 {
-        let taken = std::mem::replace(w, ThemedTextInput::new(&theme, String::new(), |_| {}));
-        *w = taken.placeholder(&theme, text);
+        with_theme_scope(theme, || {
+            let taken = std::mem::replace(w, ThemedTextInput::new(String::new(), |_| {}));
+            *w = taken.placeholder(text);
+        });
     }
 }
 
@@ -759,16 +779,13 @@ pub unsafe extern "C" fn creamui_text_area_new(
     let userdata = SendPtr(userdata);
     let value = cstr_to_string(value);
     let theme_owned: Theme = theme_from_c(theme);
-    let area = ThemedTextArea::with_style(
-        &theme_owned,
-        style_from_c(style),
-        value,
-        move |next: String| {
+    let area = with_theme_scope(theme_owned, || {
+        ThemedTextArea::with_style(style_from_c(style), value, move |next: String| {
             if let Ok(c_next) = CString::new(next) {
                 on_change(c_next.as_ptr(), userdata.0);
             }
-        },
-    );
+        })
+    });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextArea(area))))
 }
 
@@ -786,8 +803,10 @@ pub unsafe extern "C" fn creamui_text_area_set_placeholder(
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
-        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
-        *w = taken.placeholder(&theme, text);
+        with_theme_scope(theme, || {
+            let taken = std::mem::replace(w, ThemedTextArea::new(String::new(), |_| {}));
+            *w = taken.placeholder(text);
+        });
     }
 }
 
@@ -808,8 +827,9 @@ pub unsafe extern "C" fn creamui_text_area_set_selection_colors(
         return;
     }
     if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
-        let theme = Theme::dark();
-        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
+        let placeholder =
+            with_theme_scope(Theme::dark(), || ThemedTextArea::new(String::new(), |_| {}));
+        let taken = std::mem::replace(w, placeholder);
         *w = taken
             .selection_background(color_from_c(background))
             .selection_text_color(color_from_c(text));
@@ -836,8 +856,10 @@ pub unsafe extern "C" fn creamui_slider_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let slider = ThemedSlider::with_style(&theme, style_from_c(style), value, move |next| {
-        on_change(next, userdata.0);
+    let slider = with_theme_scope(theme, || {
+        ThemedSlider::with_style(style_from_c(style), value, move |next| {
+            on_change(next, userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedSlider(slider))))
 }
@@ -864,8 +886,10 @@ pub unsafe extern "C" fn creamui_scroll_view_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let scroll_view = ThemedScrollView::new(&theme, style_from_c(style), scroll_y, move |delta| {
-        on_scroll(delta, userdata.0);
+    let scroll_view = with_theme_scope(theme, || {
+        ThemedScrollView::new(style_from_c(style), scroll_y, move |delta| {
+            on_scroll(delta, userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedScrollView(scroll_view))))
 }

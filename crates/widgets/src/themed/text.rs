@@ -67,7 +67,8 @@ impl Text {
         self
     }
 
-    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn new(text: impl Into<String>) -> Self {
+        let theme = use_theme();
         Text {
             inner: RawText::new(text, theme.text_primary, theme.typography.body)
                 .font_family(theme.font_family),
@@ -75,7 +76,8 @@ impl Text {
     }
 
     /// Same as [`Text::new`] but using the theme's secondary (muted) text color.
-    pub fn secondary(theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn secondary(text: impl Into<String>) -> Self {
+        let theme = use_theme();
         Text {
             inner: RawText::new(text, theme.text_secondary, theme.typography.body)
                 .font_family(theme.font_family),
@@ -143,7 +145,8 @@ pub struct Heading {
 
 impl Heading {
     /// A heading at an explicit [`TextSize`] step.
-    pub fn sized(theme: &Theme, size: TextSize, text: impl Into<String>) -> Self {
+    pub fn sized(size: TextSize, text: impl Into<String>) -> Self {
+        let theme = use_theme();
         Heading {
             inner: RawText::new(
                 text,
@@ -168,33 +171,33 @@ impl Heading {
 
     /// Shorthand for [`Heading::sized`] with [`TextSize::Md`] (an
     /// h3-equivalent), a reasonable default for a section heading.
-    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Md, text)
+    pub fn new(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Md, text)
     }
 
     /// h1-equivalent: [`TextSize::Xl`].
-    pub fn xl(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Xl, text)
+    pub fn xl(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Xl, text)
     }
 
     /// h2-equivalent: [`TextSize::Lg`].
-    pub fn lg(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Lg, text)
+    pub fn lg(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Lg, text)
     }
 
     /// h3-equivalent: [`TextSize::Md`].
-    pub fn md(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Md, text)
+    pub fn md(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Md, text)
     }
 
     /// h4-equivalent: [`TextSize::Sm`].
-    pub fn sm(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Sm, text)
+    pub fn sm(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Sm, text)
     }
 
     /// h5-equivalent: [`TextSize::Xs`].
-    pub fn xs(theme: &Theme, text: impl Into<String>) -> Self {
-        Self::sized(theme, TextSize::Xs, text)
+    pub fn xs(text: impl Into<String>) -> Self {
+        Self::sized(TextSize::Xs, text)
     }
 
     pub fn align(mut self, align: TextAlign) -> Self {

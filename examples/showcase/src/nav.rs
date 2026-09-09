@@ -5,11 +5,11 @@ use crate::prelude::*;
 /// The showcase category rail.
 #[component]
 pub fn Nav(
-    theme: Theme,
     active: Signal<usize>,
     content_scroll: ScrollController,
     nav_scroll: ScrollController,
 ) -> BoxedWidget {
+    let theme = use_theme();
     // Wider than before, and padded almost only on the left: the card gap
     // to its right already separates it from the content panel, so giving
     // it a matching right pad on top of that would just waste width.
@@ -82,7 +82,6 @@ pub fn Nav(
         let select = active.clone();
         let reset_scroll = content_scroll.clone();
         items.push(Box::new(NavigationItem::new(
-            &theme,
             symbols[i],
             *label,
             active.get() == i,

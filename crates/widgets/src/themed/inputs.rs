@@ -17,22 +17,18 @@ impl TextInput {
         }
     }
 
-    pub fn new(
-        theme: &Theme,
-        value: impl Into<String>,
-        on_change: impl Fn(String) + 'static,
-    ) -> Self {
-        Self::with_style(theme, Self::default_style(), value, on_change)
+    pub fn new(value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+        Self::with_style(Self::default_style(), value, on_change)
     }
 
     /// Same as [`TextInput::new`], but with full control over layout
     /// instead of the fixed 200x36 default.
     pub fn with_style(
-        theme: &Theme,
         style: Style,
         value: impl Into<String>,
         on_change: impl Fn(String) + 'static,
     ) -> Self {
+        let theme = use_theme();
         let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
             .background(theme.surface_elevated)
             .border(theme.border, theme.input_border_width)
@@ -43,7 +39,8 @@ impl TextInput {
     }
 
     /// Grayed-out text shown when the value is empty.
-    pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, text: impl Into<String>) -> Self {
+        let theme = use_theme();
         self.inner = self.inner.placeholder(text, theme.text_disabled);
         self
     }
@@ -79,28 +76,22 @@ impl TextInput {
     /// alive across renders (created once, e.g. in `main`, the same way a
     /// `Signal` is) — cloning it here is cheap and shares the same
     /// underlying state.
-    pub fn controlled(theme: &Theme, controller: &crate::TextController) -> Self {
-        Self::controlled_with_style(theme, Self::default_style(), controller)
+    pub fn controlled(controller: &crate::TextController) -> Self {
+        Self::controlled_with_style(Self::default_style(), controller)
     }
 
     /// Same as [`TextInput::controlled`], but with full control over layout.
-    pub fn controlled_with_style(
-        theme: &Theme,
-        style: Style,
-        controller: &crate::TextController,
-    ) -> Self {
+    pub fn controlled_with_style(style: Style, controller: &crate::TextController) -> Self {
         let set = controller.clone();
-        Self::with_style(theme, style, controller.value(), move |next| {
-            set.set_value(next)
-        })
-        .cursor(controller.cursor(), {
-            let set = controller.clone();
-            move |cursor| set.set_cursor(cursor)
-        })
-        .selection(controller.selection(), {
-            let set = controller.clone();
-            move |selection| set.set_selection(selection)
-        })
+        Self::with_style(style, controller.value(), move |next| set.set_value(next))
+            .cursor(controller.cursor(), {
+                let set = controller.clone();
+                move |cursor| set.set_cursor(cursor)
+            })
+            .selection(controller.selection(), {
+                let set = controller.clone();
+                move |selection| set.set_selection(selection)
+            })
     }
 
     pub fn cursor(mut self, cursor: usize, on_change: impl Fn(usize) + 'static) -> Self {
@@ -171,19 +162,15 @@ impl TextArea {
             ..Default::default()
         }
     }
-    pub fn new(
-        theme: &Theme,
-        value: impl Into<String>,
-        on_change: impl Fn(String) + 'static,
-    ) -> Self {
-        Self::with_style(theme, Self::default_style(), value, on_change)
+    pub fn new(value: impl Into<String>, on_change: impl Fn(String) + 'static) -> Self {
+        Self::with_style(Self::default_style(), value, on_change)
     }
     pub fn with_style(
-        theme: &Theme,
         style: Style,
         value: impl Into<String>,
         on_change: impl Fn(String) + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
             inner: RawTextArea::new(style, value, 14.0, theme.text_primary, on_change)
                 .background(theme.surface_elevated)
@@ -193,7 +180,8 @@ impl TextArea {
                 .selection_text_color(theme.selection_text),
         }
     }
-    pub fn placeholder(mut self, theme: &Theme, text: impl Into<String>) -> Self {
+    pub fn placeholder(mut self, text: impl Into<String>) -> Self {
+        let theme = use_theme();
         self.inner = self.inner.placeholder(text, theme.text_disabled);
         self
     }
@@ -269,20 +257,16 @@ impl TextArea {
     /// and `selection`/`on_selection_change` by hand. The controller must be
     /// a handle the app keeps alive across renders (created once, e.g. in
     /// `main`, the same way a `Signal` is).
-    pub fn controlled(theme: &Theme, controller: &crate::TextController) -> Self {
-        Self::controlled_with_style(theme, Self::default_style(), controller)
+    pub fn controlled(controller: &crate::TextController) -> Self {
+        Self::controlled_with_style(Self::default_style(), controller)
     }
 
     /// Same as [`TextArea::controlled`], but with full control over layout.
-    pub fn controlled_with_style(
-        theme: &Theme,
-        style: Style,
-        controller: &crate::TextController,
-    ) -> Self {
+    pub fn controlled_with_style(style: Style, controller: &crate::TextController) -> Self {
         let value_set = controller.clone();
         let cursor_set = controller.clone();
         let selection_set = controller.clone();
-        Self::with_style(theme, style, controller.value(), move |next| {
+        Self::with_style(style, controller.value(), move |next| {
             value_set.set_value(next)
         })
         .cursor(controller.cursor(), move |next| cursor_set.set_cursor(next))
@@ -338,18 +322,14 @@ impl Slider {
         }
     }
 
-    pub fn new(theme: &Theme, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
-        Self::with_style(theme, Self::default_style(), value, on_change)
+    pub fn new(value: f32, on_change: impl Fn(f32) + 'static) -> Self {
+        Self::with_style(Self::default_style(), value, on_change)
     }
 
     /// Same as [`Slider::new`], but with full control over layout instead
     /// of the fixed 160x20 default.
-    pub fn with_style(
-        theme: &Theme,
-        style: Style,
-        value: f32,
-        on_change: impl Fn(f32) + 'static,
-    ) -> Self {
+    pub fn with_style(style: Style, value: f32, on_change: impl Fn(f32) + 'static) -> Self {
+        let theme = use_theme();
         let inner = RawSlider::new(
             style,
             value,

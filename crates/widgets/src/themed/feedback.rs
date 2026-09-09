@@ -12,7 +12,7 @@ pub struct Overlay {
 }
 
 impl Overlay {
-    pub fn new(_theme: &Theme, style: Style, on_dismiss: impl Fn() + 'static) -> Self {
+    pub fn new(style: Style, on_dismiss: impl Fn() + 'static) -> Self {
         Self {
             style,
             dismiss: Rc::new(on_dismiss),
@@ -21,7 +21,7 @@ impl Overlay {
     }
 
     /// A flex-centered overlay that fills its positioned parent.
-    pub fn fullscreen(theme: &Theme, on_dismiss: impl Fn() + 'static) -> Self {
+    pub fn fullscreen(on_dismiss: impl Fn() + 'static) -> Self {
         let style = Style {
             position: Position::Absolute,
             inset: creamui_core::layout::Rect {
@@ -38,7 +38,7 @@ impl Overlay {
             align_items: Some(AlignItems::Center),
             ..column(0.0)
         };
-        Self::new(theme, style, on_dismiss)
+        Self::new(style, on_dismiss)
     }
 
     pub fn child(mut self, child: BoxedWidget) -> Self {
@@ -82,9 +82,10 @@ pub struct Popover {
 }
 
 impl Popover {
-    pub fn new(theme: &Theme, style: Style) -> Self {
+    pub fn new(style: Style) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             style,
             children: Vec::new(),
         }
@@ -140,13 +141,13 @@ pub struct Dialog {
 
 impl Dialog {
     pub fn new(
-        theme: &Theme,
         title: impl Into<String>,
         message: impl Into<String>,
         on_dismiss: impl Fn() + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             title: title.into(),
             message: message.into(),
             dismiss: Rc::new(on_dismiss),
@@ -173,7 +174,7 @@ impl Dialog {
     }
 
     fn overlay_style() -> Style {
-        Overlay::fullscreen(&Theme::dark(), || {}).style
+        Overlay::fullscreen(|| {}).style
     }
 }
 
@@ -185,40 +186,45 @@ impl Widget for Dialog {
         painter.fill_rect(rect, Color::rgba(0, 0, 0, 112), 0.0);
     }
     fn children(&mut self) -> Vec<BoxedWidget> {
-        let card_style = padding(
-            Style {
-                size: creamui_core::layout::Size {
-                    width: Dimension::Length(380.0),
-                    height: Dimension::Auto,
+        let theme = self.theme;
+        let title = self.title.clone();
+        let message = self.message.clone();
+        let actions_data = std::mem::take(&mut self.actions);
+        // `children()` runs during scene reconciliation, outside `build_ui`'s
+        // context scope, but `Heading`/`Text`/`Button`/`Popover` below still
+        // call `use_theme()` — re-enter a scope seeded with the theme
+        // snapshot this `Dialog` was built with.
+        with_cached_theme(theme, move || {
+            let card_style = padding(
+                Style {
+                    size: creamui_core::layout::Size {
+                        width: Dimension::Length(380.0),
+                        height: Dimension::Auto,
+                    },
+                    ..column(theme.spacing_large)
                 },
-                ..column(self.theme.spacing_large)
-            },
-            self.theme.spacing_large,
-        );
-        let mut content = RawView::new(column(self.theme.spacing_small))
-            .child(Box::new(Heading::md(&self.theme, self.title.clone())))
-            .child(Box::new(
-                Text::secondary(&self.theme, self.message.clone()).align(TextAlign::Start),
-            ));
-        let mut actions = RawView::new(Style {
-            justify_content: Some(JustifyContent::End),
-            ..row(self.theme.spacing_medium)
-        });
-        for (label, variant, action) in &self.actions {
-            let action = action.clone();
-            actions = actions.child(Box::new(Button::styled(
-                &self.theme,
-                *variant,
-                ButtonSize::Md,
-                label.clone(),
-                ButtonState::Normal,
-                move || action(),
-            )));
-        }
-        content = content.child(Box::new(actions));
-        vec![Box::new(
-            Popover::new(&self.theme, card_style).child(Box::new(content)),
-        )]
+                theme.spacing_large,
+            );
+            let mut content = RawView::new(column(theme.spacing_small))
+                .child(Box::new(Heading::md(title)))
+                .child(Box::new(Text::secondary(message).align(TextAlign::Start)));
+            let mut actions = RawView::new(Style {
+                justify_content: Some(JustifyContent::End),
+                ..row(theme.spacing_medium)
+            });
+            for (label, variant, action) in &actions_data {
+                let action = action.clone();
+                actions = actions.child(Box::new(Button::styled(
+                    *variant,
+                    ButtonSize::Md,
+                    label.clone(),
+                    ButtonState::Normal,
+                    move || action(),
+                )));
+            }
+            content = content.child(Box::new(actions));
+            vec![Box::new(Popover::new(card_style).child(Box::new(content))) as BoxedWidget]
+        })
     }
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
         Some(self.dismiss.clone())
@@ -232,13 +238,12 @@ pub struct AlertDialog {
 
 impl AlertDialog {
     pub fn new(
-        theme: &Theme,
         title: impl Into<String>,
         message: impl Into<String>,
         on_dismiss: impl Fn() + 'static,
     ) -> Self {
         Self {
-            inner: Dialog::new(theme, title, message, on_dismiss),
+            inner: Dialog::new(title, message, on_dismiss),
         }
     }
     pub fn confirm(mut self, label: impl Into<String>, on_confirm: impl Fn() + 'static) -> Self {
@@ -274,16 +279,18 @@ pub struct ProgressBar {
 }
 
 impl ProgressBar {
-    pub fn new(theme: &Theme, value: f32) -> Self {
+    pub fn new(value: f32) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             value: Some(value),
             style: Self::default_style(),
         }
     }
-    pub fn indeterminate(theme: &Theme) -> Self {
+    pub fn indeterminate() -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             value: None,
             style: Self::default_style(),
         }
@@ -341,16 +348,18 @@ pub struct ProgressRing {
 }
 
 impl ProgressRing {
-    pub fn new(theme: &Theme, value: f32) -> Self {
+    pub fn new(value: f32) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             value: Some(value),
             size: 28.0,
         }
     }
-    pub fn indeterminate(theme: &Theme) -> Self {
+    pub fn indeterminate() -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             value: None,
             size: 28.0,
         }
@@ -430,7 +439,8 @@ impl Badge {
     /// A numeric badge, e.g. an unread-message count. `count == 0` collapses
     /// to zero size, so callers can include it unconditionally instead of
     /// branching it out of the layout by hand.
-    pub fn count(theme: &Theme, count: usize) -> Self {
+    pub fn count(count: usize) -> Self {
+        let theme = use_theme();
         let label = match count {
             0 => None,
             1..=99 => Some(count.to_string()),
@@ -510,9 +520,10 @@ pub struct TypingIndicator {
 }
 
 impl TypingIndicator {
-    pub fn new(theme: &Theme) -> Self {
+    pub fn new() -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             style: Style {
                 size: fixed(36.0, 16.0),
                 flex_shrink: 0.,

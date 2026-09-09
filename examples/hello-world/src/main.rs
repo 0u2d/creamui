@@ -31,9 +31,9 @@ fn main() {
                 ..Default::default()
             };
             Box::new(jsx! { <RawView style={style} background={theme.surface}>
-                <Text theme={&theme} font_size={28.0}>"Hello, CreamUI!"</Text>
-                <Text theme={&theme}>{format!("Clicked {} times", count.get())}</Text>
-                <Button theme={&theme} on_click={move || click_count.update(|value| *value += 1)}>"Click me"</Button>
+                <Text font_size={28.0}>"Hello, CreamUI!"</Text>
+                <Text>{format!("Clicked {} times", count.get())}</Text>
+                <Button on_click={move || click_count.update(|value| *value += 1)}>"Click me"</Button>
             </RawView> })
         },
     );

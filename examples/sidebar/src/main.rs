@@ -58,8 +58,9 @@ const SECTIONS: [Section; 4] = [
 /// active section, muted text everywhere else. Selection lives in the
 /// caller's `Signal`, not inside the widget.
 #[component]
-fn SidebarNav(theme: Theme, active: Signal<usize>) -> BoxedWidget {
-    let colors = TabColors::sidebar(&theme);
+fn SidebarNav(active: Signal<usize>) -> BoxedWidget {
+    let theme = use_theme();
+    let colors = TabColors::sidebar();
     let item_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -209,7 +210,8 @@ fn SectionPanel(
 /// small colored square before the label, so the eye can tell the themed and
 /// custom demos apart at a glance without reading the text.
 #[component]
-fn Showcase(theme: Theme, chip: Color, label: String, children: Vec<BoxedWidget>) -> BoxedWidget {
+fn Showcase(chip: Color, label: String, children: Vec<BoxedWidget>) -> BoxedWidget {
+    let theme = use_theme();
     // The outer column just stacks the caption above the card; only it
     // carries `flex_grow`, so `row()`'s split of the window is unaffected by
     // the card's own padding.
@@ -257,7 +259,7 @@ fn Showcase(theme: Theme, chip: Color, label: String, children: Vec<BoxedWidget>
             <RawText color={theme.text_disabled} font_size={12.0} align={TextAlign::Start} style={label_style}>{label}</RawText>
         </RawView>
     });
-    let card = View::new(&theme, card_style).with_children(children);
+    let card = View::new(card_style).with_children(children);
     Box::new(
         RawView::new(outer_style)
             .child(header)
@@ -294,11 +296,11 @@ fn main() {
             );
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Showcase theme={theme} chip={theme.accent} label={"THEMED — Sidebar / SidebarItem".to_owned()} children={vec![
-                        SidebarNav(SidebarNavProps { theme, active: themed_active.clone() }),
+                    <Showcase chip={theme.accent} label={"THEMED — Sidebar / SidebarItem".to_owned()} children={vec![
+                        SidebarNav(SidebarNavProps { active: themed_active.clone() }),
                         SectionPanel(SectionPanelProps { background: theme.surface_elevated, text_color: theme.text_primary, muted_color: theme.text_secondary, active: themed_active.clone() }),
                     ]} />
-                    <Showcase theme={theme} chip={Color::rgb(0x2e, 0xe6, 0x7a)} label={"CUSTOM — RawSidebar / RawTab".to_owned()} children={vec![
+                    <Showcase chip={Color::rgb(0x2e, 0xe6, 0x7a)} label={"CUSTOM — RawSidebar / RawTab".to_owned()} children={vec![
                         CustomSidebar(CustomSidebarProps { active: custom_active.clone() }),
                         SectionPanel(SectionPanelProps { background: Color::rgb(0x0c, 0x1a, 0x11), text_color: Color::rgb(0xd6, 0xf5, 0xe1), muted_color: Color::rgb(0x74, 0xa8, 0x86), active: custom_active.clone() }),
                     ]} />

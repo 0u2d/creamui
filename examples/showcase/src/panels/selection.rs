@@ -5,7 +5,6 @@ use crate::prelude::*;
 /// the same interaction as two competing controls.
 #[component]
 pub fn SelectionPanel(
-    theme: Theme,
     select: SelectController,
     radio: Signal<usize>,
     segment: Signal<usize>,
@@ -45,31 +44,27 @@ pub fn SelectionPanel(
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let list = ListBox::new(
-        &theme,
-        list_box_style,
-        list_scroll,
-        list_value,
-        move |index| set_list.set(index),
-    )
+    let list = ListBox::new(list_box_style, list_scroll, list_value, move |index| {
+        set_list.set(index)
+    })
     .options(&FRUITS);
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, compact Choice segments, or a scrollable list.".to_owned()} />
-            {field_card(&theme, "Select / ComboBox", Box::new(Select::controlled(&theme, &OPTIONS, select)))}
-            {card_row(&theme, vec![
-                field_card(&theme, "Radio group", Box::new(
-                    RadioGroup::new(&theme, radio_value, move |index| set_radio.set(index))
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Selection".to_owned()} subtitle={"Choose one value with a popup, explanatory radios, compact Choice segments, or a scrollable list.".to_owned()} />
+            {field_card("Select / ComboBox", Box::new(Select::controlled(&OPTIONS, select)))}
+            {card_row(vec![
+                field_card("Radio group", Box::new(
+                    RadioGroup::new(radio_value, move |index| set_radio.set(index))
                         .option("Keep files on this device")
                         .option("Sync encrypted copies")
                         .option("Never sync"),
                 )),
-                field_card(&theme, "Segmented control", Box::new(
-                    SegmentedControl::new(&theme, segment_value, move |index| set_segment.set(index))
+                field_card("Segmented control", Box::new(
+                    SegmentedControl::new(segment_value, move |index| set_segment.set(index))
                         .option("Day").option("Week").option("Month"),
                 )),
             ])}
-            {field_card(&theme, &format!("List box · {}", FRUITS[list_value]), Box::new(list))}
+            {field_card(&format!("List box · {}", FRUITS[list_value]), Box::new(list))}
         </RawView>
     })
 }

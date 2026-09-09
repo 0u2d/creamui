@@ -5,7 +5,7 @@ use crate::prelude::*;
 /// the "Selection" page instead). A `TreeController` tracks which folders
 /// are expanded and which row is selected.
 #[component]
-pub fn TreePanel(theme: Theme, tree_scroll: ScrollController, tree: TreeController) -> BoxedWidget {
+pub fn TreePanel(tree_scroll: ScrollController, tree: TreeController) -> BoxedWidget {
     let nodes = vec![
         TreeNode::new(1, "src").with_children(vec![
             TreeNode::new(2, "main.rs"),
@@ -25,11 +25,11 @@ pub fn TreePanel(theme: Theme, tree_scroll: ScrollController, tree: TreeControll
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let view = TreeView::new(&theme, tree_style, tree_scroll, tree, &nodes);
+    let view = TreeView::new(tree_style, tree_scroll, tree, &nodes);
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Tree".to_owned()} subtitle={"Click a chevron to expand or collapse a folder, click a row to select it, or use the arrow keys once focused.".to_owned()} />
-            {field_card(&theme, "File browser", Box::new(view))}
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Tree".to_owned()} subtitle={"Click a chevron to expand or collapse a folder, click a row to select it, or use the arrow keys once focused.".to_owned()} />
+            {field_card("File browser", Box::new(view))}
         </RawView>
     })
 }

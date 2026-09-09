@@ -45,7 +45,8 @@ fn tab_bar(
     Box::new(bar)
 }
 
-fn tab_example(theme: &Theme, label: &str, bar: BoxedWidget) -> BoxedWidget {
+fn tab_example(label: &str, bar: BoxedWidget) -> BoxedWidget {
+    let theme = use_theme();
     Box::new(
         RawView::new(column(theme.spacing_small))
             .child(Box::new(
@@ -60,13 +61,13 @@ fn tab_example(theme: &Theme, label: &str, bar: BoxedWidget) -> BoxedWidget {
 /// Filled, pill, and indicator treatments plus a content-linked tab set.
 #[component]
 pub fn TabsPanel(
-    theme: Theme,
     filled: TabController,
     pill: TabController,
     indicator: TabController,
     content: TabController,
 ) -> BoxedWidget {
-    let mut filled_colors = TabColors::dark(&theme);
+    let theme = use_theme();
+    let mut filled_colors = TabColors::dark();
     filled_colors.gap = theme.spacing_medium;
 
     let mut pill_colors = filled_colors;
@@ -113,22 +114,22 @@ pub fn TabsPanel(
         ),
     };
     Box::new(jsx! {
-        <RawView style={column(section_gap(&theme))}>
-            <SectionHeader theme={theme} title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
             {Box::new(
                 RawView::new(column(theme.spacing_large))
-                    .child(tab_example(&theme, "Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small)))
-                    .child(tab_example(&theme, "Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small)))
-                    .child(tab_example(&theme, "Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small)))
+                    .child(tab_example("Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small)))
+                    .child(tab_example("Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small)))
+                    .child(tab_example("Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small)))
             ) as BoxedWidget}
-            {Box::new(Surface::new(&theme, SurfaceRole::Inset, padding(Style {
+            {Box::new(Surface::new(SurfaceRole::Inset, padding(Style {
                 size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
                 ..column(theme.spacing_large)
             }, theme.spacing_medium))
                 .child(tab_bar(&TAB_LABELS, content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium, theme.spacing_small))
-                .child(Box::new(View::new(&theme, preview_style)
-                    .child(Box::new(Heading::new(&theme, title)))
-                    .child(Box::new(Text::secondary(&theme, detail)))
+                .child(Box::new(View::new(preview_style)
+                    .child(Box::new(Heading::new(title)))
+                    .child(Box::new(Text::secondary(detail)))
                     .child(Box::new(RawText::new(current_label, theme.accent, 12.).bold(true).align(TextAlign::Start)))))
             ) as BoxedWidget}
         </RawView>

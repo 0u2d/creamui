@@ -151,52 +151,43 @@ pub fn launch() {
             // cannot invalidate this window or make us lay it out again.
             let panel = match active_section.get() {
                 0 => AppearancePanel(AppearancePanelProps {
-                    theme,
                     dark_mode: dark_mode.clone(),
                     accent_index: accent_index.clone(),
                 }),
                 1 => TypographyPanel(TypographyPanelProps {
-                    theme,
                     link_clicks: typography_link_clicks.clone(),
                 }),
                 2 => InputPanel(InputPanelProps {
-                    theme,
                     plain: plain.clone(),
                     with_placeholder: with_placeholder.clone(),
                     notes: notes.clone(),
                     notes_wrapped: notes_wrapped.clone(),
                 }),
                 3 => PickersPanel(PickersPanelProps {
-                    theme,
                     date_time: picker_date_time.clone(),
                     color: picker_color.clone(),
                     color_picker: picker_color_popup.clone(),
                     file: picker_file.clone(),
                 }),
                 4 => ImagesPanel(ImagesPanelProps {
-                    theme,
                     png: image_png.clone(),
                     jpeg: image_jpeg.clone(),
                     webp: image_webp.clone(),
                 }),
                 5 => ButtonPanel(ButtonPanelProps {
-                    theme,
                     clicks: clicks.clone(),
                 }),
                 6 => SliderPanel(SliderPanelProps {
-                    theme,
                     volume: volume.clone(),
                     brightness: brightness.clone(),
                     zoom: zoom.clone(),
                 }),
                 7 => CheckboxPanel(CheckboxPanelProps {
-                    theme,
                     notifications: notifications.clone(),
                     auto_save: auto_save.clone(),
                     beta_features: beta_features.clone(),
                 }),
                 8 => SelectionPanel(SelectionPanelProps {
-                    theme,
                     select: select.clone(),
                     radio: radio.clone(),
                     segment: segment.clone(),
@@ -204,34 +195,28 @@ pub fn launch() {
                     list_selected: list_selected.clone(),
                 }),
                 9 => FeedbackPanel(FeedbackPanelProps {
-                    theme,
                     progress: progress.clone(),
                     show_popover: show_popover.clone(),
                     show_alert: show_alert.clone(),
                 }),
                 10 => SidebarPanel(SidebarPanelProps {
-                    theme,
                     active: sidebar_demo_active.clone(),
                 }),
                 11 => TabsPanel(TabsPanelProps {
-                    theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
                 12 => ScrollPanel(ScrollPanelProps {
-                    theme,
                     themed_scroll: themed_scroll_demo.clone(),
                     custom_scroll: custom_scroll_demo.clone(),
                 }),
                 13 => TreePanel(TreePanelProps {
-                    theme,
                     tree_scroll: tree_scroll_demo.clone(),
                     tree: tree_demo.clone(),
                 }),
                 _ => TablePanel(TablePanelProps {
-                    theme,
                     table_scroll: table_scroll_demo.clone(),
                     table_selected: table_selected.clone(),
                 }),
@@ -246,13 +231,12 @@ pub fn launch() {
                 ..Default::default()
             };
             let content = RawScrollView::controlled(scroll_style, content_scroll.clone()).child(
-                Box::new(Surface::new(&theme, SurfaceRole::Panel, content_style).child(panel)),
+                Box::new(Surface::new(SurfaceRole::Panel, content_style).child(panel)),
             );
             let dialog: BoxedWidget = if show_alert.get() {
                 let dismiss = show_alert.clone();
                 Box::new(
                     AlertDialog::new(
-                        &theme,
                         "Delete this draft?",
                         "This example uses an Overlay backdrop. Clicking outside or Cancel closes it.",
                         move || dismiss.set(false),
@@ -266,7 +250,7 @@ pub fn launch() {
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Nav theme={theme} active={active_section.clone()} content_scroll={content_scroll.clone()} nav_scroll={nav_scroll.clone()} />
+                    <Nav active={active_section.clone()} content_scroll={content_scroll.clone()} nav_scroll={nav_scroll.clone()} />
                     <RawView style={content_outer_style} background={theme.surface}>
                         {Box::new(content) as BoxedWidget}
                     </RawView>
