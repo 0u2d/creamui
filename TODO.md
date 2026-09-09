@@ -1,3 +1,0 @@
-# TODO
-
-Prioritized by impact.
