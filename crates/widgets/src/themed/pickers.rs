@@ -373,10 +373,7 @@ impl Widget for DateTimePicker {
             return Vec::new();
         }
         let theme = self.theme;
-        // `children()` runs outside `build_ui`'s context scope; `popup_button`
-        // and `Popover` still call `use_theme()`, so re-enter a scope with
-        // the theme snapshot this picker was built with.
-        with_cached_theme(theme, || {
+        {
             let value = self.controller.value();
             let mut content = RawView::new(column(theme.spacing_medium));
             if self.show_date {
@@ -407,7 +404,7 @@ impl Widget for DateTimePicker {
                 ))
                 .child(Box::new(content)),
             ) as BoxedWidget]
-        })
+        }
     }
     fn focusable(&self) -> bool {
         !self.disabled
@@ -677,10 +674,7 @@ impl Widget for ColorPicker {
         let change = self.on_change.clone();
         let close = self.controller.clone();
         let value = self.value;
-        // `children()` runs outside `build_ui`'s context scope; `popup_button`
-        // and `Popover` still call `use_theme()`, so re-enter a scope with
-        // the theme snapshot this picker was built with.
-        with_cached_theme(theme, || {
+        {
             let picker = RawColorPicker::new(
                 Style {
                     size: fixed(popup_width - theme.spacing_medium * 2., 188.),
@@ -735,7 +729,7 @@ impl Widget for ColorPicker {
                         .child(Box::new(summary)),
                 )),
             ) as BoxedWidget]
-        })
+        }
     }
     fn focusable(&self) -> bool {
         !self.disabled

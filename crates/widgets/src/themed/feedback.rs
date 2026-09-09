@@ -190,11 +190,7 @@ impl Widget for Dialog {
         let title = self.title.clone();
         let message = self.message.clone();
         let actions_data = std::mem::take(&mut self.actions);
-        // `children()` runs during scene reconciliation, outside `build_ui`'s
-        // context scope, but `Heading`/`Text`/`Button`/`Popover` below still
-        // call `use_theme()` — re-enter a scope seeded with the theme
-        // snapshot this `Dialog` was built with.
-        with_cached_theme(theme, move || {
+        {
             let card_style = padding(
                 Style {
                     size: creamui_core::layout::Size {
@@ -224,7 +220,7 @@ impl Widget for Dialog {
             }
             content = content.child(Box::new(actions));
             vec![Box::new(Popover::new(card_style).child(Box::new(content))) as BoxedWidget]
-        })
+        }
     }
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
         Some(self.dismiss.clone())

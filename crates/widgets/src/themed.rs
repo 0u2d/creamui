@@ -17,21 +17,8 @@ use creamui_core::layout::{
     AlignItems, Dimension, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
 };
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
-use creamui_theme::{use_theme, Color, SelectionStyle, Theme, ThemeProvider};
+use creamui_theme::{use_theme, Color, SelectionStyle, Theme};
 use std::rc::Rc;
-
-/// Re-enters a context scope with `theme` as the current theme. For widgets
-/// that construct themed children lazily — inside `Widget::children`,
-/// `paint`, or `measure`, which run during layout/scene reconciliation,
-/// outside the `with_context_scope` that wraps `build_ui` — using a `Theme`
-/// snapshot cached at construction time, so those children's own
-/// `use_theme()` calls don't panic.
-pub(crate) fn with_cached_theme<R>(theme: Theme, f: impl FnOnce() -> R) -> R {
-    creamui_reactive::with_context_scope(|| {
-        creamui_reactive::provide_context(ThemeProvider::new(theme));
-        f()
-    })
-}
 
 fn centered_box_style(padding: f32) -> Style {
     Style {

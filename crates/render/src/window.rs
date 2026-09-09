@@ -196,6 +196,13 @@ fn build_ui_with_recovery(build: &Rc<dyn Fn(Size) -> BoxedWidget>, size: Size) -
     }
 }
 
+fn with_theme_scope<R>(theme: &ThemeProvider, f: impl FnOnce() -> R) -> R {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(theme.clone());
+        f()
+    })
+}
+
 struct BlankWidget;
 impl creamui_core::Widget for BlankWidget {
     fn style(&self) -> creamui_core::layout::Style {
@@ -1120,16 +1127,7 @@ fn build_window_spec(
     }));
     let shared_window: SharedWindow = Rc::new(RefCell::new(None));
     let theme_provider = ThemeProvider::new(options.theme);
-    let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = {
-        let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::from(build_ui);
-        let theme_provider = theme_provider.clone();
-        Rc::new(move |size: Size| {
-            creamui_reactive::with_context_scope(|| {
-                creamui_reactive::provide_context(theme_provider.clone());
-                build_ui_with_recovery(&build_ui, size)
-            })
-        })
-    };
+    let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::from(build_ui);
     let focused: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
     let caret_visible: Rc<Cell<bool>> = Rc::new(Cell::new(true));
 
@@ -1161,58 +1159,63 @@ fn build_window_spec(
         let caret_visible = caret_visible.clone();
         let dirty = dirty.clone();
         let pending_root = pending_root.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            dirty.set(false);
-            // Widgets are laid out in logical pixels; the painter (and the
-            // presenter it feeds) is sized in physical pixels so HiDPI
-            // displays stay crisp — see `SkiaPainter`'s doc comment.
-            let logical_size = viewport.peek();
-            let scale = scale_factor.peek();
-            // `repaint` usually already built this; fall back for
-            // non-signal-driven redraws (animation ticks, caret blink).
-            let root = pending_root
-                .borrow_mut()
-                .take()
-                .unwrap_or_else(|| build_ui(logical_size));
+            with_theme_scope(&theme_provider, || {
+                dirty.set(false);
+                // Widgets are laid out in logical pixels; the painter (and the
+                // presenter it feeds) is sized in physical pixels so HiDPI
+                // displays stay crisp — see `SkiaPainter`'s doc comment.
+                let logical_size = viewport.peek();
+                let scale = scale_factor.peek();
+                // `repaint` usually already built this; fall back for
+                // non-signal-driven redraws (animation ticks, caret blink).
+                let root = pending_root
+                    .borrow_mut()
+                    .take()
+                    .unwrap_or_else(|| build_ui_with_recovery(&build_ui, logical_size));
 
-            let mut frame = frame.borrow_mut();
-            let FrameState {
-                painter, renderer, ..
-            } = &mut *frame;
-            let physical_width = (logical_size.width as f64 * scale).round() as u32;
-            let physical_height = (logical_size.height as f64 * scale).round() as u32;
-            painter.set_scale(scale as f32);
-            painter.resize(physical_width, physical_height);
-            painter.clear(clear_color);
-            let paint_started = Instant::now();
-            let scene = renderer.render_focused(
-                root,
-                logical_size,
-                painter,
-                focused.get(),
-                caret_visible.get(),
-            );
-            let paint_duration = paint_started.elapsed();
-            frame.scene = Some(scene);
-            let FrameState {
-                painter, devtools, ..
-            } = &mut *frame;
-            if let Some(devtools) = devtools.as_mut() {
-                devtools.after_paint(painter, logical_size, paint_duration);
-            }
-
-            // Debug aid: dump each painted frame to a PNG on disk, e.g. for
-            // headless verification where no on-screen compositor is available.
-            if let Some(path) = &dump_frame_path {
-                if let Err(err) = frame.painter.pixmap.save_png(path) {
-                    log::warn!("creamui-render: failed to write CUI_DUMP_FRAME to {path}: {err}");
+                let mut frame = frame.borrow_mut();
+                let FrameState {
+                    painter, renderer, ..
+                } = &mut *frame;
+                let physical_width = (logical_size.width as f64 * scale).round() as u32;
+                let physical_height = (logical_size.height as f64 * scale).round() as u32;
+                painter.set_scale(scale as f32);
+                painter.resize(physical_width, physical_height);
+                painter.clear(clear_color);
+                let paint_started = Instant::now();
+                let scene = renderer.render_focused(
+                    root,
+                    logical_size,
+                    painter,
+                    focused.get(),
+                    caret_visible.get(),
+                );
+                let paint_duration = paint_started.elapsed();
+                frame.scene = Some(scene);
+                let FrameState {
+                    painter, devtools, ..
+                } = &mut *frame;
+                if let Some(devtools) = devtools.as_mut() {
+                    devtools.after_paint(painter, logical_size, paint_duration);
                 }
-            }
-            drop(frame);
 
-            if let Some(window) = window.borrow().as_ref() {
-                window.request_redraw();
-            }
+                // Debug aid: dump each painted frame to a PNG on disk, e.g. for
+                // headless verification where no on-screen compositor is available.
+                if let Some(path) = &dump_frame_path {
+                    if let Err(err) = frame.painter.pixmap.save_png(path) {
+                        log::warn!(
+                            "creamui-render: failed to write CUI_DUMP_FRAME to {path}: {err}"
+                        );
+                    }
+                }
+                drop(frame);
+
+                if let Some(window) = window.borrow().as_ref() {
+                    window.request_redraw();
+                }
+            })
         }
     });
 
@@ -1223,33 +1226,36 @@ fn build_window_spec(
         let window = shared_window.clone();
         let focused = focused.clone();
         let caret_visible = caret_visible.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            let logical_size = viewport.peek();
-            let scale = scale_factor.peek();
-            let mut frame = frame.borrow_mut();
-            let physical_width = (logical_size.width as f64 * scale).round() as u32;
-            let physical_height = (logical_size.height as f64 * scale).round() as u32;
-            frame.painter.set_scale(scale as f32);
-            frame.painter.resize(physical_width, physical_height);
-            frame.painter.clear(clear_color);
-            let FrameState {
-                painter, renderer, ..
-            } = &mut *frame;
-            if let Some(scene) =
-                renderer.repaint_focused(painter, focused.get(), caret_visible.get())
-            {
-                frame.scene = Some(scene);
-            }
-            let FrameState {
-                painter, devtools, ..
-            } = &mut *frame;
-            if let Some(devtools) = devtools.as_ref() {
-                devtools.repaint_overlay(painter, logical_size);
-            }
-            drop(frame);
-            if let Some(window) = window.borrow().as_ref() {
-                window.request_redraw();
-            }
+            with_theme_scope(&theme_provider, || {
+                let logical_size = viewport.peek();
+                let scale = scale_factor.peek();
+                let mut frame = frame.borrow_mut();
+                let physical_width = (logical_size.width as f64 * scale).round() as u32;
+                let physical_height = (logical_size.height as f64 * scale).round() as u32;
+                frame.painter.set_scale(scale as f32);
+                frame.painter.resize(physical_width, physical_height);
+                frame.painter.clear(clear_color);
+                let FrameState {
+                    painter, renderer, ..
+                } = &mut *frame;
+                if let Some(scene) =
+                    renderer.repaint_focused(painter, focused.get(), caret_visible.get())
+                {
+                    frame.scene = Some(scene);
+                }
+                let FrameState {
+                    painter, devtools, ..
+                } = &mut *frame;
+                if let Some(devtools) = devtools.as_ref() {
+                    devtools.repaint_overlay(painter, logical_size);
+                }
+                drop(frame);
+                if let Some(window) = window.borrow().as_ref() {
+                    window.request_redraw();
+                }
+            })
         }
     });
 
@@ -1265,20 +1271,23 @@ fn build_window_spec(
         let render = render.clone();
         let window = shared_window.clone();
         let dirty = dirty.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            let logical_size = viewport.peek();
-            *pending_root.borrow_mut() = Some(build_ui(logical_size));
-            // The first reactive run happens before winit has created the
-            // window, so render immediately to provide its initial frame.
-            // Afterwards merely mark dirty and let RedrawRequested coalesce
-            // all input updates into one layout/paint pass.
-            if let Some(window) = window.borrow().as_ref() {
-                if !dirty.replace(true) {
-                    window.request_redraw();
+            with_theme_scope(&theme_provider, || {
+                let logical_size = viewport.peek();
+                *pending_root.borrow_mut() = Some(build_ui_with_recovery(&build_ui, logical_size));
+                // The first reactive run happens before winit has created the
+                // window, so render immediately to provide its initial frame.
+                // Afterwards merely mark dirty and let RedrawRequested coalesce
+                // all input updates into one layout/paint pass.
+                if let Some(window) = window.borrow().as_ref() {
+                    if !dirty.replace(true) {
+                        window.request_redraw();
+                    }
+                } else {
+                    render();
                 }
-            } else {
-                render();
-            }
+            })
         }
     });
 
@@ -1397,6 +1406,21 @@ mod tests {
         keys: Signal<String>,
     }
 
+    struct ThemeInChildren;
+
+    impl creamui_core::Widget for ThemeInChildren {
+        fn style(&self) -> creamui_core::layout::Style {
+            creamui_core::layout::Style::default()
+        }
+
+        fn paint(&self, _: &mut dyn creamui_core::Painter, _: creamui_core::Rect) {}
+
+        fn children(&mut self) -> Vec<BoxedWidget> {
+            let _ = creamui_theme::use_theme();
+            Vec::new()
+        }
+    }
+
     impl creamui_core::Widget for InteractiveWidget {
         fn style(&self) -> creamui_core::layout::Style {
             creamui_core::layout::Style {
@@ -1504,5 +1528,10 @@ mod tests {
 
         assert_eq!(clicks.get(), 1);
         assert_eq!(keys.get(), "x");
+    }
+
+    #[test]
+    fn frame_scope_is_available_to_lazy_children() {
+        let _harness = WindowEventHarness::new(|_| Box::new(ThemeInChildren));
     }
 }

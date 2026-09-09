@@ -142,11 +142,7 @@ impl Widget for Select {
             },
             3.0,
         );
-        let theme = self.theme;
-        // `children()` runs outside `build_ui`'s context scope; `Popover`
-        // still calls `use_theme()`, so re-enter a scope with the theme
-        // snapshot this `Select` was built with.
-        let mut popup = with_cached_theme(theme, || Popover::new(popup_style));
+        let mut popup = Popover::new(popup_style);
         for (index, label) in self.options.iter().enumerate() {
             let selected = self.controller.selected() == index;
             let controller = self.controller.clone();
@@ -349,7 +345,6 @@ impl Widget for Radio {
 
 /// A vertical group of mutually exclusive [`Radio`] controls.
 pub struct RadioGroup {
-    theme: Theme,
     selected: usize,
     on_change: Rc<dyn Fn(usize)>,
     options: Vec<String>,
@@ -360,7 +355,6 @@ impl RadioGroup {
     pub fn new(selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
         let theme = use_theme();
         Self {
-            theme,
             selected,
             on_change: Rc::new(on_change),
             options: Vec::new(),
@@ -383,22 +377,19 @@ impl Widget for RadioGroup {
     }
     fn paint(&self, _: &mut dyn Painter, _: Rect) {}
     fn children(&mut self) -> Vec<BoxedWidget> {
-        let theme = self.theme;
         let selected = self.selected;
         let options = &self.options;
         let on_change = &self.on_change;
-        with_cached_theme(theme, || {
-            options
-                .iter()
-                .enumerate()
-                .map(|(index, label)| {
-                    let on_change = on_change.clone();
-                    Box::new(Radio::new(label.clone(), selected == index, move || {
-                        on_change(index)
-                    })) as BoxedWidget
-                })
-                .collect()
-        })
+        options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let on_change = on_change.clone();
+                Box::new(Radio::new(label.clone(), selected == index, move || {
+                    on_change(index)
+                })) as BoxedWidget
+            })
+            .collect()
     }
 }
 
@@ -406,7 +397,6 @@ impl Widget for RadioGroup {
 /// `Choice` primitive. Use it when each option is short and immediately
 /// comparable; use [`RadioGroup`] for explanatory labels.
 pub struct SegmentedControl {
-    theme: Theme,
     selected: usize,
     on_change: Rc<dyn Fn(usize)>,
     options: Vec<String>,
@@ -417,7 +407,6 @@ impl SegmentedControl {
     pub fn new(selected: usize, on_change: impl Fn(usize) + 'static) -> Self {
         let theme = use_theme();
         Self {
-            theme,
             selected,
             on_change: Rc::new(on_change),
             options: Vec::new(),
@@ -440,24 +429,21 @@ impl Widget for SegmentedControl {
     }
     fn paint(&self, _: &mut dyn Painter, _: Rect) {}
     fn children(&mut self) -> Vec<BoxedWidget> {
-        let theme = self.theme;
         let selected = self.selected;
         let options = &self.options;
         let on_change = &self.on_change;
-        with_cached_theme(theme, || {
-            options
-                .iter()
-                .enumerate()
-                .map(|(index, label)| {
-                    let on_change = on_change.clone();
-                    Box::new(crate::Choice::new(
-                        label.clone(),
-                        selected == index,
-                        move || on_change(index),
-                    )) as BoxedWidget
-                })
-                .collect()
-        })
+        options
+            .iter()
+            .enumerate()
+            .map(|(index, label)| {
+                let on_change = on_change.clone();
+                Box::new(crate::Choice::new(
+                    label.clone(),
+                    selected == index,
+                    move || on_change(index),
+                )) as BoxedWidget
+            })
+            .collect()
     }
 }
 
