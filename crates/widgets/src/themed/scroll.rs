@@ -50,6 +50,24 @@ impl ScrollView {
         customize(&mut self.inner);
         self
     }
+
+    /// Overrides the fill painted behind the scrollable content — otherwise
+    /// always `theme.surface`, which isn't necessarily the color a caller
+    /// wants directly behind this particular list (e.g. a message thread
+    /// sitting on `surface_elevated` while a sidebar list sits on `surface`).
+    pub fn background(mut self, color: Color) -> Self {
+        self.inner = self.inner.background(color);
+        self
+    }
+
+    /// Spacing between children stacked inside the scrollable area —
+    /// otherwise always `0.0`, which reads as a single continuous list
+    /// (fine for e.g. a sidebar's rows) but crowds anything meant to look
+    /// like separate items, such as chat bubbles.
+    pub fn content_gap(mut self, gap: f32) -> Self {
+        self.inner = self.inner.content_gap(gap);
+        self
+    }
 }
 
 impl Widget for ScrollView {

@@ -55,6 +55,19 @@ impl TextInput {
         self
     }
 
+    /// Overrides the fill color, e.g. to sit a pill-shaped input on a
+    /// differently-colored bar instead of the theme's default input surface.
+    pub fn background(mut self, color: creamui_theme::Color) -> Self {
+        self.inner = self.inner.background(color);
+        self
+    }
+
+    /// Called on Enter, e.g. to submit a chat message or search field.
+    pub fn on_submit(mut self, on_submit: impl Fn() + 'static) -> Self {
+        self.inner = self.inner.on_submit(on_submit);
+        self
+    }
+
     pub fn clipboard_enabled(mut self, enabled: bool) -> Self {
         self.inner = self.inner.clipboard_enabled(enabled);
         self

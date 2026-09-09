@@ -81,6 +81,16 @@ pub fn fill(mut style: Style) -> Style {
     style
 }
 
+/// Stretches a style to its parent's full width while leaving height alone —
+/// e.g. a search field or button that should span a sidebar or toolbar
+/// instead of keeping a fixed-width default like [`crate::TextInput`]'s
+/// hardcoded 200px. [`fill`] stretches both axes, which isn't what you want
+/// when only the cross axis should grow.
+pub fn full_width(mut style: Style) -> Style {
+    style.size.width = Dimension::Percent(1.0);
+    style
+}
+
 /// Centers children on both flex axes while preserving the rest of `style`.
 pub fn centered(mut style: Style) -> Style {
     style.justify_content = Some(JustifyContent::Center);

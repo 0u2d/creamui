@@ -15,8 +15,8 @@ mod text_metrics;
 pub mod themed;
 
 pub use controller::{
-    ColorPickerController, DateTimeController, ScrollController, SelectController, TabController,
-    TextController, TreeController,
+    AutoScrollController, ColorPickerController, DateTimeController, ScrollController,
+    SelectController, TabController, TextController, TreeController,
 };
 pub use raw::{
     DateTime, RawButton, RawCheckbox, RawColorPicker, RawDateTimePicker, RawFilePicker,
@@ -25,10 +25,10 @@ pub use raw::{
     TextSelection,
 };
 pub use themed::{
-    tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ButtonVariant, Checkbox, ColorPicker,
-    ComboBox, DateInput, DateTimePicker, Dialog, FilePicker, Heading, ListBox, ListView, MenuBar,
-    MenuColors, MenuItem, MenuPopup, Overlay, Popover, ProgressBar, ProgressRing, Radio,
-    RadioGroup, ScrollView, SegmentedControl, Select, Sidebar, SidebarItem, SidebarSeparator,
-    Slider, Spinner, Switch, Tab, TabColors, TabSizing, Table, Tabs, Text, TextArea, TextInput,
-    TextSize, TimeInput, TreeNode, TreeView, View,
+    tab_styles, AlertDialog, Avatar, Badge, Button, ButtonSize, ButtonState, ButtonVariant,
+    Checkbox, ColorPicker, ComboBox, DateInput, DateTimePicker, Dialog, FilePicker, Heading,
+    ListBox, ListView, MenuBar, MenuColors, MenuItem, MenuPopup, Overlay, Popover, ProgressBar,
+    ProgressRing, Radio, RadioGroup, ScrollView, SegmentedControl, Select, Sidebar, SidebarItem,
+    SidebarSeparator, Slider, Spinner, Switch, Tab, TabColors, TabSizing, Table, Tabs, Text,
+    TextArea, TextInput, TextSize, TimeInput, TreeNode, TreeView, TypingIndicator, View,
 };

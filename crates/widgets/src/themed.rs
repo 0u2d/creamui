@@ -35,6 +35,7 @@ fn centered_box_style(padding: f32) -> Style {
     }
 }
 
+mod avatar;
 mod button;
 mod controls;
 mod dataview;
@@ -47,6 +48,7 @@ mod selection;
 mod surfaces;
 mod text;
 
+pub use avatar::*;
 pub use button::*;
 pub use controls::*;
 pub use dataview::*;

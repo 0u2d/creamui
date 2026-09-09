@@ -20,6 +20,7 @@ members = [
     "examples/sidebar",
     "examples/scroll",
     "examples/showcase",
+    "examples/chat",
     "examples/pickers",
     "examples/images",
     "examples/facade",

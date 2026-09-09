@@ -22,6 +22,7 @@ pub struct RawTextInput {
     pub on_change: Rc<dyn Fn(String)>,
     pub on_cursor_change: Rc<dyn Fn(usize)>,
     pub on_selection_change: Rc<dyn Fn(TextSelection)>,
+    pub on_submit: Rc<dyn Fn()>,
     pub clipboard_enabled: bool,
     keyboard_selection: Rc<Cell<TextSelection>>,
     drag_anchor: Rc<Cell<usize>>,
@@ -756,6 +757,7 @@ impl RawTextInput {
             on_change: Rc::new(on_change),
             on_cursor_change: Rc::new(|_| {}),
             on_selection_change: Rc::new(|_| {}),
+            on_submit: Rc::new(|| {}),
             clipboard_enabled: true,
             keyboard_selection: Rc::new(Cell::new(TextSelection {
                 anchor: cursor,
@@ -825,6 +827,13 @@ impl RawTextInput {
     }
     pub fn selection_text_color(mut self, color: Color) -> Self {
         self.selection_text_color = Some(color);
+        self
+    }
+
+    /// Called on Enter. Single-line input has no use for a literal newline,
+    /// so this is the hook for "submit on Enter" instead.
+    pub fn on_submit(mut self, on_submit: impl Fn() + 'static) -> Self {
+        self.on_submit = Rc::new(on_submit);
         self
     }
 
@@ -959,7 +968,12 @@ impl Widget for RawTextInput {
         let selection = self.keyboard_selection.clone();
         let on_selection_change = self.on_selection_change.clone();
         let clipboard_enabled = self.clipboard_enabled;
+        let on_submit = self.on_submit.clone();
         Some(Rc::new(move |input: KeyInput| {
+            if matches!(input.key, Key::Enter) {
+                on_submit();
+                return;
+            }
             let selected = selection.get();
             if clipboard_enabled && input.modifiers.ctrl {
                 match input.key {

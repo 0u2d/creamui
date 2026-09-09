@@ -406,3 +406,152 @@ impl Widget for ProgressRing {
         draw_arc(painter, start, amount, self.theme.accent);
     }
 }
+
+/// A small pill or dot indicator, e.g. an unread-message count or an
+/// online-status marker. Laid out as a normal flex item (not an overlay) —
+/// place it where it belongs in the row/column and it takes up exactly the
+/// room it needs.
+pub struct Badge {
+    style: Style,
+    background: Color,
+    text_color: Color,
+    label: Option<String>,
+}
+
+impl Badge {
+    fn base_style(width: f32, height: f32) -> Style {
+        Style {
+            size: fixed(width, height),
+            flex_shrink: 0.,
+            ..Default::default()
+        }
+    }
+
+    /// A numeric badge, e.g. an unread-message count. `count == 0` collapses
+    /// to zero size, so callers can include it unconditionally instead of
+    /// branching it out of the layout by hand.
+    pub fn count(theme: &Theme, count: usize) -> Self {
+        let label = match count {
+            0 => None,
+            1..=99 => Some(count.to_string()),
+            _ => Some("99+".to_owned()),
+        };
+        let height: f32 = 18.0;
+        let width = match &label {
+            None => 0.0,
+            Some(text) => height.max(11.0 + text.len() as f32 * 7.5),
+        };
+        Self {
+            style: Self::base_style(width, height),
+            background: theme.accent,
+            text_color: theme.selection_text,
+            label,
+        }
+    }
+
+    /// A plain colored dot with no label, e.g. an online-status marker used
+    /// inline rather than overlaid on an avatar.
+    pub fn dot(color: Color, size: f32) -> Self {
+        Self {
+            style: Self::base_style(size, size),
+            background: color,
+            text_color: color,
+            label: None,
+        }
+    }
+
+    pub fn background(mut self, color: Color) -> Self {
+        self.background = color;
+        self
+    }
+
+    pub fn text_color(mut self, color: Color) -> Self {
+        self.text_color = color;
+        self
+    }
+
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for Badge {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        if rect.width <= 0.0 || rect.height <= 0.0 {
+            return;
+        }
+        painter.fill_rect(rect, self.background, rect.height / 2.0);
+        if let Some(label) = &self.label {
+            painter.fill_text_weight(
+                rect,
+                label,
+                self.text_color,
+                (rect.height * 0.6).max(9.0),
+                TextAlign::Center,
+                true,
+            );
+        }
+    }
+}
+
+/// Three dots that bounce in sequence while composing is in progress, driven
+/// by [`Painter::animation_time`] — the same "call it every paint, and the
+/// window keeps requesting new frames while it's visible" pattern
+/// [`ProgressRing::indeterminate`] uses. A common "the other party is typing"
+/// affordance for chat-shaped UIs.
+pub struct TypingIndicator {
+    theme: Theme,
+    style: Style,
+}
+
+impl TypingIndicator {
+    pub fn new(theme: &Theme) -> Self {
+        Self {
+            theme: *theme,
+            style: Style {
+                size: fixed(36.0, 16.0),
+                flex_shrink: 0.,
+                ..Default::default()
+            },
+        }
+    }
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = style;
+        self
+    }
+}
+
+impl Widget for TypingIndicator {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        let time = painter.animation_time();
+        let dot = (rect.height * 0.5).max(3.0);
+        let gap = ((rect.width - dot * 3.0) / 2.0).max(2.0);
+        for i in 0..3 {
+            let phase = (time * 2.6 - i as f32 * 0.3).rem_euclid(1.8);
+            let lift = if phase < 0.6 {
+                (phase * std::f32::consts::PI / 0.6).sin()
+            } else {
+                0.0
+            };
+            let cx = rect.x + dot / 2.0 + i as f32 * (dot + gap);
+            let cy = rect.y + rect.height / 2.0 - lift * rect.height * 0.3;
+            painter.fill_rect(
+                Rect {
+                    x: cx - dot / 2.0,
+                    y: cy - dot / 2.0,
+                    width: dot,
+                    height: dot,
+                },
+                self.theme.text_secondary,
+                dot / 2.0,
+            );
+        }
+    }
+}
