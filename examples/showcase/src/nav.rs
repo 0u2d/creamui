@@ -1,0 +1,127 @@
+//! The sidebar category rail.
+
+use crate::prelude::*;
+
+/// The showcase category rail.
+#[component]
+pub fn Nav(
+    theme: Theme,
+    active: Signal<usize>,
+    content_scroll: ScrollController,
+    nav_scroll: ScrollController,
+) -> BoxedWidget {
+    // Wider than before, and padded almost only on the left: the card gap
+    // to its right already separates it from the content panel, so giving
+    // it a matching right pad on top of that would just waste width.
+    let mut nav = RawView::new(Style {
+        size: creamui_core::layout::Size {
+            width: Dimension::Length(232.),
+            height: Dimension::Percent(1.),
+        },
+        flex_shrink: 0.,
+        padding: creamui_core::layout::Rect {
+            left: creamui_core::layout::LengthPercentage::Length(16.),
+            right: creamui_core::layout::LengthPercentage::Length(6.),
+            top: creamui_core::layout::LengthPercentage::Length(16.),
+            bottom: creamui_core::layout::LengthPercentage::Length(16.),
+        },
+        ..column(5.)
+    });
+    nav = nav.child(Box::new(
+        RawView::new(padding(row(8.), 8.))
+            .child(Box::new(
+                Icon::new(Symbol::Appearance, theme.accent).size(24.),
+            ))
+            .child(Box::new(
+                RawText::new("CreamUI", theme.text_primary, 19.)
+                    .bold(true)
+                    .align(TextAlign::Start),
+            )),
+    ));
+    let symbols = [
+        Symbol::Appearance,
+        Symbol::Display,
+        Symbol::Keyboard,
+        Symbol::Controls,
+        Symbol::Display,
+        Symbol::Controls,
+        Symbol::Sliders,
+        Symbol::Check,
+        Symbol::Controls,
+        Symbol::Display,
+        Symbol::Folder,
+        Symbol::Grid,
+        Symbol::Grid,
+        Symbol::Folder,
+        Symbol::Grid,
+    ];
+    let mut items: Vec<BoxedWidget> = Vec::new();
+    for (i, label) in NAV_LABELS.iter().enumerate() {
+        if i == 0 || i == 2 || i == 8 || i == 10 || i == 13 {
+            items.push(Box::new(
+                RawView::new(padding(column(0.), 8.)).child(Box::new(
+                    RawText::new(
+                        if i == 0 {
+                            "SHOWCASE"
+                        } else if i == 2 {
+                            "CONTROLS"
+                        } else if i == 8 {
+                            "SELECTION"
+                        } else if i == 13 {
+                            "DATA VIEW"
+                        } else {
+                            "NAVIGATION"
+                        },
+                        theme.text_secondary,
+                        10.,
+                    )
+                    .align(TextAlign::Start),
+                )),
+            ));
+        }
+        let select = active.clone();
+        let reset_scroll = content_scroll.clone();
+        items.push(Box::new(NavigationItem::new(
+            &theme,
+            symbols[i],
+            *label,
+            active.get() == i,
+            move || {
+                select.set(i);
+                reset_scroll.set(0.0);
+            },
+        )));
+    }
+    // Grows to fill whatever space is left between the logo and the footer
+    // below, same as the plain spacer `RawView` this replaces — the only
+    // difference is that once the item list is taller than that space, it
+    // scrolls (draggable thumb included) instead of pushing the footer off
+    // the bottom of the window.
+    let items_style = Style {
+        flex_grow: 1.,
+        size: creamui_core::layout::Size {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
+        ..Default::default()
+    };
+    nav = nav
+        .child(Box::new(
+            RawScrollView::controlled(items_style, nav_scroll)
+                .content_gap(5.)
+                .scrollbar_gap(6.)
+                .with_children(items),
+        ))
+        .child(Box::new(
+            RawView::new(padding(column(5.), 8.))
+                .child(Box::new(
+                    RawText::new("Component library", theme.text_secondary, 11.)
+                        .align(TextAlign::Start),
+                ))
+                .child(Box::new(
+                    RawText::new("CreamUI · 0.1", theme.text_disabled, 11.).align(TextAlign::Start),
+                )),
+        ));
+    Box::new(nav)
+}
+
