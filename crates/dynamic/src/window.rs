@@ -6,6 +6,7 @@ use crate::runtime::Runtime;
 use crate::value::{Color, RenderBackend, Size, WindowOptions};
 use crate::widget::Widget;
 use creamui_abi::{CWindowOptions, CUI_RENDER_BACKEND_CPU, CUI_RENDER_BACKEND_GPU};
+use std::cell::RefCell;
 use std::ffi::{c_void, CString};
 use std::os::raw::c_int;
 use std::rc::Rc;
@@ -95,7 +96,7 @@ fn c_window_options(options: &WindowOptions, title: &CString) -> CWindowOptions 
 struct WindowUserData {
     ctx: Context,
     build_ui: Box<dyn Fn(&Context, Size) -> Widget>,
-    on_window_ready: Box<dyn Fn(WindowHandle)>,
+    on_window_ready: RefCell<Option<Box<dyn FnOnce(WindowHandle)>>>,
 }
 
 extern "C" fn build_trampoline(width: f32, height: f32, userdata: *mut c_void) -> *mut c_void {
@@ -110,7 +111,9 @@ extern "C" fn build_trampoline(width: f32, height: f32, userdata: *mut c_void) -
 extern "C" fn window_ready_trampoline(handle_ptr: *mut c_void, userdata: *mut c_void) {
     let data = unsafe { &*(userdata as *const WindowUserData) };
     let handle = WindowHandle::from_raw(data.ctx.rt.clone(), handle_ptr);
-    (data.on_window_ready)(handle);
+    if let Some(on_window_ready) = data.on_window_ready.borrow_mut().take() {
+        on_window_ready(handle);
+    }
 }
 
 /// Opens a window and runs the reactive render loop until it is closed —
@@ -128,7 +131,7 @@ pub fn run(
     rt: &Rc<Runtime>,
     options: WindowOptions,
     background: Color,
-    on_window_ready: impl Fn(WindowHandle) + 'static,
+    on_window_ready: impl FnOnce(WindowHandle) + 'static,
     build_ui: impl Fn(&Context, Size) -> Widget + 'static,
 ) {
     AppBuilder::new(rt)
@@ -160,14 +163,14 @@ impl AppBuilder {
         mut self,
         options: WindowOptions,
         background: Color,
-        on_window_ready: impl Fn(WindowHandle) + 'static,
+        on_window_ready: impl FnOnce(WindowHandle) + 'static,
         build_ui: impl Fn(&Context, Size) -> Widget + 'static,
     ) -> Self {
         let ctx = Context::new(self.rt.clone());
         let data = Box::new(WindowUserData {
             ctx,
             build_ui: Box::new(build_ui),
-            on_window_ready: Box::new(on_window_ready),
+            on_window_ready: RefCell::new(Some(Box::new(on_window_ready))),
         });
         let userdata_ptr = data.as_ref() as *const WindowUserData as *mut c_void;
 

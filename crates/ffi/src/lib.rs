@@ -992,13 +992,13 @@ fn window_options_from_c(options: CWindowOptions) -> creamui_render::WindowOptio
     }
 }
 
-/// Wraps a nullable [`CWindowReadyFn`] into the `Fn(WindowHandle)` closure
+/// Wraps a nullable [`CWindowReadyFn`] into the `FnOnce(WindowHandle)` closure
 /// `creamui_render::run`/`AppBuilder::window` expect, shared by
 /// [`creamui_run`] and [`creamui_app_builder_add_window`].
 fn window_ready_callback(
     on_window_ready: Option<CWindowReadyFn>,
     userdata: *mut c_void,
-) -> impl Fn(WindowHandle) {
+) -> impl FnOnce(WindowHandle) {
     struct SendPtr(*mut c_void);
     unsafe impl Send for SendPtr {}
     let ready_userdata = SendPtr(userdata);

@@ -306,7 +306,7 @@ impl WindowHandle {
 /// once [`AppBuilder::run`] starts the shared event loop.
 struct WindowSpec {
     options: WindowOptions,
-    on_window_ready: Box<dyn Fn(WindowHandle)>,
+    on_window_ready: Box<dyn FnOnce(WindowHandle)>,
     repaint: Rc<dyn Fn()>,
     repaint_scene: Rc<dyn Fn()>,
     repaint_light: Rc<dyn Fn()>,
@@ -359,7 +359,7 @@ pub struct AppBuilder {
 struct PendingWindow {
     options: WindowOptions,
     clear_color: Color,
-    on_window_ready: Box<dyn Fn(WindowHandle)>,
+    on_window_ready: Box<dyn FnOnce(WindowHandle)>,
     build_ui: Box<dyn Fn(Size) -> BoxedWidget>,
 }
 
@@ -386,7 +386,7 @@ impl AppBuilder {
         mut self,
         options: WindowOptions,
         clear_color: Color,
-        on_window_ready: impl Fn(WindowHandle) + 'static,
+        on_window_ready: impl FnOnce(WindowHandle) + 'static,
         build_ui: impl Fn(Size) -> BoxedWidget + 'static,
     ) -> Self {
         self.specs.push(PendingWindow {
@@ -979,21 +979,12 @@ impl ApplicationHandler for AppHandler {
 /// window-level operations (resize, move, always-on-top) later — e.g. from
 /// a click handler.
 ///
-/// The `on_window_ready` closure itself is dropped right after that one
-/// call — it is not kept around for the window's lifetime. Anything created
-/// inside it that must keep running afterwards (e.g. a
-/// `creamui_reactive::create_effect` that calls `WindowHandle::set_theme`)
-/// needs an owner that outlives the closure: clone the value being stored
-/// into (not moved into) the closure, and keep the original alive on the
-/// caller's own stack for as long as `run`/`AppBuilder::run` is running —
-/// see `examples/showcase`'s `theme_sync` for a worked example.
-///
 /// To open several windows sharing one process and event loop (e.g. a
 /// desktop-shell dock), use [`AppBuilder`] instead.
 pub fn run(
     options: WindowOptions,
     clear_color: Color,
-    on_window_ready: impl Fn(WindowHandle) + 'static,
+    on_window_ready: impl FnOnce(WindowHandle) + 'static,
     build_ui: impl Fn(Size) -> BoxedWidget + 'static,
 ) {
     AppBuilder::new()
@@ -1360,5 +1351,16 @@ mod tests {
 
         assert!(called.get(), "on_panic handler must run for a caught panic");
         PANIC_HANDLER.with(|cell| *cell.borrow_mut() = None);
+    }
+
+    #[test]
+    fn app_builder_accepts_a_one_shot_window_ready_callback() {
+        let message = String::from("ready");
+        let _app = AppBuilder::new().window(
+            WindowOptions::default(),
+            Color::rgba(0, 0, 0, 255),
+            move |_| drop(message),
+            |_| Box::new(BlankWidget),
+        );
     }
 }
