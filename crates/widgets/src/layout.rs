@@ -6,10 +6,18 @@
 //! [`Style`]. The low-level Taffy types remain available through
 //! `creamui_core::layout` for cases that need them.
 //!
+//! Every container here defaults to `min-size: 0` on both axes instead of
+//! Taffy/CSS's own default (`min-size: auto`, i.e. "never shrink below your
+//! content's intrinsic size"). That default is the classic flexbox/grid
+//! trap: a child that's supposed to shrink to fit a tight parent instead
+//! refuses to, and overflows past it instead. [`Block::min_size`],
+//! [`Flex::min_size`], [`Grid::min_size`] and friends opt back into the
+//! CSS default on a case-by-case basis when a container genuinely should
+//! never shrink below its content.
 
 use creamui_core::layout::{
     AlignContent, AlignItems, Dimension, Display, FlexDirection, FlexWrap, GridAutoFlow,
-    GridPlacement, JustifyContent, LengthPercentage, LengthPercentageAuto,
+    GridPlacement, GridTrackRepetition, JustifyContent, LengthPercentage, LengthPercentageAuto,
     NonRepeatedTrackSizingFunction, Style, TaffyGridLine, TrackSizingFunction,
 };
 use creamui_core::{BoxedWidget, Painter, Rect, Widget};
@@ -80,6 +88,166 @@ impl From<Wrap> for FlexWrap {
     }
 }
 
+/// Fills in `min-size: 0` on whichever axes are still at Taffy's `Auto`
+/// default, without touching an axis the caller already set explicitly.
+///
+/// This is what makes [`Block`], [`Flex`] and [`Grid`] shrinkable by
+/// default: without it, a flex/grid child never shrinks below its content's
+/// intrinsic size (CSS's "min-width/height: auto" floor), so a tight parent
+/// just overflows instead of the child wrapping, eliding, or scrolling.
+pub(crate) fn shrinkable(mut style: Style) -> Style {
+    if style.min_size.width == Dimension::Auto {
+        style.min_size.width = Dimension::Length(0.0);
+    }
+    if style.min_size.height == Dimension::Auto {
+        style.min_size.height = Dimension::Length(0.0);
+    }
+    style
+}
+
+/// Generates the builder methods shared by every container that wraps a
+/// `RawView` in an `inner` field ([`Block`], [`Flex`], [`Grid`]) — kept as a
+/// macro rather than a shared base type because these are consuming
+/// (`self -> Self`) builders returning the concrete container type, which a
+/// trait or inheritance hierarchy can't express without losing the type
+/// (`Block::new().size(..)` needs to stay a `Block`, not a boxed trait
+/// object). Each container still owns its layout-specific methods
+/// (`Flex::gap`, `Grid::columns`, ...) directly.
+macro_rules! layout_container_methods {
+    () => {
+        /// Sets a fixed pixel size.
+        pub fn size(mut self, width: f32, height: f32) -> Self {
+            self.inner.style = self.inner.style.size(width, height);
+            self
+        }
+
+        /// Applies equal inner spacing.
+        pub fn padding(mut self, value: f32) -> Self {
+            self.inner.style = self.inner.style.padding_all(value);
+            self
+        }
+
+        /// Applies CSS-like `padding: vertical horizontal` spacing.
+        pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
+            self.inner.style = self.inner.style.padding_xy(horizontal, vertical);
+            self
+        }
+
+        /// Applies equal outer spacing.
+        pub fn margin(mut self, value: f32) -> Self {
+            self.inner.style = self.inner.style.margin_all(value);
+            self
+        }
+
+        /// Applies CSS-like `margin: vertical horizontal` spacing.
+        pub fn margin_xy(mut self, horizontal: f32, vertical: f32) -> Self {
+            self.inner.style = self.inner.style.margin_xy(horizontal, vertical);
+            self
+        }
+
+        /// Sets a fixed pixel width, leaving height alone — e.g. combine
+        /// with `full_width` for the opposite axis, or with a parent that
+        /// stretches this container's height for you.
+        pub fn width(mut self, value: f32) -> Self {
+            self.inner.style.size.width = Dimension::Length(value);
+            self
+        }
+
+        /// Sets a fixed pixel height, leaving width alone; see `width`.
+        pub fn height(mut self, value: f32) -> Self {
+            self.inner.style.size.height = Dimension::Length(value);
+            self
+        }
+
+        /// Stretches the container across its parent's width.
+        pub fn full_width(mut self) -> Self {
+            self.inner.style = full_width(self.inner.style);
+            self
+        }
+
+        /// Stretches the container across its parent's height.
+        pub fn full_height(mut self) -> Self {
+            self.inner.style.size.height = Dimension::Percent(1.0);
+            self
+        }
+
+        /// Stretches the container to the available size on both axes.
+        pub fn fill(mut self) -> Self {
+            self.inner.style = fill(self.inner.style);
+            self
+        }
+
+        /// Makes this container take remaining space in a flex parent.
+        pub fn grow(mut self, factor: f32) -> Self {
+            self.inner.style = self.inner.style.grow(factor);
+            self
+        }
+
+        /// Sets how readily this container shrinks in a flex parent.
+        pub fn shrink(mut self, factor: f32) -> Self {
+            self.inner.style = self.inner.style.shrink(factor);
+            self
+        }
+
+        /// Sets this container's initial main-axis size in a flex parent.
+        pub fn basis(mut self, value: f32) -> Self {
+            self.inner.style = self.inner.style.basis(value);
+            self
+        }
+
+        /// Overrides the parent's `align-items` for this container.
+        pub fn align_self(mut self, value: Align) -> Self {
+            self.inner.style = self.inner.style.align_self(value);
+            self
+        }
+
+        /// Sets a minimum pixel size, opting back into the "never shrink
+        /// below this size" behavior on both axes — this container
+        /// otherwise shrinks to `0` by default (see the module docs).
+        pub fn min_size(mut self, width: f32, height: f32) -> Self {
+            self.inner.style.min_size = fixed(width, height);
+            self
+        }
+
+        /// Sets a minimum pixel width; see `min_size`.
+        pub fn min_width(mut self, value: f32) -> Self {
+            self.inner.style.min_size.width = Dimension::Length(value);
+            self
+        }
+
+        /// Sets a minimum pixel height; see `min_size`.
+        pub fn min_height(mut self, value: f32) -> Self {
+            self.inner.style.min_size.height = Dimension::Length(value);
+            self
+        }
+
+        /// Gives the container a background without introducing a themed
+        /// surface.
+        pub fn background(mut self, color: Color) -> Self {
+            self.inner = self.inner.background(color);
+            self
+        }
+
+        /// Rounds the optional background's corners.
+        pub fn corner_radius(mut self, radius: f32) -> Self {
+            self.inner = self.inner.corner_radius(radius);
+            self
+        }
+
+        /// Adds a child widget.
+        pub fn child(mut self, child: BoxedWidget) -> Self {
+            self.inner = self.inner.child(child);
+            self
+        }
+
+        /// Adds all child widgets at once.
+        pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
+            self.inner = self.inner.with_children(children);
+            self
+        }
+    };
+}
+
 /// An unstyled block container, equivalent to a semantic HTML `<div>`.
 ///
 /// `Block` is intentionally the base container. Use [`Flex`] only when its
@@ -100,99 +268,11 @@ impl Block {
     pub fn with_style(mut style: Style) -> Self {
         style.display = Display::Block;
         Self {
-            inner: crate::raw::RawView::new(style),
+            inner: crate::raw::RawView::new(shrinkable(style)),
         }
     }
 
-    /// Sets a fixed pixel size.
-    pub fn size(mut self, width: f32, height: f32) -> Self {
-        self.inner.style = self.inner.style.size(width, height);
-        self
-    }
-
-    /// Applies equal inner spacing.
-    pub fn padding(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.padding_all(value);
-        self
-    }
-
-    /// Applies CSS-like `padding: vertical horizontal` spacing.
-    pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.inner.style = self.inner.style.padding_xy(horizontal, vertical);
-        self
-    }
-
-    /// Applies equal outer spacing.
-    pub fn margin(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.margin_all(value);
-        self
-    }
-
-    /// Stretches the container across its parent's width.
-    pub fn full_width(mut self) -> Self {
-        self.inner.style = full_width(self.inner.style);
-        self
-    }
-
-    /// Stretches the container across its parent's height.
-    pub fn full_height(mut self) -> Self {
-        self.inner.style.size.height = Dimension::Percent(1.0);
-        self
-    }
-
-    /// Stretches the container to the available size on both axes.
-    pub fn fill(mut self) -> Self {
-        self.inner.style = fill(self.inner.style);
-        self
-    }
-
-    /// Makes this block take remaining space in a flex parent.
-    pub fn grow(mut self, factor: f32) -> Self {
-        self.inner.style = self.inner.style.grow(factor);
-        self
-    }
-
-    /// Sets how readily this block shrinks in a flex parent.
-    pub fn shrink(mut self, factor: f32) -> Self {
-        self.inner.style = self.inner.style.shrink(factor);
-        self
-    }
-
-    /// Sets this block's initial main-axis size in a flex parent.
-    pub fn basis(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.basis(value);
-        self
-    }
-
-    /// Overrides `align-items` from this block's flex parent.
-    pub fn align_self(mut self, value: Align) -> Self {
-        self.inner.style = self.inner.style.align_self(value);
-        self
-    }
-
-    /// Gives the block a background without introducing a themed surface.
-    pub fn background(mut self, color: Color) -> Self {
-        self.inner = self.inner.background(color);
-        self
-    }
-
-    /// Rounds the optional background's corners.
-    pub fn corner_radius(mut self, radius: f32) -> Self {
-        self.inner = self.inner.corner_radius(radius);
-        self
-    }
-
-    /// Adds a child widget.
-    pub fn child(mut self, child: BoxedWidget) -> Self {
-        self.inner = self.inner.child(child);
-        self
-    }
-
-    /// Adds all child widgets at once.
-    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
-        self.inner = self.inner.with_children(children);
-        self
-    }
+    layout_container_methods!();
 }
 
 impl Default for Block {
@@ -244,11 +324,11 @@ impl Flex {
     /// Creates a flex container with an explicit direction.
     pub fn new(direction: FlexDirection) -> Self {
         Self {
-            inner: crate::raw::RawView::new(Style {
+            inner: crate::raw::RawView::new(shrinkable(Style {
                 display: Display::Flex,
                 flex_direction: direction,
                 ..Default::default()
-            }),
+            })),
         }
     }
 
@@ -300,90 +380,7 @@ impl Flex {
         self
     }
 
-    /// Applies equal inner spacing, equivalent to CSS `padding: value`.
-    pub fn padding(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.padding_all(value);
-        self
-    }
-
-    /// Applies CSS-like `padding: vertical horizontal` spacing.
-    pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.inner.style = self.inner.style.padding_xy(horizontal, vertical);
-        self
-    }
-
-    /// Sets a fixed pixel size.
-    pub fn size(mut self, width: f32, height: f32) -> Self {
-        self.inner.style = self.inner.style.size(width, height);
-        self
-    }
-
-    /// Stretches the container across its parent's width.
-    pub fn full_width(mut self) -> Self {
-        self.inner.style = full_width(self.inner.style);
-        self
-    }
-
-    /// Stretches the container across its parent's height.
-    pub fn full_height(mut self) -> Self {
-        self.inner.style.size.height = Dimension::Percent(1.0);
-        self
-    }
-
-    /// Stretches the container to the available size on both axes.
-    pub fn fill(mut self) -> Self {
-        self.inner.style = fill(self.inner.style);
-        self
-    }
-
-    /// Makes the container take the remaining main-axis space in its parent.
-    pub fn grow(mut self, factor: f32) -> Self {
-        self.inner.style = self.inner.style.grow(factor);
-        self
-    }
-
-    /// Sets how readily this container shrinks in a flex parent.
-    pub fn shrink(mut self, factor: f32) -> Self {
-        self.inner.style = self.inner.style.shrink(factor);
-        self
-    }
-
-    /// Sets this container's initial main-axis size in a flex parent.
-    pub fn basis(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.basis(value);
-        self
-    }
-
-    /// Overrides the parent's `align-items` for this container.
-    pub fn align_self(mut self, value: Align) -> Self {
-        self.inner.style = self.inner.style.align_self(value);
-        self
-    }
-
-    /// Gives this visual-less container a background when it is useful for
-    /// grouping or debugging a layout.
-    pub fn background(mut self, color: Color) -> Self {
-        self.inner = self.inner.background(color);
-        self
-    }
-
-    /// Rounds the optional background's corners.
-    pub fn corner_radius(mut self, radius: f32) -> Self {
-        self.inner = self.inner.corner_radius(radius);
-        self
-    }
-
-    /// Adds a child widget.
-    pub fn child(mut self, child: BoxedWidget) -> Self {
-        self.inner = self.inner.child(child);
-        self
-    }
-
-    /// Adds all child widgets at once.
-    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
-        self.inner = self.inner.with_children(children);
-        self
-    }
+    layout_container_methods!();
 }
 
 impl Widget for Flex {
@@ -400,13 +397,17 @@ impl Widget for Flex {
     }
 }
 
-/// A CSS grid track. Use [`Track::fr`] for proportional space and
-/// [`Track::px`] for a fixed track.
+/// A CSS grid track. Use [`Track::fr`] for proportional space, [`Track::px`]
+/// for a fixed track, and [`Track::minmax`] for a track that's at least
+/// `min` px wide but shares any remaining space like an `fr` track — the
+/// building block of a responsive `repeat(auto-fit, minmax(..))` gallery
+/// (see [`Grid::auto_fit_columns`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Track {
     Auto,
     Px(f32),
     Fr(f32),
+    MinMax { min: f32, max_fr: f32 },
 }
 
 impl Track {
@@ -422,11 +423,21 @@ impl Track {
         Self::Fr(value)
     }
 
+    /// A track that never shrinks below `min` px, then shares remaining
+    /// space as `max_fr` fractional units — CSS's `minmax(min, max_fr fr)`.
+    pub const fn minmax(min: f32, max_fr: f32) -> Self {
+        Self::MinMax { min, max_fr }
+    }
+
     fn sizing(self) -> NonRepeatedTrackSizingFunction {
         match self {
             Track::Auto => creamui_core::layout::auto(),
             Track::Px(value) => creamui_core::layout::length(value),
             Track::Fr(value) => creamui_core::layout::fr(value),
+            Track::MinMax { min, max_fr } => creamui_core::layout::minmax(
+                creamui_core::layout::length(min),
+                creamui_core::layout::fr(max_fr),
+            ),
         }
     }
 }
@@ -461,6 +472,10 @@ impl From<GridFlow> for GridAutoFlow {
 ///     .columns(3)
 ///     .gap(16.0)
 ///     .template_rows([Track::px(48.0), Track::fr(1.0)]);
+///
+/// // A responsive card gallery, no manual column-count math required:
+/// // as many 180px-or-wider columns as fit, sharing the rest of the width.
+/// let gallery = Grid::new().auto_fit_columns(180.0).gap(16.0);
 /// ```
 pub struct Grid {
     inner: crate::raw::RawView,
@@ -471,10 +486,10 @@ impl Grid {
     /// [`Grid::rows`], or explicit track templates.
     pub fn new() -> Self {
         Self {
-            inner: crate::raw::RawView::new(Style {
+            inner: crate::raw::RawView::new(shrinkable(Style {
                 display: Display::Grid,
                 ..Default::default()
-            }),
+            })),
         }
     }
 
@@ -505,6 +520,32 @@ impl Grid {
             .into_iter()
             .map(|track| TrackSizingFunction::Single(track.sizing()))
             .collect();
+        self
+    }
+
+    /// A responsive column template equivalent to CSS's
+    /// `repeat(auto-fit, minmax(min, 1fr))`: Taffy generates as many
+    /// `min`-px-or-wider columns as fit the grid's own available width, and
+    /// the columns share whatever's left over evenly — collapsing empty
+    /// tracks (and their gaps) if the content doesn't fill a whole row.
+    ///
+    /// This replaces manually computing a column count from a measured
+    /// pixel width every frame: the same layout that a resize would have
+    /// required recomputing by hand is instead resolved natively during
+    /// layout, and only actually recomputed when the available width
+    /// changes.
+    pub fn auto_fit_columns(mut self, min: f32) -> Self {
+        self.inner.style.grid_template_columns =
+            auto_repeat_tracks(GridTrackRepetition::AutoFit, min);
+        self
+    }
+
+    /// Like [`Grid::auto_fit_columns`], but keeps empty tracks (and their
+    /// gaps) around instead of collapsing them — CSS grid's `auto-fill` vs
+    /// `auto-fit` distinction.
+    pub fn auto_fill_columns(mut self, min: f32) -> Self {
+        self.inner.style.grid_template_columns =
+            auto_repeat_tracks(GridTrackRepetition::AutoFill, min);
         self
     }
 
@@ -544,59 +585,7 @@ impl Grid {
         self
     }
 
-    /// Applies equal inner spacing.
-    pub fn padding(mut self, value: f32) -> Self {
-        self.inner.style = self.inner.style.padding_all(value);
-        self
-    }
-
-    /// Applies CSS-like `padding: vertical horizontal` spacing.
-    pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
-        self.inner.style = self.inner.style.padding_xy(horizontal, vertical);
-        self
-    }
-
-    /// Sets a fixed pixel size.
-    pub fn size(mut self, width: f32, height: f32) -> Self {
-        self.inner.style = self.inner.style.size(width, height);
-        self
-    }
-
-    /// Stretches the grid to its parent's available size.
-    pub fn fill(mut self) -> Self {
-        self.inner.style = fill(self.inner.style);
-        self
-    }
-
-    /// Makes the grid take remaining space in a flex parent.
-    pub fn grow(mut self, factor: f32) -> Self {
-        self.inner.style = self.inner.style.grow(factor);
-        self
-    }
-
-    /// Gives the grid a background without introducing a themed surface.
-    pub fn background(mut self, color: Color) -> Self {
-        self.inner = self.inner.background(color);
-        self
-    }
-
-    /// Rounds the optional background's corners.
-    pub fn corner_radius(mut self, radius: f32) -> Self {
-        self.inner = self.inner.corner_radius(radius);
-        self
-    }
-
-    /// Adds a grid item.
-    pub fn child(mut self, child: BoxedWidget) -> Self {
-        self.inner = self.inner.child(child);
-        self
-    }
-
-    /// Adds all grid items at once.
-    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
-        self.inner = self.inner.with_children(children);
-        self
-    }
+    layout_container_methods!();
 }
 
 impl Default for Grid {
@@ -629,10 +618,10 @@ impl GridItem {
     /// Creates an automatically placed grid item.
     pub fn new() -> Self {
         Self {
-            style: Style {
+            style: shrinkable(Style {
                 display: Display::Block,
                 ..Default::default()
-            },
+            }),
             children: vec![],
         }
     }
@@ -667,12 +656,18 @@ impl GridItem {
         self
     }
 
-    /// Allows the item to shrink below its contents' intrinsic width.
-    ///
-    /// This is useful for responsive `fr` tracks: use `0.0` when text should
-    /// wrap within a narrow cell instead of forcing the whole grid wider.
+    /// Sets a minimum pixel width, opting back into "never shrink below
+    /// this width" — grid items already shrink to `0` by default (see the
+    /// module docs), so this is only needed to keep one item from
+    /// shrinking as readily as its siblings.
     pub fn min_width(mut self, value: f32) -> Self {
         self.style.min_size.width = Dimension::Length(value);
+        self
+    }
+
+    /// Sets a minimum pixel height; see [`GridItem::min_width`].
+    pub fn min_height(mut self, value: f32) -> Self {
+        self.style.min_size.height = Dimension::Length(value);
         self
     }
 
@@ -710,6 +705,19 @@ impl Widget for GridItem {
 fn equal_tracks(count: usize) -> Vec<TrackSizingFunction> {
     let track: NonRepeatedTrackSizingFunction = creamui_core::layout::fr(1.0f32);
     vec![TrackSizingFunction::Single(track); count]
+}
+
+/// A single `repeat(auto-fit | auto-fill, minmax(min, 1fr))` track group —
+/// the whole point of `repeat`: Taffy decides how many copies fit at
+/// layout time instead of the caller precomputing a column count.
+fn auto_repeat_tracks(repetition: GridTrackRepetition, min: f32) -> Vec<TrackSizingFunction> {
+    vec![TrackSizingFunction::Repeat(
+        repetition,
+        vec![creamui_core::layout::minmax(
+            creamui_core::layout::length(min),
+            creamui_core::layout::fr(1.0f32),
+        )],
+    )]
 }
 
 /// Chainable CSS-like layout properties for a raw Taffy [`Style`].
@@ -766,6 +774,16 @@ pub trait StyleExt: Sized {
     fn width(self, value: f32) -> Self;
     /// Sets only a fixed pixel height.
     fn height(self, value: f32) -> Self;
+    /// Sets a minimum pixel size, opting back into "never shrink below
+    /// this size" — Taffy's own default. [`Flex`]/[`Block`]/[`Grid`]
+    /// override that default to `0`; a bare [`Style`] still starts from
+    /// Taffy's `Auto`, so use this when composing one by hand for a
+    /// flex/grid child that needs to actually shrink.
+    fn min_size(self, width: f32, height: f32) -> Self;
+    /// Sets a minimum pixel width; see [`StyleExt::min_size`].
+    fn min_width(self, value: f32) -> Self;
+    /// Sets a minimum pixel height; see [`StyleExt::min_size`].
+    fn min_height(self, value: f32) -> Self;
     /// Sets `flex-grow`.
     fn grow(self, factor: f32) -> Self;
     /// Sets `flex-shrink`.
@@ -880,6 +898,21 @@ impl StyleExt for Style {
         self
     }
 
+    fn min_size(mut self, width: f32, height: f32) -> Self {
+        self.min_size = fixed(width, height);
+        self
+    }
+
+    fn min_width(mut self, value: f32) -> Self {
+        self.min_size.width = Dimension::Length(value);
+        self
+    }
+
+    fn min_height(mut self, value: f32) -> Self {
+        self.min_size.height = Dimension::Length(value);
+        self
+    }
+
     fn grow(mut self, factor: f32) -> Self {
         self.flex_grow = factor;
         self
@@ -937,9 +970,10 @@ fn align_content(value: Justify) -> AlignContent {
     }
 }
 
-/// A flex row style with a fixed pixel `gap`.
+/// A flex row style with a fixed pixel `gap`. Shrinkable by default; see the
+/// module docs.
 pub fn row(gap: f32) -> Style {
-    Style {
+    shrinkable(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Row,
         gap: creamui_core::layout::Size {
@@ -947,12 +981,13 @@ pub fn row(gap: f32) -> Style {
             height: LengthPercentage::Length(gap),
         },
         ..Default::default()
-    }
+    })
 }
 
-/// A flex column style with a fixed pixel `gap`.
+/// A flex column style with a fixed pixel `gap`. Shrinkable by default; see
+/// the module docs.
 pub fn column(gap: f32) -> Style {
-    Style {
+    shrinkable(Style {
         display: Display::Flex,
         flex_direction: FlexDirection::Column,
         gap: creamui_core::layout::Size {
@@ -960,13 +995,14 @@ pub fn column(gap: f32) -> Style {
             height: LengthPercentage::Length(gap),
         },
         ..Default::default()
-    }
+    })
 }
 
-/// A CSS-grid-like layout with `columns` equal-width tracks and a fixed pixel `gap`.
+/// A CSS-grid-like layout with `columns` equal-width tracks and a fixed
+/// pixel `gap`. Shrinkable by default; see the module docs.
 pub fn grid(columns: usize, gap: f32) -> Style {
     let track: NonRepeatedTrackSizingFunction = creamui_core::layout::fr(1.0f32);
-    Style {
+    shrinkable(Style {
         display: creamui_core::layout::Display::Grid,
         grid_template_columns: vec![TrackSizingFunction::Single(track); columns],
         gap: creamui_core::layout::Size {
@@ -974,7 +1010,7 @@ pub fn grid(columns: usize, gap: f32) -> Style {
             height: LengthPercentage::Length(gap),
         },
         ..Default::default()
-    }
+    })
 }
 
 /// Places a grid item at an explicit 1-indexed `(column, row)` cell.
@@ -1223,5 +1259,69 @@ mod tests {
         assert_eq!(item.grid_row.start, GridPlacement::from_line_index(1));
         assert_eq!(item.grid_row.end, GridPlacement::Span(3));
         assert_eq!(item.min_size.width, Dimension::Length(0.0));
+    }
+
+    #[test]
+    fn containers_shrink_below_content_by_default() {
+        // A 400px-wide child inside a 100px-wide flex row: without the
+        // `min-size: 0` default this would refuse to shrink and overflow
+        // the parent instead of clamping to the available width.
+        let mut tree = creamui_core::layout::TaffyTree::<()>::new();
+        let child_style = Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Length(400.0),
+                height: Dimension::Length(20.0),
+            },
+            flex_shrink: 1.0,
+            ..Default::default()
+        };
+        let child = tree.new_leaf(shrinkable(child_style)).unwrap();
+        let root = tree
+            .new_with_children(row(0.0).size(100.0, 20.0), &[child])
+            .unwrap();
+        tree.compute_layout(
+            root,
+            creamui_core::layout::Size {
+                width: AvailableSpace::Definite(100.0),
+                height: AvailableSpace::Definite(20.0),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(tree.layout(child).unwrap().size.width, 100.0);
+    }
+
+    #[test]
+    fn auto_fit_columns_resolves_the_column_count_from_available_width() {
+        let mut tree = creamui_core::layout::TaffyTree::<()>::new();
+        let child_style = shrinkable(Style::default());
+        let children: Vec<_> = (0..6)
+            .map(|_| tree.new_leaf(child_style.clone()).unwrap())
+            .collect();
+        let root_style = Style {
+            size: fixed(400.0, 200.0),
+            ..Grid::new().auto_fit_columns(180.0).gap(20.0).style()
+        };
+        let root = tree.new_with_children(root_style, &children).unwrap();
+        tree.compute_layout(
+            root,
+            creamui_core::layout::Size {
+                width: AvailableSpace::Definite(400.0),
+                height: AvailableSpace::Definite(200.0),
+            },
+        )
+        .unwrap();
+
+        // (400 - 20 gap) / (180 + 20) rounds down to 2 columns of ~190px.
+        let first = tree.layout(children[0]).unwrap();
+        let second = tree.layout(children[1]).unwrap();
+        let third = tree.layout(children[2]).unwrap();
+        assert_eq!(first.location.x, 0.0);
+        assert!(second.location.x > first.location.x);
+        assert_eq!(
+            third.location.y > first.location.y,
+            true,
+            "a third column shouldn't fit, so the third card wraps to row 2"
+        );
     }
 }

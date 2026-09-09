@@ -67,7 +67,11 @@ pub fn measure_family(
         .and_then(|lines| lines.first())
         .map(|line| (max_width - line.padding).max(0.0))
         .unwrap_or(0.0);
-    let height = font_size * 1.4;
+    // fontdue's own wrapped height, not a single-line guess: at a narrow
+    // `max_width` this text may wrap onto several lines, and reporting only
+    // one line's height here starves the box of the room the extra lines
+    // actually need, overlapping whatever comes after it.
+    let height = layout.height().max(font_size * 1.4);
     (width.max(1.0), height)
 }
 

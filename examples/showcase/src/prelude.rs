@@ -10,7 +10,9 @@ pub use creamui_macros::{component, jsx};
 pub use creamui_reactive::{create_effect, Effect, Signal};
 pub use creamui_render::{run, WindowHandle, WindowOptions};
 pub use creamui_theme::{use_theme, Color, SelectionStyle, Theme};
-pub use creamui_widgets::layout::{column, fixed, padding, row};
+pub use creamui_widgets::layout::{
+    column, fixed, padding, row, Align, Flex, Grid, GridItem, Justify, StyleExt, Track, Wrap,
+};
 pub use creamui_widgets::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, Card, Choice, ColorPicker,
     ColorPickerController, DateTime, DateTimeController, DateTimePicker, FilePicker, Heading, Icon,

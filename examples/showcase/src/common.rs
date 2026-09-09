@@ -3,7 +3,7 @@
 use crate::prelude::*;
 
 /// Sidebar categories in display order.
-pub const NAV_LABELS: [&str; 15] = [
+pub const NAV_LABELS: [&str; 16] = [
     "Appearance",
     "Typography",
     "Input",
@@ -19,6 +19,7 @@ pub const NAV_LABELS: [&str; 15] = [
     "Scroll",
     "Tree",
     "Table",
+    "Layout",
 ];
 pub const ACCENTS: [(&str, Color); 5] = [
     ("Lilac", Color::rgb(181, 139, 255)),
@@ -59,7 +60,8 @@ pub fn label_style() -> Style {
     Style {
         size: creamui_core::layout::Size {
             width: Dimension::Percent(1.0),
-            height: Dimension::Length(16.0),
+            // Auto so a wrapped second line grows the box instead of overflowing it.
+            height: Dimension::Auto,
         },
         ..Default::default()
     }
@@ -142,10 +144,11 @@ pub fn card_row(children: Vec<BoxedWidget>) -> BoxedWidget {
 #[component]
 pub fn SectionHeader(title: String, subtitle: String) -> BoxedWidget {
     let theme = use_theme();
+    // Auto height so a wrapped title doesn't overflow into the subtitle.
     let heading_style = Style {
         size: creamui_core::layout::Size {
             width: Dimension::Percent(1.0),
-            height: Dimension::Length(34.0),
+            height: Dimension::Auto,
         },
         ..Default::default()
     };

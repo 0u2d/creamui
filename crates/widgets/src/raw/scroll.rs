@@ -177,28 +177,13 @@ impl Widget for RawScrollView {
         // auto" trap `ScrollClip` already works around: without an explicit
         // `min_size`, this would still refuse to shrink below its own
         // content's height, so `flex_grow` could only ever grow it, never
-        // let it actually shrink to fit and scroll. Left alone (`Auto`)
-        // unless the caller set one explicitly.
-        let min_size = creamui_core::layout::Size {
-            width: match self.style.min_size.width {
-                creamui_core::layout::Dimension::Auto => {
-                    creamui_core::layout::Dimension::Length(0.0)
-                }
-                explicit => explicit,
-            },
-            height: match self.style.min_size.height {
-                creamui_core::layout::Dimension::Auto => {
-                    creamui_core::layout::Dimension::Length(0.0)
-                }
-                explicit => explicit,
-            },
-        };
-        Style {
+        // let it actually shrink to fit and scroll. `shrinkable` leaves an
+        // axis alone if the caller already set one explicitly.
+        crate::layout::shrinkable(Style {
             display: creamui_core::layout::Display::Flex,
             flex_direction: creamui_core::layout::FlexDirection::Column,
-            min_size,
             ..self.style.clone()
-        }
+        })
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
@@ -233,18 +218,14 @@ impl Widget for RawScrollView {
         let content = RawView::new(content_style).with_children(std::mem::take(&mut self.children));
 
         let clip = ScrollClip {
-            style: Style {
+            // Without `shrinkable`, the CSS "min-height: auto" trap floors
+            // `flex_grow` at the overflowing content's own height.
+            style: crate::layout::shrinkable(Style {
                 display: creamui_core::layout::Display::Flex,
                 flex_direction: creamui_core::layout::FlexDirection::Column,
                 flex_grow: 1.0,
-                // Without this, the CSS "min-height: auto" trap floors
-                // `flex_grow` at the overflowing content's own height.
-                min_size: creamui_core::layout::Size {
-                    width: creamui_core::layout::Dimension::Length(0.0),
-                    height: creamui_core::layout::Dimension::Length(0.0),
-                },
                 ..Default::default()
-            },
+            }),
             controller: self.controller.clone(),
             scroll_y: self.scroll_y,
             on_scroll: self.on_scroll.clone(),

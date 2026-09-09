@@ -54,10 +54,11 @@ pub fn Nav(
         Symbol::Grid,
         Symbol::Folder,
         Symbol::Grid,
+        Symbol::Grid,
     ];
     let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 2 || i == 8 || i == 10 || i == 13 {
+        if i == 0 || i == 2 || i == 8 || i == 10 || i == 13 || i == 15 {
             items.push(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
@@ -69,6 +70,8 @@ pub fn Nav(
                             "SELECTION"
                         } else if i == 13 {
                             "DATA VIEW"
+                        } else if i == 15 {
+                            "LAYOUT"
                         } else {
                             "NAVIGATION"
                         },
