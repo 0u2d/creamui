@@ -36,8 +36,8 @@ creamui = { version = "0.1", features = ["jsx"] }
 Then create a window and return a widget tree:
 
 ```rust
-use creamui::core::layout::{AlignItems, Dimension, FlexDirection, JustifyContent, Style};
-use creamui::{jsx, run, BoxedWidget, Signal, Size, Theme, WindowOptions};
+use creamui::widgets::layout::{Align, Flex, Justify};
+use creamui::{run, BoxedWidget, Button, Signal, Size, Text, Theme, WindowOptions};
 
 fn main() {
     let clicks = Signal::new(0_u32);
@@ -54,26 +54,17 @@ fn main() {
         move |viewport: Size| -> BoxedWidget {
             let theme = Theme::default();
             let increment = clicks.clone();
-            let style = Style {
-                size: creamui::core::layout::Size {
-                    width: Dimension::Length(viewport.width),
-                    height: Dimension::Length(viewport.height),
-                },
-                flex_direction: FlexDirection::Column,
-                justify_content: Some(JustifyContent::Center),
-                align_items: Some(AlignItems::Center),
-                ..Default::default()
-            };
-
-            Box::new(jsx! {
-                <RawView style={style} background={theme.surface}>
-                    <Text theme={&theme} font_size={28.0}>"Hello, CreamUI!"</Text>
-                    <Text theme={&theme}>{format!("Clicked {} times", clicks.get())}</Text>
-                    <Button theme={&theme} on_click={move || increment.update(|n| *n += 1)}>
-                        "Click me"
-                    </Button>
-                </RawView>
-            })
+            Box::new(
+                Flex::column()
+                    .size(viewport.width, viewport.height)
+                    .gap(12.0)
+                    .justify(Justify::Center)
+                    .align(Align::Center)
+                    .background(theme.surface)
+                    .child(Box::new(Text::new("Hello, CreamUI!").font_size(28.0)))
+                    .child(Box::new(Text::new(format!("Clicked {} times", clicks.get()))))
+                    .child(Box::new(Button::new("Click me", move || increment.update(|n| *n += 1)))),
+            )
         },
     );
 }
@@ -86,6 +77,7 @@ cargo run -p hello-world
 cargo run -p showcase
 cargo run -p pickers
 cargo run -p images
+cargo run -p flex
 ```
 
 The showcase is the fastest way to explore the available controls and theme behavior.

@@ -16,8 +16,8 @@ Legend: `[x]` done and tested, `[ ]` not started, `[~]` partial.
 - [x] Semantic theme tokens (surface/accent/text/border/danger/warning/success,
       radius\*, spacing\*) with bundled `dark()` and `light()` themes
       (`creamui-theme`)
-- [x] Headless widgets: `RawView`, `RawText`, `RawButton` (no styling opinion)
-- [x] Themed widgets built on the headless ones: `View`, `Text`, `Button`
+- [x] Headless widgets: `Block`, `RawText`, `RawButton` (no styling opinion)
+- [x] Themed widgets built on the headless ones: `Card`, `Text`, `Button`
       (`creamui-widgets::themed`) — pattern is copy-and-adapt for custom
       derived components
 - [x] Windowing + GPU presentation on Linux: winit window, CPU rasterization
@@ -155,7 +155,7 @@ just bake the perf ceiling into every app that uses it.
       `creamui_themed_text_new`/`creamui_button_new`/etc. instead of a
       hardcoded `Theme::dark()` — `hello_world_dynamic` now demos the same
       runtime theme toggle the static example does), full layout style
-      control (`CStyle`/`CDimension`, `creamui_view_new_styled` and
+      control (`CStyle`/`CDimension`, `creamui_block_new_styled` and
       style params on the text-input/slider/scroll-view constructors,
       covering flex direction/alignment/size/padding/margin/gap/flex-grow-
       shrink-basis), more widget kinds (`creamui_checkbox_new`,
@@ -177,7 +177,7 @@ syntax layer over the existing `Widget` builder pattern, not a new
 reactivity model.
 
 - [x] `jsx!{ ... }` proc-macro (`creamui-macros`): parses JSX-like syntax
-      (`<View theme={&theme} style={...}><Text theme={&theme}>"..."</Text></View>`)
+      (`<Block style={...}><Text>"..."</Text></Block>`)
       and expands to the existing `creamui_widgets` builder calls — pure
       syntax sugar, no engine changes required; its integration test renders
       the output and dispatches a click through the resulting scene

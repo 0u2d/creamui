@@ -1,6 +1,6 @@
 use super::*;
-/// A themed surface container ("card") with background and rounded corners.
-pub struct View {
+/// A themed surface with the standard card background and rounded corners.
+pub struct Card {
     inner: RawView,
 }
 
@@ -150,10 +150,10 @@ impl Widget for MenuItem {
     }
 }
 
-impl View {
+impl Card {
     pub fn new(style: Style) -> Self {
         let theme = use_theme();
-        View {
+        Card {
             inner: RawView::new(style)
                 .background(theme.surface_elevated)
                 .corner_radius(theme.card_radius),
@@ -171,7 +171,7 @@ impl View {
     }
 }
 
-impl Widget for View {
+impl Widget for Card {
     fn style(&self) -> Style {
         self.inner.style()
     }

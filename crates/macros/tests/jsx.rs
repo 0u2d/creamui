@@ -1,8 +1,9 @@
-use creamui_core::layout::Style;
+use creamui_core::layout::{FlexDirection, Style};
 use creamui_core::{render_frame, BoxedWidget, Painter, Rect, Size, TextAlign};
 use creamui_macros::{abi_jsx, component, jsx};
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
+use creamui_widgets::layout::{Align, Justify, Wrap};
 
 #[derive(Default)]
 struct TextPainter(Vec<String>);
@@ -49,10 +50,10 @@ fn jsx_expands_to_the_existing_widget_builders() {
         let clicks = Signal::new(0);
         let clicks_for_handler = clicks.clone();
         let root: BoxedWidget = Box::new(jsx! {
-            <View style={Style::default()}>
+            <Block style={Style::default()}>
                 <Text font_size={20.0}>{format!("Clicked {} times", clicks.get())}</Text>
                 <Button on_click={move || clicks_for_handler.update(|value| *value += 1)}>"Increment"</Button>
-            </View>
+            </Block>
         });
 
         let mut painter = TextPainter::default();
@@ -85,9 +86,9 @@ fn application_components_are_typed_functions_not_macro_registrations() {
     creamui_reactive::with_context_scope(|| {
         creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(Theme::dark()));
         let root: BoxedWidget = Box::new(jsx! {
-            <View style={Style::default()}>
+            <Block style={Style::default()}>
                 <CounterLabel value={7} />
-            </View>
+            </Block>
         });
         let mut painter = TextPainter::default();
         render_frame(
@@ -169,6 +170,50 @@ fn raw_view_accepts_a_generated_children_list() {
         &mut painter,
     );
     assert_eq!(painter.0, ["Generated"]);
+}
+
+#[test]
+fn jsx_exposes_semantic_flex_layout() {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(Theme::dark()));
+        let root: BoxedWidget = Box::new(jsx! {
+            <Flex direction={FlexDirection::Column} size={(200.0, 80.0)} gap={8.0} gap_x={12.0} align={Align::Center} justify={Justify::Center} wrap={Wrap::Wrap} padding_xy={(10.0, 6.0)}>
+                <Text>"Flex child"</Text>
+            </Flex>
+        });
+        let mut painter = TextPainter::default();
+        render_frame(
+            root,
+            Size {
+                width: 200.0,
+                height: 80.0,
+            },
+            &mut painter,
+        );
+        assert_eq!(painter.0, ["Flex child"]);
+    });
+}
+
+#[test]
+fn jsx_exposes_semantic_block_layout() {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(Theme::dark()));
+        let root: BoxedWidget = Box::new(jsx! {
+            <Block size={(200.0, 80.0)} padding={8.0} background={Color::rgb(20, 20, 20)}>
+                <Text>"Block child"</Text>
+            </Block>
+        });
+        let mut painter = TextPainter::default();
+        render_frame(
+            root,
+            Size {
+                width: 200.0,
+                height: 80.0,
+            },
+            &mut painter,
+        );
+        assert_eq!(painter.0, ["Block child"]);
+    });
 }
 
 #[test]

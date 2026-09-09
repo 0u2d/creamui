@@ -25,11 +25,11 @@ pub use raw::{
     TabIndicatorSide, TableColumn, TextSelection,
 };
 pub use themed::{
-    tab_styles, AlertDialog, Avatar, Badge, Button, ButtonSize, ButtonState, ButtonVariant,
+    tab_styles, AlertDialog, Avatar, Badge, Button, ButtonSize, ButtonState, ButtonVariant, Card,
     Checkbox, ColorPicker, ComboBox, DateInput, DateTimePicker, Dialog, FilePicker, Heading, Link,
     ListBox, ListView, MenuBar, MenuColors, MenuItem, MenuPopup, Overlay, Popover, Pre,
     ProgressBar, ProgressRing, Quote, Radio, RadioGroup, ScrollView, SegmentedControl, Select,
     Sidebar, SidebarItem, SidebarSeparator, Slider, Spinner, Switch, Tab, TabColors, TabSizing,
     Table, Tabs, Text, TextArea, TextInput, TextSize, TimeInput, TreeNode, TreeView,
-    TypingIndicator, View,
+    TypingIndicator,
 };

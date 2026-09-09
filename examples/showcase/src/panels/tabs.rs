@@ -127,7 +127,7 @@ pub fn TabsPanel(
                 ..column(theme.spacing_large)
             }, theme.spacing_medium))
                 .child(tab_bar(&TAB_LABELS, content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium, theme.spacing_small))
-                .child(Box::new(View::new(preview_style)
+                .child(Box::new(Card::new(preview_style)
                     .child(Box::new(Heading::new(title)))
                     .child(Box::new(Text::secondary(detail)))
                     .child(Box::new(RawText::new(current_label, theme.accent, 12.).bold(true).align(TextAlign::Start)))))

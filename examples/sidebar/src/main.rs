@@ -22,7 +22,7 @@ use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::raw::TabIndicatorSide;
 use creamui_widgets::{
-    RawSidebar, RawTab, RawText, RawView, Sidebar, SidebarItem, TabColors, View,
+    Card, RawSidebar, RawTab, RawText, RawView, Sidebar, SidebarItem, TabColors,
 };
 
 struct Section {
@@ -259,7 +259,7 @@ fn Showcase(chip: Color, label: String, children: Vec<BoxedWidget>) -> BoxedWidg
             <RawText color={theme.text_disabled} font_size={12.0} align={TextAlign::Start} style={label_style}>{label}</RawText>
         </RawView>
     });
-    let card = View::new(card_style).with_children(children);
+    let card = Card::new(card_style).with_children(children);
     Box::new(
         RawView::new(outer_style)
             .child(header)

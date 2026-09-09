@@ -61,7 +61,7 @@ pub fn SidebarPanel(active: Signal<usize>) -> BoxedWidget {
                 ..row(theme.spacing_large)
             }, theme.spacing_medium))
                 .child(Box::new(rail))
-                .child(Box::new(View::new(preview_style)
+                .child(Box::new(Card::new(preview_style)
                     .child(Box::new(Heading::new(current_label.clone())))
                     .child(Box::new(Text::secondary("The selected section is shown here.")))))
             ) as BoxedWidget}

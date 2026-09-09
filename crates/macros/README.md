@@ -4,11 +4,14 @@ JSX syntax and typed component helpers for CreamUI.
 
 ```rust
 use creamui_macros::jsx;
+use creamui_core::layout::FlexDirection;
+use creamui_widgets::layout::{Align, Justify};
 
 let screen = jsx! {
-    <View theme={&theme} style={style}>
-        <Button theme={&theme} on_click={|| save()}>"Save"</Button>
-    </View>
+    <Flex direction={FlexDirection::Column} gap={12.0}
+        align={Align::Center} justify={Justify::Center}>
+        <Button on_click={|| save()}>"Save"</Button>
+    </Flex>
 };
 ```
 

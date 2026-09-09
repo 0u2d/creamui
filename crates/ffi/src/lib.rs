@@ -10,7 +10,7 @@
 //!
 //! All entry points are `extern "C"` and `#[no_mangle]`. Pointers returned
 //! by `_new` functions are owned by the caller and must eventually be
-//! passed to exactly one consuming call: [`creamui_view_add_child`] /
+//! passed to exactly one consuming call: [`creamui_block_add_child`] /
 //! [`creamui_scroll_view_add_child`] (which take ownership of the child) or
 //! [`creamui_run`] (which takes ownership of the root), or else freed with
 //! [`creamui_widget_free`].
@@ -412,7 +412,7 @@ fn style_from_c(s: CStyle) -> Style {
 }
 
 enum WidgetKind {
-    View(RawView),
+    Block(RawView),
     Text(RawText),
     ThemedText(ThemedText),
     ThemedButton(ThemedButton),
@@ -426,7 +426,7 @@ enum WidgetKind {
 impl WidgetKind {
     fn into_boxed(self) -> BoxedWidget {
         match self {
-            WidgetKind::View(w) => Box::new(w),
+            WidgetKind::Block(w) => Box::new(w),
             WidgetKind::Text(w) => Box::new(w),
             WidgetKind::ThemedText(w) => Box::new(w),
             WidgetKind::ThemedButton(w) => Box::new(w),
@@ -456,85 +456,81 @@ pub extern "C" fn creamui_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
-/// Creates a plain container widget that stacks children top-to-bottom,
-/// centered, filling its parent. For full layout control (arbitrary flex
-/// direction, sizing, padding, etc.) use [`creamui_view_new_styled`]
-/// instead.
+/// Creates a semantic block container that fills its parent.
 #[no_mangle]
-pub extern "C" fn creamui_view_new() -> *mut CWidget {
+pub extern "C" fn creamui_block_new() -> *mut CWidget {
     let style = Style {
-        display: creamui_core::layout::Display::Flex,
-        flex_direction: FlexDirection::Column,
-        justify_content: Some(JustifyContent::Center),
-        align_items: Some(AlignItems::Center),
+        display: creamui_core::layout::Display::Block,
         size: LayoutSize {
             width: Dimension::Percent(1.0),
             height: Dimension::Percent(1.0),
         },
         ..Default::default()
     };
-    let widget = CWidget(WidgetKind::View(RawView::new(style)));
+    let widget = CWidget(WidgetKind::Block(RawView::new(style)));
     Box::into_raw(Box::new(widget))
 }
 
 /// Creates a plain container widget with a caller-supplied [`CStyle`],
 /// giving full control over flex direction, sizing, padding, margin, gap,
 /// and flex-grow/shrink/basis — the same style surface `creamui_widgets`'
-/// `View`/`RawView` expose natively.
+/// `Block` exposes natively. The container always uses block layout.
 #[no_mangle]
-pub extern "C" fn creamui_view_new_styled(style: CStyle) -> *mut CWidget {
-    let widget = CWidget(WidgetKind::View(RawView::new(style_from_c(style))));
+pub extern "C" fn creamui_block_new_styled(style: CStyle) -> *mut CWidget {
+    let mut style = style_from_c(style);
+    style.display = creamui_core::layout::Display::Block;
+    let widget = CWidget(WidgetKind::Block(RawView::new(style)));
     Box::into_raw(Box::new(widget))
 }
 
-/// Sets a view's background color. `view` must be a live pointer from
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] that has not yet been
+/// Sets a block's background color. `block` must be a live pointer from
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] that has not yet been
 /// consumed.
 ///
 /// # Safety
-/// `view` must be a valid, non-null pointer returned by
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] and not yet passed to
-/// [`creamui_view_add_child`], [`creamui_run`], or [`creamui_widget_free`].
+/// `block` must be a valid, non-null pointer returned by
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] and not yet passed to
+/// [`creamui_block_add_child`], [`creamui_run`], or [`creamui_widget_free`].
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_set_background(view: *mut CWidget, color: CColor) {
-    if view.is_null() {
+pub unsafe extern "C" fn creamui_block_set_background(block: *mut CWidget, color: CColor) {
+    if block.is_null() {
         return;
     }
-    if let WidgetKind::View(v) = &mut (*view).0 {
+    if let WidgetKind::Block(v) = &mut (*block).0 {
         v.background = Some(color_from_c(color));
     }
 }
 
-/// Sets a view's corner radius, in logical pixels.
+/// Sets a block's corner radius, in logical pixels.
 ///
 /// # Safety
-/// Same contract as [`creamui_view_set_background`].
+/// Same contract as [`creamui_block_set_background`].
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_set_corner_radius(view: *mut CWidget, radius: f32) {
-    if view.is_null() {
+pub unsafe extern "C" fn creamui_block_set_corner_radius(block: *mut CWidget, radius: f32) {
+    if block.is_null() {
         return;
     }
-    if let WidgetKind::View(v) = &mut (*view).0 {
+    if let WidgetKind::Block(v) = &mut (*block).0 {
         v.corner_radius = radius;
     }
 }
 
-/// Attaches `child` to `view`, taking ownership of `child` (it must not be
+/// Attaches `child` to `block`, taking ownership of `child` (it must not be
 /// used or freed again after this call). Works for both
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] and
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] and
 /// [`creamui_scroll_view_new`] parents.
 ///
 /// # Safety
-/// `view` and `child` must be valid, non-null, not-yet-consumed pointers
+/// `block` and `child` must be valid, non-null, not-yet-consumed pointers
 /// from this crate's `_new` functions, and must not alias each other.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut CWidget) {
-    if view.is_null() || child.is_null() {
+pub unsafe extern "C" fn creamui_block_add_child(block: *mut CWidget, child: *mut CWidget) {
+    if block.is_null() || child.is_null() {
         return;
     }
     let child = *Box::from_raw(child);
-    match &mut (*view).0 {
-        WidgetKind::View(v) => v.children.push(child.0.into_boxed()),
+    match &mut (*block).0 {
+        WidgetKind::Block(v) => v.children.push(child.0.into_boxed()),
         WidgetKind::ThemedScrollView(v) => push_scroll_view_child(v, child.0.into_boxed()),
         _ => {}
     }
@@ -542,7 +538,7 @@ pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut 
 
 /// `ThemedScrollView`'s children live behind a consuming builder method
 /// (`.child()`), not a public field — this takes ownership out of the `&mut`
-/// reference via a throwaway placeholder so both `creamui_view_add_child`
+/// reference via a throwaway placeholder so both `creamui_block_add_child`
 /// and [`creamui_scroll_view_add_child`] can share this one code path.
 fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
     let placeholder = with_theme_scope(Theme::dark(), || {
@@ -556,7 +552,7 @@ fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
 /// taking ownership of `child`.
 ///
 /// # Safety
-/// Same contract as [`creamui_view_add_child`]; `view` must specifically be
+/// Same contract as [`creamui_block_add_child`]; `view` must specifically be
 /// a not-yet-consumed pointer from [`creamui_scroll_view_new`].
 #[no_mangle]
 pub unsafe extern "C" fn creamui_scroll_view_add_child(view: *mut CWidget, child: *mut CWidget) {
@@ -895,7 +891,7 @@ pub unsafe extern "C" fn creamui_scroll_view_new(
 }
 
 /// Frees a widget subtree that was never attached via
-/// [`creamui_view_add_child`], [`creamui_scroll_view_add_child`], or
+/// [`creamui_block_add_child`], [`creamui_scroll_view_add_child`], or
 /// [`creamui_run`].
 ///
 /// # Safety

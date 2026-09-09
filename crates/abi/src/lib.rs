@@ -201,12 +201,10 @@ impl CStyle {
         }
     }
 
-    /// Matches `creamui_widgets::layout::row`: a flex row with a fixed gap,
-    /// vertically centered.
+    /// Matches `creamui_widgets::layout::row`: a flex row with a fixed gap.
     pub fn row(gap: f32) -> Self {
         CStyle {
             flex_direction: FLEX_DIRECTION_ROW,
-            align_items: ALIGN_CENTER,
             gap_row: gap,
             gap_column: gap,
             ..Self::default_style()

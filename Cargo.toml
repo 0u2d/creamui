@@ -28,6 +28,7 @@ members = [
     "examples/facade",
     "examples/hooks",
     "examples/fonts",
+    "examples/flex",
     "demo/showcase",
 ]
 

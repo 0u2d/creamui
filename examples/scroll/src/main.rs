@@ -23,7 +23,7 @@ use creamui_macros::{component, jsx};
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, padding, row};
-use creamui_widgets::{RawScrollView, RawText, RawView, ScrollController, ScrollView, View};
+use creamui_widgets::{Card, RawScrollView, RawText, RawView, ScrollController, ScrollView};
 
 /// A row of numbered list items, tall enough in aggregate to overflow every
 /// list in this example.
@@ -130,7 +130,7 @@ fn Card(chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
             <Text align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
         </RawView>
     });
-    let card = View::new(card_style).child(list);
+    let card = Card::new(card_style).child(list);
     Box::new(
         RawView::new(outer_style)
             .child(header)

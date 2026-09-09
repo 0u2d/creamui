@@ -218,10 +218,11 @@ impl Element {
     fn is_native_intrinsic(&self) -> bool {
         matches!(
             self.tag.to_string().as_str(),
-            "RawView"
+            "Block"
+                | "RawView"
+                | "Flex"
                 | "RawText"
                 | "RawButton"
-                | "View"
                 | "ScrollView"
                 | "Text"
                 | "Heading"
@@ -327,6 +328,169 @@ impl Element {
         let widgets = widgets_path();
         let image = image_path();
         match self.tag.to_string().as_str() {
+            "Block" => {
+                self.reject_unknown_props(&[
+                    "style",
+                    "size",
+                    "padding",
+                    "padding_xy",
+                    "margin",
+                    "fill",
+                    "grow",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(#widgets::layout::Block::with_style(#style))
+                } else {
+                    quote!(#widgets::layout::Block::new())
+                };
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(margin) = self.prop("margin")? {
+                    output = quote!(#output.margin(#margin));
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "Flex" => {
+                self.reject_unknown_props(&[
+                    "direction",
+                    "gap",
+                    "gap_x",
+                    "gap_y",
+                    "align",
+                    "justify",
+                    "align_content",
+                    "wrap",
+                    "padding",
+                    "padding_xy",
+                    "size",
+                    "full_width",
+                    "full_height",
+                    "fill",
+                    "grow",
+                    "shrink",
+                    "basis",
+                    "align_self",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = quote!(#widgets::layout::Flex::row());
+                if let Some(direction) = self.prop("direction")? {
+                    output = quote!(#output.direction(#direction));
+                }
+                if let Some(gap) = self.prop("gap")? {
+                    output = quote!(#output.gap(#gap));
+                }
+                if let Some(gap) = self.prop("gap_x")? {
+                    output = quote!(#output.gap_x(#gap));
+                }
+                if let Some(gap) = self.prop("gap_y")? {
+                    output = quote!(#output.gap_y(#gap));
+                }
+                if let Some(align) = self.prop("align")? {
+                    output = quote!(#output.align(#align));
+                }
+                if let Some(justify) = self.prop("justify")? {
+                    output = quote!(#output.justify(#justify));
+                }
+                if let Some(align_content) = self.prop("align_content")? {
+                    output = quote!(#output.align_content(#align_content));
+                }
+                if let Some(wrap) = self.prop("wrap")? {
+                    output = quote!(#output.wrap(#wrap));
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(full_width) = self.prop("full_width")? {
+                    output = quote!(if #full_width { #output.full_width() } else { #output });
+                }
+                if let Some(full_height) = self.prop("full_height")? {
+                    output = quote!(if #full_height { #output.full_height() } else { #output });
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(shrink) = self.prop("shrink")? {
+                    output = quote!(#output.shrink(#shrink));
+                }
+                if let Some(basis) = self.prop("basis")? {
+                    output = quote!(#output.basis(#basis));
+                }
+                if let Some(align_self) = self.prop("align_self")? {
+                    output = quote!(#output.align_self(#align_self));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
             "RawView" => {
                 self.reject_unknown_props(&["style", "background", "corner_radius", "children"])?;
                 let style = self.required_prop("style")?;
@@ -384,11 +548,6 @@ impl Element {
                     output = quote!(#output.disabled(#disabled));
                 }
                 self.container_children(output)
-            }
-            "View" => {
-                self.reject_unknown_props(&["style"])?;
-                let style = self.required_prop("style")?;
-                self.container_children(quote!(#widgets::themed::View::new(#style)))
             }
             "ScrollView" => {
                 self.reject_unknown_props(&["style", "scroll_y", "on_scroll"])?;
@@ -867,11 +1026,11 @@ impl Element {
     fn expand_dynamic(&self) -> Result<TokenStream2> {
         let dynamic = dynamic_path();
         match self.tag.to_string().as_str() {
-            "RawView" | "View" => {
+            "Block" => {
                 self.reject_unknown_props(&["ctx", "style", "background", "corner_radius"])?;
                 let ctx = self.required_prop("ctx")?;
                 let style = self.required_prop("style")?;
-                let mut output = quote!(#dynamic::view_styled(#ctx, #style));
+                let mut output = quote!(#dynamic::block_styled(#ctx, #style));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }
