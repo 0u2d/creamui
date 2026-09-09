@@ -300,7 +300,9 @@ impl Painter for SkiaPainter {
         bold: bool,
         italic: bool,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, None, bold, italic);
+        self.draw_text(
+            rect, text, color, None, font_size, align, None, bold, italic,
+        );
     }
 
     fn fill_text_font(
@@ -314,7 +316,9 @@ impl Painter for SkiaPainter {
         bold: bool,
         italic: bool,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, family, bold, italic);
+        self.draw_text(
+            rect, text, color, None, font_size, align, family, bold, italic,
+        );
     }
 
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {

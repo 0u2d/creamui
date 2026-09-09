@@ -14,7 +14,9 @@ pub use creamui_widgets as widgets;
 pub use creamui_core::{BoxedWidget, Painter, Size, Widget};
 pub use creamui_fonts::{include_font, use_font, FontHandle, FontWeight};
 pub use creamui_reactive::{create_effect, Effect, Signal};
-pub use creamui_render::{run, AppBuilder, PanicDetails, RenderBackend, WindowHandle, WindowOptions};
+pub use creamui_render::{
+    run, AppBuilder, PanicDetails, RenderBackend, WindowHandle, WindowOptions,
+};
 pub use creamui_theme::{use_theme, Color, ColorScheme, Theme, ThemeProvider, Typography};
 pub use creamui_widgets::*;
 

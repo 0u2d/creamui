@@ -151,4 +151,3 @@ pub fn SectionHeader(theme: Theme, title: String, subtitle: String) -> BoxedWidg
         </RawView>
     })
 }
-

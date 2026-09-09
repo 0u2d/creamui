@@ -141,7 +141,10 @@ impl Icon {
                     })
                     .collect();
                 line(&points);
-                line(&[(points.last().unwrap().0, points.last().unwrap().1), (9., 19.)]);
+                line(&[
+                    (points.last().unwrap().0, points.last().unwrap().1),
+                    (9., 19.),
+                ]);
                 line(&[(points[0].0, points[0].1), (13., 19.)]);
             }
             Symbol::Close => {

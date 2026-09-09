@@ -245,7 +245,9 @@ fn record_and_show_benchmark(
     base_title: &str,
     window: Option<&Window>,
 ) {
-    let FrameState { painter, benchmark, .. } = frame;
+    let FrameState {
+        painter, benchmark, ..
+    } = frame;
     let Some(bench) = benchmark.as_mut() else {
         return;
     };
@@ -261,7 +263,8 @@ fn record_and_show_benchmark(
         ),
         BenchmarkMode::Title => {
             if let Some(window) = window {
-                let title = benchmark::format_title(base_title, &bench.frame_stats, &bench.process_stats);
+                let title =
+                    benchmark::format_title(base_title, &bench.frame_stats, &bench.process_stats);
                 window.set_title(&title);
             }
         }
@@ -273,7 +276,9 @@ fn record_and_show_benchmark(
 /// paint-only passes (`repaint_scene`) that clear and repaint the pixmap
 /// without a full `render()`, and would otherwise erase it.
 fn redraw_benchmark_overlay(frame: &mut FrameState, viewport: Size) {
-    let FrameState { painter, benchmark, .. } = frame;
+    let FrameState {
+        painter, benchmark, ..
+    } = frame;
     let Some(bench) = benchmark.as_ref() else {
         return;
     };

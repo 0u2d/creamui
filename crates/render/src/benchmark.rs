@@ -326,9 +326,10 @@ pub fn draw_overlay(
     let margin = 12.0;
 
     let (x, y) = match position {
-        DebugPosition::BottomRight => {
-            (viewport.width - width - margin, viewport.height - height - margin)
-        }
+        DebugPosition::BottomRight => (
+            viewport.width - width - margin,
+            viewport.height - height - margin,
+        ),
         DebugPosition::BottomLeft => (margin, viewport.height - height - margin),
         DebugPosition::TopLeft => (margin, margin),
         DebugPosition::TopRight => (viewport.width - width - margin, margin),
@@ -336,7 +337,12 @@ pub fn draw_overlay(
     };
 
     painter.fill_rect(
-        Rect { x, y, width, height },
+        Rect {
+            x,
+            y,
+            width,
+            height,
+        },
         Color::rgba(0, 0, 0, 180),
         6.0,
     );
@@ -360,7 +366,11 @@ pub fn draw_overlay(
 
 /// Appends the same stats [`draw_overlay`] shows to `base_title`, for
 /// [`BenchmarkMode::Title`].
-pub fn format_title(base_title: &str, frame_stats: &FrameStats, process_stats: &ProcessStats) -> String {
+pub fn format_title(
+    base_title: &str,
+    frame_stats: &FrameStats,
+    process_stats: &ProcessStats,
+) -> String {
     format!(
         "{base_title} — {:.0} FPS | {:.1}ms (avg {:.1}) | {} repaints | {} RAM | {} CPU",
         frame_stats.fps(),
@@ -383,7 +393,11 @@ mod tests {
     #[test]
     fn process_stats_cpu_percent_is_sane_after_a_real_sample_interval() {
         let mut stats = ProcessStats::new();
-        assert_eq!(stats.cpu_percent(), None, "no percent until a real interval has passed");
+        assert_eq!(
+            stats.cpu_percent(),
+            None,
+            "no percent until a real interval has passed"
+        );
 
         // Busy-loop so there's guaranteed nonzero CPU time to measure.
         let start = Instant::now();
@@ -403,10 +417,22 @@ mod tests {
 
     #[test]
     fn benchmark_mode_from_env_recognizes_all_documented_values() {
-        assert_eq!(BenchmarkMode::from_env_str("1"), Some(BenchmarkMode::Overlay));
-        assert_eq!(BenchmarkMode::from_env_str("true"), Some(BenchmarkMode::Overlay));
-        assert_eq!(BenchmarkMode::from_env_str("ON"), Some(BenchmarkMode::Overlay));
-        assert_eq!(BenchmarkMode::from_env_str("Title"), Some(BenchmarkMode::Title));
+        assert_eq!(
+            BenchmarkMode::from_env_str("1"),
+            Some(BenchmarkMode::Overlay)
+        );
+        assert_eq!(
+            BenchmarkMode::from_env_str("true"),
+            Some(BenchmarkMode::Overlay)
+        );
+        assert_eq!(
+            BenchmarkMode::from_env_str("ON"),
+            Some(BenchmarkMode::Overlay)
+        );
+        assert_eq!(
+            BenchmarkMode::from_env_str("Title"),
+            Some(BenchmarkMode::Title)
+        );
         assert_eq!(BenchmarkMode::from_env_str("off"), Some(BenchmarkMode::Off));
         assert_eq!(BenchmarkMode::from_env_str("nonsense"), None);
     }

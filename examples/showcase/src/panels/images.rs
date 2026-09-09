@@ -51,4 +51,3 @@ pub fn ImagesPanel(theme: Theme, png: ImageData, jpeg: ImageData, webp: ImageDat
             )),
     )
 }
-

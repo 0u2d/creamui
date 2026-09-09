@@ -73,4 +73,3 @@ pub fn SelectionPanel(
         </RawView>
     })
 }
-

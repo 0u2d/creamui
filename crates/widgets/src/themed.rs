@@ -59,6 +59,6 @@ pub use navigation::*;
 pub use pickers::*;
 pub use scroll::*;
 pub use selection::*;
-pub use typography::*;
 pub use surfaces::*;
 pub use text::*;
+pub use typography::*;

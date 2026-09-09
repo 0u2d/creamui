@@ -38,4 +38,3 @@ pub fn SliderPanel(
         </RawView>
     })
 }
-

@@ -56,7 +56,9 @@ fn main() {
             let font_status = if custom_font_loaded {
                 format!("{CUSTOM_FAMILY} loaded from disk ({custom_glyphs} glyphs)")
             } else {
-                format!("{CUSTOM_FAMILY} not found on this machine — showing {DEFAULT_FAMILY} instead")
+                format!(
+                    "{CUSTOM_FAMILY} not found on this machine — showing {DEFAULT_FAMILY} instead"
+                )
             };
 
             Box::new(jsx! {

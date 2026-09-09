@@ -54,4 +54,3 @@ pub fn CheckboxPanel(
         </RawView>
     })
 }
-

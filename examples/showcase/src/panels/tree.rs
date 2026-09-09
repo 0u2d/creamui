@@ -33,4 +33,3 @@ pub fn TreePanel(theme: Theme, tree_scroll: ScrollController, tree: TreeControll
         </RawView>
     })
 }
-

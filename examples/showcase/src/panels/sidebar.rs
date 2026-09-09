@@ -67,4 +67,3 @@ pub fn SidebarPanel(theme: Theme, active: Signal<usize>) -> BoxedWidget {
         </RawView>
     })
 }
-

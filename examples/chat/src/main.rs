@@ -1,4 +1,6 @@
-use creamui_core::layout::{AlignItems, Dimension, JustifyContent, Position, Size as LayoutSize, Style};
+use creamui_core::layout::{
+    AlignItems, Dimension, JustifyContent, Position, Size as LayoutSize, Style,
+};
 use creamui_core::{BoxedWidget, Painter, Rect, Size, TextAlign, Widget};
 use creamui_image::{Image, ImageData, ImageFit};
 use creamui_macros::component;
@@ -7,7 +9,7 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, ColorScheme, Theme};
 use creamui_widgets::layout::{column, fixed, full_width, padding, padding_xy, row};
 use creamui_widgets::{
-    Avatar, AutoScrollController, Badge, Heading, Icon, RawButton, RawText, RawView,
+    AutoScrollController, Avatar, Badge, Heading, Icon, RawButton, RawText, RawView,
     ScrollController, ScrollView, Symbol, Text, TextController, TextInput, TextSize,
     TypingIndicator,
 };
@@ -53,7 +55,10 @@ fn tint(color: Color, alpha: u8) -> Color {
 fn hairline(theme: &Theme) -> BoxedWidget {
     Box::new(
         RawView::new(Style {
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(1.0) },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(1.0),
+            },
             flex_shrink: 0.0,
             ..Default::default()
         })
@@ -165,9 +170,19 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
         online: true,
     };
     let alice_messages = vec![
-        msg(false, "Morning! Did the export finish overnight?", tick(clock, 1), false),
+        msg(
+            false,
+            "Morning! Did the export finish overnight?",
+            tick(clock, 1),
+            false,
+        ),
         msg(true, "Yep, just checked — all green.", tick(clock, 2), true),
-        msg(false, "Amazing, sending it upstream then.", tick(clock, 1), false),
+        msg(
+            false,
+            "Amazing, sending it upstream then.",
+            tick(clock, 1),
+            false,
+        ),
         ChatMessage {
             mine: false,
             text: "Here's the palette I mentioned".into(),
@@ -175,7 +190,12 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
             time: tick(clock, 3),
             read: false,
         },
-        msg(true, "Oh that's gorgeous, using it for the header.", tick(clock, 1), true),
+        msg(
+            true,
+            "Oh that's gorgeous, using it for the header.",
+            tick(clock, 1),
+            true,
+        ),
     ];
 
     let ben = Contact {
@@ -186,8 +206,18 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
         online: false,
     };
     let ben_messages = vec![
-        msg(false, "Can you review PR #482 when you get a chance?", tick(clock, 4), false),
-        msg(false, "No rush, just don't want it going stale.", tick(clock, 1), false),
+        msg(
+            false,
+            "Can you review PR #482 when you get a chance?",
+            tick(clock, 4),
+            false,
+        ),
+        msg(
+            false,
+            "No rush, just don't want it going stale.",
+            tick(clock, 1),
+            false,
+        ),
     ];
 
     let camila = Contact {
@@ -199,7 +229,12 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
     };
     let camila_messages = vec![
         msg(true, "Lunch spot from last week?", tick(clock, 2), true),
-        msg(false, "The one with the tiled counter, sending a pic", tick(clock, 1), false),
+        msg(
+            false,
+            "The one with the tiled counter, sending a pic",
+            tick(clock, 1),
+            false,
+        ),
         ChatMessage {
             mine: false,
             text: String::new(),
@@ -218,10 +253,30 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
         online: false,
     };
     let design_messages = vec![
-        msg(false, "New icon set is up in the shared drive.", tick(clock, 5), false),
-        msg(false, "Cream and berry accent variants included.", tick(clock, 1), false),
-        msg(false, "Let us know if anything reads wrong at 16px.", tick(clock, 1), false),
-        msg(false, "Also — renamed the spacing tokens, heads up.", tick(clock, 2), false),
+        msg(
+            false,
+            "New icon set is up in the shared drive.",
+            tick(clock, 5),
+            false,
+        ),
+        msg(
+            false,
+            "Cream and berry accent variants included.",
+            tick(clock, 1),
+            false,
+        ),
+        msg(
+            false,
+            "Let us know if anything reads wrong at 16px.",
+            tick(clock, 1),
+            false,
+        ),
+        msg(
+            false,
+            "Also — renamed the spacing tokens, heads up.",
+            tick(clock, 2),
+            false,
+        ),
         msg(false, "Docs are updated to match.", tick(clock, 1), false),
     ];
 
@@ -245,24 +300,73 @@ fn seed_conversations(clock: &Rc<Cell<u32>>) -> Vec<Conversation> {
         online: false,
     };
     let nadia_messages = vec![
-        msg(false, "Quarterly numbers are in, looking solid.", tick(clock, 6), false),
-        msg(false, "Deck's in the folder, feel free to poke holes.", tick(clock, 1), false),
-        msg(false, "Standup moved to 10:30 tomorrow, by the way.", tick(clock, 1), false),
+        msg(
+            false,
+            "Quarterly numbers are in, looking solid.",
+            tick(clock, 6),
+            false,
+        ),
+        msg(
+            false,
+            "Deck's in the folder, feel free to poke holes.",
+            tick(clock, 1),
+            false,
+        ),
+        msg(
+            false,
+            "Standup moved to 10:30 tomorrow, by the way.",
+            tick(clock, 1),
+            false,
+        ),
         msg(false, "And happy Friday!", tick(clock, 1), false),
     ];
 
     vec![
-        Conversation { contact: alice, messages: Signal::new(alice_messages), unread: Signal::new(0), typing: Signal::new(false) },
-        Conversation { contact: ben, messages: Signal::new(ben_messages), unread: Signal::new(2), typing: Signal::new(false) },
-        Conversation { contact: camila, messages: Signal::new(camila_messages), unread: Signal::new(0), typing: Signal::new(false) },
-        Conversation { contact: design_team, messages: Signal::new(design_messages), unread: Signal::new(4), typing: Signal::new(false) },
-        Conversation { contact: diego, messages: Signal::new(diego_messages), unread: Signal::new(0), typing: Signal::new(false) },
-        Conversation { contact: nadia, messages: Signal::new(nadia_messages), unread: Signal::new(9), typing: Signal::new(false) },
+        Conversation {
+            contact: alice,
+            messages: Signal::new(alice_messages),
+            unread: Signal::new(0),
+            typing: Signal::new(false),
+        },
+        Conversation {
+            contact: ben,
+            messages: Signal::new(ben_messages),
+            unread: Signal::new(2),
+            typing: Signal::new(false),
+        },
+        Conversation {
+            contact: camila,
+            messages: Signal::new(camila_messages),
+            unread: Signal::new(0),
+            typing: Signal::new(false),
+        },
+        Conversation {
+            contact: design_team,
+            messages: Signal::new(design_messages),
+            unread: Signal::new(4),
+            typing: Signal::new(false),
+        },
+        Conversation {
+            contact: diego,
+            messages: Signal::new(diego_messages),
+            unread: Signal::new(0),
+            typing: Signal::new(false),
+        },
+        Conversation {
+            contact: nadia,
+            messages: Signal::new(nadia_messages),
+            unread: Signal::new(9),
+            typing: Signal::new(false),
+        },
     ]
 }
 
 fn box_style(width: f32, height: f32) -> Style {
-    Style { size: fixed(width, height), flex_shrink: 0.0, ..Default::default() }
+    Style {
+        size: fixed(width, height),
+        flex_shrink: 0.0,
+        ..Default::default()
+    }
 }
 
 fn contact_avatar(theme: &Theme, contact: &Contact, size: f32) -> Avatar {
@@ -347,9 +451,13 @@ fn attachment_from_path(path: &std::path::Path) -> Attachment {
     }
 }
 
-
 #[component]
-fn ContactRow(theme: Theme, conversation: Conversation, active: bool, on_select: Rc<dyn Fn()>) -> BoxedWidget {
+fn ContactRow(
+    theme: Theme,
+    conversation: Conversation,
+    active: bool,
+    on_select: Rc<dyn Fn()>,
+) -> BoxedWidget {
     let messages = conversation.messages.get();
     let unread = conversation.unread.get();
     let is_typing = conversation.typing.get();
@@ -374,12 +482,23 @@ fn ContactRow(theme: Theme, conversation: Conversation, active: bool, on_select:
         }
     };
     let time_label = messages.last().map(|m| m.time.clone()).unwrap_or_default();
-    let background = if active { tint(theme.accent, 24) } else { theme.surface };
-    let preview_color = if is_typing { theme.accent } else { theme.text_secondary };
+    let background = if active {
+        tint(theme.accent, 24)
+    } else {
+        theme.surface
+    };
+    let preview_color = if is_typing {
+        theme.accent
+    } else {
+        theme.text_secondary
+    };
 
     let row_style = padding(
         Style {
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(68.0) },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(68.0),
+            },
             align_items: Some(AlignItems::Center),
             flex_shrink: 0.0,
             ..row(10.0)
@@ -388,16 +507,25 @@ fn ContactRow(theme: Theme, conversation: Conversation, active: bool, on_select:
     );
     let text_column_style = Style {
         flex_grow: 1.0,
-        min_size: LayoutSize { width: Dimension::Length(0.0), height: Dimension::Auto },
+        min_size: LayoutSize {
+            width: Dimension::Length(0.0),
+            height: Dimension::Auto,
+        },
         ..column(3.0)
     };
     let name_row_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(16.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(16.0),
+        },
         align_items: Some(AlignItems::Center),
         ..row(6.0)
     };
     let preview_row_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(16.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(16.0),
+        },
         align_items: Some(AlignItems::Center),
         ..row(6.0)
     };
@@ -406,8 +534,8 @@ fn ContactRow(theme: Theme, conversation: Conversation, active: bool, on_select:
         .bold(true)
         .align(TextAlign::Start)
         .layout_style(line_style(16.0, true));
-    let time_text = RawText::new(time_label, theme.text_disabled, 10.5)
-        .layout_style(line_style(16.0, false));
+    let time_text =
+        RawText::new(time_label, theme.text_disabled, 10.5).layout_style(line_style(16.0, false));
     let preview_text = RawText::new(preview, preview_color, 12.0)
         .align(TextAlign::Start)
         .layout_style(line_style(16.0, true));
@@ -416,7 +544,11 @@ fn ContactRow(theme: Theme, conversation: Conversation, active: bool, on_select:
         RawButton::new(row_style, move || on_select())
             .background(background)
             .corner_radius(theme.radius_medium)
-            .child(Box::new(contact_avatar(&theme, &conversation.contact, 44.0)))
+            .child(Box::new(contact_avatar(
+                &theme,
+                &conversation.contact,
+                44.0,
+            )))
             .child(Box::new(
                 RawView::new(text_column_style)
                     .child(Box::new(
@@ -443,12 +575,22 @@ fn ContactSidebar(
 ) -> BoxedWidget {
     let query = filter.value().to_lowercase();
     let header_style = padding(
-        Style { size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Auto }, flex_shrink: 0.0, ..column(10.0) },
+        Style {
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Auto,
+            },
+            flex_shrink: 0.0,
+            ..column(10.0)
+        },
         14.0,
     );
     let list_style = Style {
         flex_grow: 1.0,
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Percent(1.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
         ..Default::default()
     };
 
@@ -468,21 +610,39 @@ fn ContactSidebar(
     if rows.is_empty() {
         rows.push(Box::new(
             RawView::new(padding(
-                Style { size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(60.0) }, ..Default::default() },
+                Style {
+                    size: LayoutSize {
+                        width: Dimension::Percent(1.0),
+                        height: Dimension::Length(60.0),
+                    },
+                    ..Default::default()
+                },
                 14.0,
             ))
-            .child(Box::new(Text::secondary(&theme, "No conversations match.").align(TextAlign::Start))),
+            .child(Box::new(
+                Text::secondary(&theme, "No conversations match.").align(TextAlign::Start),
+            )),
         ));
     }
 
     let sidebar_style = Style {
-        size: LayoutSize { width: Dimension::Length(300.0), height: Dimension::Percent(1.0) },
+        size: LayoutSize {
+            width: Dimension::Length(300.0),
+            height: Dimension::Percent(1.0),
+        },
         flex_shrink: 0.0,
         ..column(0.0)
     };
 
-    let search_style = full_width(Style { size: LayoutSize { width: Dimension::Auto, height: Dimension::Length(36.0) }, ..Default::default() });
-    let search_input = TextInput::controlled_with_style(&theme, search_style, &filter).placeholder(&theme, "Search people…");
+    let search_style = full_width(Style {
+        size: LayoutSize {
+            width: Dimension::Auto,
+            height: Dimension::Length(36.0),
+        },
+        ..Default::default()
+    });
+    let search_input = TextInput::controlled_with_style(&theme, search_style, &filter)
+        .placeholder(&theme, "Search people…");
     let list = ScrollView::new(&theme, list_style, 0.0, |_| {}).with_children(rows);
 
     Box::new(
@@ -515,7 +675,10 @@ fn ConversationHeader(theme: Theme, conversation: Conversation) -> BoxedWidget {
     };
     let header_style = padding_xy(
         Style {
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(72.0) },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(72.0),
+            },
             flex_shrink: 0.0,
             align_items: Some(AlignItems::Center),
             justify_content: Some(JustifyContent::SpaceBetween),
@@ -524,35 +687,67 @@ fn ConversationHeader(theme: Theme, conversation: Conversation) -> BoxedWidget {
         18.0,
         0.0,
     );
-    let identity_style = Style { align_items: Some(AlignItems::Center), ..row(12.0) };
+    let identity_style = Style {
+        align_items: Some(AlignItems::Center),
+        ..row(12.0)
+    };
 
     let bar = RawView::new(header_style)
         .background(theme.surface_elevated)
         .child(Box::new(
             RawView::new(identity_style)
-                .child(Box::new(contact_avatar(&theme, &conversation.contact, 40.0)))
+                .child(Box::new(contact_avatar(
+                    &theme,
+                    &conversation.contact,
+                    40.0,
+                )))
                 .child(Box::new(
                     RawView::new(column(2.0))
                         .child(Box::new(
-                            RawText::new(conversation.contact.name.clone(), theme.text_primary, 14.0)
-                                .bold(true)
-                                .align(TextAlign::Start),
+                            RawText::new(
+                                conversation.contact.name.clone(),
+                                theme.text_primary,
+                                14.0,
+                            )
+                            .bold(true)
+                            .align(TextAlign::Start),
                         ))
-                        .child(Box::new(RawText::new(status, status_color, 11.5).align(TextAlign::Start))),
+                        .child(Box::new(
+                            RawText::new(status, status_color, 11.5).align(TextAlign::Start),
+                        )),
                 )),
         ))
         .child(Box::new(
             RawView::new(row(8.0))
-                .child(icon_button(Symbol::Search, 30.0, theme.surface_hover, theme.text_secondary, || {}))
-                .child(icon_button(Symbol::Controls, 30.0, theme.surface_hover, theme.text_secondary, || {})),
+                .child(icon_button(
+                    Symbol::Search,
+                    30.0,
+                    theme.surface_hover,
+                    theme.text_secondary,
+                    || {},
+                ))
+                .child(icon_button(
+                    Symbol::Controls,
+                    30.0,
+                    theme.surface_hover,
+                    theme.text_secondary,
+                    || {},
+                )),
         ));
 
     let wrapper_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(73.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(73.0),
+        },
         flex_shrink: 0.0,
         ..column(0.0)
     };
-    Box::new(RawView::new(wrapper_style).child(Box::new(bar)).child(hairline(&theme)))
+    Box::new(
+        RawView::new(wrapper_style)
+            .child(Box::new(bar))
+            .child(hairline(&theme)),
+    )
 }
 
 fn attachment_widget(theme: &Theme, attachment: &Attachment) -> BoxedWidget {
@@ -568,11 +763,23 @@ fn attachment_widget(theme: &Theme, attachment: &Attachment) -> BoxedWidget {
             )
         }
         Attachment::File(name) => Box::new(
-            RawView::new(padding(Style { align_items: Some(AlignItems::Center), ..row(8.0) }, 8.0))
-                .background(theme.surface_elevated)
-                .corner_radius(theme.radius_small)
-                .child(Box::new(Icon::new(Symbol::Attachment, theme.text_secondary).size(16.0)))
-                .child(Box::new(RawText::new(name.clone(), theme.text_primary, 12.0))),
+            RawView::new(padding(
+                Style {
+                    align_items: Some(AlignItems::Center),
+                    ..row(8.0)
+                },
+                8.0,
+            ))
+            .background(theme.surface_elevated)
+            .corner_radius(theme.radius_small)
+            .child(Box::new(
+                Icon::new(Symbol::Attachment, theme.text_secondary).size(16.0),
+            ))
+            .child(Box::new(RawText::new(
+                name.clone(),
+                theme.text_primary,
+                12.0,
+            ))),
         ),
     }
 }
@@ -583,61 +790,132 @@ struct ReadReceipt {
 }
 impl Widget for ReadReceipt {
     fn style(&self) -> Style {
-        Style { size: fixed(if self.double { 18.0 } else { 11.0 }, 11.0), flex_shrink: 0.0, ..Default::default() }
+        Style {
+            size: fixed(if self.double { 18.0 } else { 11.0 }, 11.0),
+            flex_shrink: 0.0,
+            ..Default::default()
+        }
     }
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        Icon::draw(Symbol::Check, painter, Rect { x: rect.x, y: rect.y, width: 11.0, height: 11.0 }, self.color);
+        Icon::draw(
+            Symbol::Check,
+            painter,
+            Rect {
+                x: rect.x,
+                y: rect.y,
+                width: 11.0,
+                height: 11.0,
+            },
+            self.color,
+        );
         if self.double {
-            Icon::draw(Symbol::Check, painter, Rect { x: rect.x + 7.0, y: rect.y, width: 11.0, height: 11.0 }, self.color);
+            Icon::draw(
+                Symbol::Check,
+                painter,
+                Rect {
+                    x: rect.x + 7.0,
+                    y: rect.y,
+                    width: 11.0,
+                    height: 11.0,
+                },
+                self.color,
+            );
         }
     }
 }
 
 fn message_bubble(theme: &Theme, message: &ChatMessage) -> BoxedWidget {
-    let bubble_background = if message.mine { theme.accent } else { theme.surface_hover };
-    let text_color = if message.mine { theme.selection_text } else { theme.text_primary };
+    let bubble_background = if message.mine {
+        theme.accent
+    } else {
+        theme.surface_hover
+    };
+    let text_color = if message.mine {
+        theme.selection_text
+    } else {
+        theme.text_primary
+    };
     let footer_color = if message.mine {
-        Color::rgba(theme.selection_text.r, theme.selection_text.g, theme.selection_text.b, 170)
+        Color::rgba(
+            theme.selection_text.r,
+            theme.selection_text.g,
+            theme.selection_text.b,
+            170,
+        )
     } else {
         theme.text_disabled
     };
 
     let row_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Auto },
-        justify_content: Some(if message.mine { JustifyContent::End } else { JustifyContent::Start }),
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Auto,
+        },
+        justify_content: Some(if message.mine {
+            JustifyContent::End
+        } else {
+            JustifyContent::Start
+        }),
         ..row(0.0)
     };
     let bubble_style = padding(
         Style {
-            max_size: LayoutSize { width: Dimension::Length(320.0), height: Dimension::Auto },
-            size: LayoutSize { width: Dimension::Auto, height: Dimension::Auto },
+            max_size: LayoutSize {
+                width: Dimension::Length(320.0),
+                height: Dimension::Auto,
+            },
+            size: LayoutSize {
+                width: Dimension::Auto,
+                height: Dimension::Auto,
+            },
             ..column(6.0)
         },
         11.0,
     );
-    let text_style = Style { size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Auto }, ..Default::default() };
+    let text_style = Style {
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Auto,
+        },
+        ..Default::default()
+    };
     let footer_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(13.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(13.0),
+        },
         justify_content: Some(JustifyContent::End),
         align_items: Some(AlignItems::Center),
         ..row(4.0)
     };
 
-    let mut bubble = RawView::new(bubble_style).background(bubble_background).corner_radius(theme.card_radius);
+    let mut bubble = RawView::new(bubble_style)
+        .background(bubble_background)
+        .corner_radius(theme.card_radius);
 
     if let Some(attachment) = &message.attachment {
         bubble = bubble.child(attachment_widget(theme, attachment));
     }
     if !message.text.is_empty() {
         bubble = bubble.child(Box::new(
-            RawText::new(message.text.clone(), text_color, 13.5).align(TextAlign::Start).layout_style(text_style),
+            RawText::new(message.text.clone(), text_color, 13.5)
+                .align(TextAlign::Start)
+                .layout_style(text_style),
         ));
     }
 
-    let mut footer = RawView::new(footer_style).child(Box::new(RawText::new(message.time.clone(), footer_color, 10.0)));
+    let mut footer = RawView::new(footer_style).child(Box::new(RawText::new(
+        message.time.clone(),
+        footer_color,
+        10.0,
+    )));
     if message.mine {
         footer = footer.child(Box::new(ReadReceipt {
-            color: if message.read { theme.selection_text } else { footer_color },
+            color: if message.read {
+                theme.selection_text
+            } else {
+                footer_color
+            },
             double: message.read,
         }));
     }
@@ -652,7 +930,10 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
     let is_typing = conversation.typing.get();
     let list_style = Style {
         flex_grow: 1.0,
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Percent(1.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Percent(1.0),
+        },
         ..Default::default()
     };
     let mut view = ScrollView::controlled(&theme, list_style, scroll)
@@ -661,12 +942,21 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
         .with_children(messages.iter().map(|m| message_bubble(&theme, m)).collect());
     if is_typing {
         let typing_row_style = Style {
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Auto },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Auto,
+            },
             justify_content: Some(JustifyContent::Start),
             ..row(0.0)
         };
         let bubble_style = padding(
-            Style { size: LayoutSize { width: Dimension::Auto, height: Dimension::Auto }, ..Default::default() },
+            Style {
+                size: LayoutSize {
+                    width: Dimension::Auto,
+                    height: Dimension::Auto,
+                },
+                ..Default::default()
+            },
             12.0,
         );
         view = view.child(Box::new(
@@ -684,33 +974,54 @@ fn MessageList(theme: Theme, conversation: Conversation, scroll: ScrollControlle
     let outer_style = padding(
         Style {
             flex_grow: 1.0,
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Percent(1.0) },
-            min_size: LayoutSize { width: Dimension::Length(0.0), height: Dimension::Length(0.0) },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Percent(1.0),
+            },
+            min_size: LayoutSize {
+                width: Dimension::Length(0.0),
+                height: Dimension::Length(0.0),
+            },
             ..column(10.0)
         },
         16.0,
     );
-    Box::new(RawView::new(outer_style).background(theme.surface_elevated).child(Box::new(view)))
+    Box::new(
+        RawView::new(outer_style)
+            .background(theme.surface_elevated)
+            .child(Box::new(view)),
+    )
 }
 
 // Sized to sit inside the composer's one-row bar rather than a second row
 // above it, so an attached/cleared file never changes the bar's height.
-fn inline_attachment_chip(theme: &Theme, attachment: &Attachment, on_remove: impl Fn() + 'static) -> BoxedWidget {
+fn inline_attachment_chip(
+    theme: &Theme,
+    attachment: &Attachment,
+    on_remove: impl Fn() + 'static,
+) -> BoxedWidget {
     let chip_style = padding_xy(
         Style {
             align_items: Some(AlignItems::Center),
-            size: LayoutSize { width: Dimension::Auto, height: Dimension::Length(40.0) },
+            size: LayoutSize {
+                width: Dimension::Auto,
+                height: Dimension::Length(40.0),
+            },
             flex_shrink: 0.0,
             ..row(4.0)
         },
         4.0,
         4.0,
     );
-    let mut chip = RawView::new(chip_style).background(theme.surface_hover).corner_radius(theme.radius_large);
+    let mut chip = RawView::new(chip_style)
+        .background(theme.surface_hover)
+        .corner_radius(theme.radius_large);
     match attachment {
         Attachment::Image(data) => {
             chip = chip.child(Box::new(
-                Image::with_style(data.clone(), box_style(32.0, 32.0)).fit(ImageFit::Cover).corner_radius(theme.radius_large),
+                Image::with_style(data.clone(), box_style(32.0, 32.0))
+                    .fit(ImageFit::Cover)
+                    .corner_radius(theme.radius_large),
             ));
         }
         Attachment::File(name) => {
@@ -719,11 +1030,19 @@ fn inline_attachment_chip(theme: &Theme, attachment: &Attachment, on_remove: imp
             } else {
                 name.clone()
             };
-            chip = chip.child(Box::new(Icon::new(Symbol::Attachment, theme.text_secondary).size(14.0)));
+            chip = chip.child(Box::new(
+                Icon::new(Symbol::Attachment, theme.text_secondary).size(14.0),
+            ));
             chip = chip.child(Box::new(RawText::new(short, theme.text_primary, 11.0)));
         }
     }
-    chip = chip.child(icon_button(Symbol::Close, 18.0, Color::rgba(0, 0, 0, 0), theme.text_disabled, on_remove));
+    chip = chip.child(icon_button(
+        Symbol::Close,
+        18.0,
+        Color::rgba(0, 0, 0, 0),
+        theme.text_disabled,
+        on_remove,
+    ));
     Box::new(chip)
 }
 
@@ -737,7 +1056,10 @@ fn Composer(
 ) -> BoxedWidget {
     let bar_style = padding_xy(
         Style {
-            size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(64.0) },
+            size: LayoutSize {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Length(64.0),
+            },
             align_items: Some(AlignItems::Center),
             flex_shrink: 0.0,
             ..row(8.0)
@@ -747,17 +1069,28 @@ fn Composer(
     );
     let input_style = Style {
         flex_grow: 1.0,
-        size: LayoutSize { width: Dimension::Auto, height: Dimension::Length(40.0) },
+        size: LayoutSize {
+            width: Dimension::Auto,
+            height: Dimension::Length(40.0),
+        },
         ..Default::default()
     };
 
     let mut bar = RawView::new(bar_style)
         .background(theme.surface_elevated)
-        .child(icon_button(Symbol::Attachment, 36.0, theme.surface_hover, theme.text_secondary, move || on_attach()));
+        .child(icon_button(
+            Symbol::Attachment,
+            36.0,
+            theme.surface_hover,
+            theme.text_secondary,
+            move || on_attach(),
+        ));
 
     if let Some(attachment) = pending_attachment.get() {
         let clear = pending_attachment.clone();
-        bar = bar.child(inline_attachment_chip(&theme, &attachment, move || clear.set(None)));
+        bar = bar.child(inline_attachment_chip(&theme, &attachment, move || {
+            clear.set(None)
+        }));
     }
 
     let submit = on_send.clone();
@@ -766,14 +1099,27 @@ fn Composer(
         .background(theme.surface_hover)
         .on_submit(move || submit());
     bar = bar.child(Box::new(input));
-    bar = bar.child(icon_button(Symbol::Send, 36.0, theme.accent, theme.selection_text, move || on_send()));
+    bar = bar.child(icon_button(
+        Symbol::Send,
+        36.0,
+        theme.accent,
+        theme.selection_text,
+        move || on_send(),
+    ));
 
     let wrapper_style = Style {
-        size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(65.0) },
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(65.0),
+        },
         flex_shrink: 0.0,
         ..column(0.0)
     };
-    Box::new(RawView::new(wrapper_style).child(hairline(&theme)).child(Box::new(bar)))
+    Box::new(
+        RawView::new(wrapper_style)
+            .child(hairline(&theme))
+            .child(Box::new(bar)),
+    )
 }
 
 fn main() {
@@ -831,7 +1177,13 @@ fn main() {
                                 message.read = true;
                             }
                         }
-                        list.push(ChatMessage { mine: false, text: reply_text.to_owned(), attachment: None, time, read: false });
+                        list.push(ChatMessage {
+                            mine: false,
+                            text: reply_text.to_owned(),
+                            attachment: None,
+                            time,
+                            read: false,
+                        });
                     });
                     if active.peek() != index {
                         conversation.unread.update(|count| *count += 1);
@@ -861,7 +1213,10 @@ fn main() {
                 on_select,
             });
 
-            let header = ConversationHeader(ConversationHeaderProps { theme, conversation: conversations[active_index].clone() });
+            let header = ConversationHeader(ConversationHeaderProps {
+                theme,
+                conversation: conversations[active_index].clone(),
+            });
 
             let message_list = MessageList(MessageListProps {
                 theme,
@@ -893,14 +1248,22 @@ fn main() {
                 let time = format_clock(send_clock.get());
                 send_clock.set(send_clock.get() + 1);
                 send_conversations[index].messages.update(|list| {
-                    list.push(ChatMessage { mine: true, text, attachment, time, read: false });
+                    list.push(ChatMessage {
+                        mine: true,
+                        text,
+                        attachment,
+                        time,
+                        read: false,
+                    });
                 });
                 send_composer.set_value(String::new());
                 send_pending.set(None);
                 send_scroll.snap_to_bottom();
                 send_conversations[index].typing.set(true);
                 let delay = 900 + (index as u64 * 263) % 1200;
-                send_replies.borrow_mut().push((index, Instant::now() + Duration::from_millis(delay)));
+                send_replies
+                    .borrow_mut()
+                    .push((index, Instant::now() + Duration::from_millis(delay)));
             });
 
             let composer_bar = Composer(ComposerProps {
@@ -912,13 +1275,19 @@ fn main() {
             });
 
             let root_style = Style {
-                size: LayoutSize { width: Dimension::Length(viewport.width), height: Dimension::Length(viewport.height) },
+                size: LayoutSize {
+                    width: Dimension::Length(viewport.width),
+                    height: Dimension::Length(viewport.height),
+                },
                 align_items: Some(AlignItems::Stretch),
                 ..row(0.0)
             };
             let main_column_style = Style {
                 flex_grow: 1.0,
-                size: LayoutSize { width: Dimension::Auto, height: Dimension::Percent(1.0) },
+                size: LayoutSize {
+                    width: Dimension::Auto,
+                    height: Dimension::Percent(1.0),
+                },
                 ..column(0.0)
             };
 
@@ -926,7 +1295,12 @@ fn main() {
                 RawView::new(root_style)
                     .background(theme.surface)
                     .child(sidebar)
-                    .child(Box::new(RawView::new(main_column_style).child(header).child(message_list).child(composer_bar)))
+                    .child(Box::new(
+                        RawView::new(main_column_style)
+                            .child(header)
+                            .child(message_list)
+                            .child(composer_bar),
+                    ))
                     .child(Box::new(Heartbeat)),
             )
         },

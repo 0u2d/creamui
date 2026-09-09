@@ -127,4 +127,3 @@ pub fn TypographyPanel(theme: Theme, link_clicks: Signal<i32>) -> BoxedWidget {
         </RawView>
     })
 }
-

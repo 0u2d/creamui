@@ -60,4 +60,3 @@ pub fn FeedbackPanel(
         </RawView>
     })
 }
-

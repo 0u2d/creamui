@@ -131,7 +131,13 @@ impl Widget for RawPre {
             width: (rect.width - self.padding * 2.0).max(0.0),
             height: (rect.height - self.padding * 2.0).max(0.0),
         };
-        painter.fill_text(inset, &self.text, self.color, self.font_size, TextAlign::Start);
+        painter.fill_text(
+            inset,
+            &self.text,
+            self.color,
+            self.font_size,
+            TextAlign::Start,
+        );
     }
 
     fn measure(&self) -> Option<creamui_core::MeasureFn> {
@@ -223,7 +229,15 @@ impl Widget for RawLink {
         } else {
             self.color
         };
-        painter.fill_text_weight(rect, &self.text, color, self.font_size, self.align, false, false);
+        painter.fill_text_weight(
+            rect,
+            &self.text,
+            color,
+            self.font_size,
+            self.align,
+            false,
+            false,
+        );
         super::draw_text_decorations(
             painter,
             rect,

@@ -102,4 +102,3 @@ pub fn AppearancePanel(
         </RawView>
     })
 }
-

@@ -88,4 +88,3 @@ pub fn ButtonPanel(theme: Theme, clicks: Signal<i32>) -> BoxedWidget {
             )),
     )
 }
-

@@ -124,4 +124,3 @@ pub fn Nav(
         ));
     Box::new(nav)
 }
-
