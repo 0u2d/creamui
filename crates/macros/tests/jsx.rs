@@ -3,7 +3,7 @@ use creamui_core::{render_frame, BoxedWidget, Painter, Rect, Size, TextAlign};
 use creamui_macros::{abi_jsx, component, jsx};
 use creamui_reactive::Signal;
 use creamui_theme::{Color, Theme};
-use creamui_widgets::layout::{Align, Justify, Wrap};
+use creamui_widgets::layout::{Align, Justify, Track, Wrap};
 
 #[derive(Default)]
 struct TextPainter(Vec<String>);
@@ -213,6 +213,30 @@ fn jsx_exposes_semantic_block_layout() {
             &mut painter,
         );
         assert_eq!(painter.0, ["Block child"]);
+    });
+}
+
+#[test]
+fn jsx_exposes_semantic_grid_layout() {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(Theme::dark()));
+        let root: BoxedWidget = Box::new(jsx! {
+            <Grid template_columns={[Track::fr(1.0), Track::fr(1.0)]} gap={8.0} size={(200.0, 80.0)}>
+                <GridItem column={1} row={1} column_span={2}>
+                    <Text>"Grid child"</Text>
+                </GridItem>
+            </Grid>
+        });
+        let mut painter = TextPainter::default();
+        render_frame(
+            root,
+            Size {
+                width: 200.0,
+                height: 80.0,
+            },
+            &mut painter,
+        );
+        assert_eq!(painter.0, ["Grid child"]);
     });
 }
 

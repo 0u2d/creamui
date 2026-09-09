@@ -8,9 +8,9 @@
 //!
 
 use creamui_core::layout::{
-    AlignContent, AlignItems, Dimension, Display, FlexDirection, FlexWrap, GridPlacement,
-    JustifyContent, LengthPercentage, LengthPercentageAuto, NonRepeatedTrackSizingFunction, Style,
-    TaffyGridLine, TrackSizingFunction,
+    AlignContent, AlignItems, Dimension, Display, FlexDirection, FlexWrap, GridAutoFlow,
+    GridPlacement, JustifyContent, LengthPercentage, LengthPercentageAuto,
+    NonRepeatedTrackSizingFunction, Style, TaffyGridLine, TrackSizingFunction,
 };
 use creamui_core::{BoxedWidget, Painter, Rect, Widget};
 use creamui_theme::Color;
@@ -400,6 +400,309 @@ impl Widget for Flex {
     }
 }
 
+/// A CSS grid track. Use [`Track::fr`] for proportional space and
+/// [`Track::px`] for a fixed track.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Track {
+    Auto,
+    Px(f32),
+    Fr(f32),
+}
+
+impl Track {
+    pub const fn auto() -> Self {
+        Self::Auto
+    }
+
+    pub const fn px(value: f32) -> Self {
+        Self::Px(value)
+    }
+
+    pub const fn fr(value: f32) -> Self {
+        Self::Fr(value)
+    }
+
+    fn sizing(self) -> NonRepeatedTrackSizingFunction {
+        match self {
+            Track::Auto => creamui_core::layout::auto(),
+            Track::Px(value) => creamui_core::layout::length(value),
+            Track::Fr(value) => creamui_core::layout::fr(value),
+        }
+    }
+}
+
+/// Automatic placement order for a [`Grid`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GridFlow {
+    #[default]
+    Row,
+    Column,
+    RowDense,
+    ColumnDense,
+}
+
+impl From<GridFlow> for GridAutoFlow {
+    fn from(value: GridFlow) -> Self {
+        match value {
+            GridFlow::Row => Self::Row,
+            GridFlow::Column => Self::Column,
+            GridFlow::RowDense => Self::RowDense,
+            GridFlow::ColumnDense => Self::ColumnDense,
+        }
+    }
+}
+
+/// An unstyled CSS grid container, equivalent to `<div style="display: grid">`.
+///
+/// ```
+/// use creamui_widgets::layout::{Grid, Track};
+///
+/// let dashboard = Grid::new()
+///     .columns(3)
+///     .gap(16.0)
+///     .template_rows([Track::px(48.0), Track::fr(1.0)]);
+/// ```
+pub struct Grid {
+    inner: crate::raw::RawView,
+}
+
+impl Grid {
+    /// Creates an empty grid. Configure columns/rows with [`Grid::columns`],
+    /// [`Grid::rows`], or explicit track templates.
+    pub fn new() -> Self {
+        Self {
+            inner: crate::raw::RawView::new(Style {
+                display: Display::Grid,
+                ..Default::default()
+            }),
+        }
+    }
+
+    /// Creates `count` equal `1fr` columns.
+    pub fn columns(mut self, count: usize) -> Self {
+        self.inner.style.grid_template_columns = equal_tracks(count);
+        self
+    }
+
+    /// Creates `count` equal `1fr` rows.
+    pub fn rows(mut self, count: usize) -> Self {
+        self.inner.style.grid_template_rows = equal_tracks(count);
+        self
+    }
+
+    /// Sets an explicit CSS-like `grid-template-columns` list.
+    pub fn template_columns(mut self, tracks: impl IntoIterator<Item = Track>) -> Self {
+        self.inner.style.grid_template_columns = tracks
+            .into_iter()
+            .map(|track| TrackSizingFunction::Single(track.sizing()))
+            .collect();
+        self
+    }
+
+    /// Sets an explicit CSS-like `grid-template-rows` list.
+    pub fn template_rows(mut self, tracks: impl IntoIterator<Item = Track>) -> Self {
+        self.inner.style.grid_template_rows = tracks
+            .into_iter()
+            .map(|track| TrackSizingFunction::Single(track.sizing()))
+            .collect();
+        self
+    }
+
+    /// Sets equal row and column gaps.
+    pub fn gap(mut self, value: f32) -> Self {
+        self.inner.style = self.inner.style.gap(value);
+        self
+    }
+
+    /// Sets horizontal (`column-gap`) spacing.
+    pub fn gap_x(mut self, value: f32) -> Self {
+        self.inner.style = self.inner.style.gap_x(value);
+        self
+    }
+
+    /// Sets vertical (`row-gap`) spacing.
+    pub fn gap_y(mut self, value: f32) -> Self {
+        self.inner.style = self.inner.style.gap_y(value);
+        self
+    }
+
+    /// Sets `justify-content` on the inline axis.
+    pub fn justify(mut self, value: Justify) -> Self {
+        self.inner.style = self.inner.style.justify(value);
+        self
+    }
+
+    /// Sets `align-content` on the block axis.
+    pub fn align_content(mut self, value: Justify) -> Self {
+        self.inner.style = self.inner.style.align_content(value);
+        self
+    }
+
+    /// Sets the automatic grid placement order.
+    pub fn flow(mut self, value: GridFlow) -> Self {
+        self.inner.style.grid_auto_flow = value.into();
+        self
+    }
+
+    /// Applies equal inner spacing.
+    pub fn padding(mut self, value: f32) -> Self {
+        self.inner.style = self.inner.style.padding_all(value);
+        self
+    }
+
+    /// Applies CSS-like `padding: vertical horizontal` spacing.
+    pub fn padding_xy(mut self, horizontal: f32, vertical: f32) -> Self {
+        self.inner.style = self.inner.style.padding_xy(horizontal, vertical);
+        self
+    }
+
+    /// Sets a fixed pixel size.
+    pub fn size(mut self, width: f32, height: f32) -> Self {
+        self.inner.style = self.inner.style.size(width, height);
+        self
+    }
+
+    /// Stretches the grid to its parent's available size.
+    pub fn fill(mut self) -> Self {
+        self.inner.style = fill(self.inner.style);
+        self
+    }
+
+    /// Makes the grid take remaining space in a flex parent.
+    pub fn grow(mut self, factor: f32) -> Self {
+        self.inner.style = self.inner.style.grow(factor);
+        self
+    }
+
+    /// Gives the grid a background without introducing a themed surface.
+    pub fn background(mut self, color: Color) -> Self {
+        self.inner = self.inner.background(color);
+        self
+    }
+
+    /// Rounds the optional background's corners.
+    pub fn corner_radius(mut self, radius: f32) -> Self {
+        self.inner = self.inner.corner_radius(radius);
+        self
+    }
+
+    /// Adds a grid item.
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.inner = self.inner.child(child);
+        self
+    }
+
+    /// Adds all grid items at once.
+    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
+        self.inner = self.inner.with_children(children);
+        self
+    }
+}
+
+impl Default for Grid {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Widget for Grid {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+}
+
+/// A positioned child of a [`Grid`]. Grid lines are 1-indexed, matching CSS.
+pub struct GridItem {
+    style: Style,
+    children: Vec<BoxedWidget>,
+}
+
+impl GridItem {
+    /// Creates an automatically placed grid item.
+    pub fn new() -> Self {
+        Self {
+            style: Style {
+                display: Display::Block,
+                ..Default::default()
+            },
+            children: vec![],
+        }
+    }
+
+    /// Places the item at a 1-indexed `(column, row)` cell.
+    pub fn at(mut self, column: i16, row: i16) -> Self {
+        self.style = self.style.grid_cell(column, row);
+        self
+    }
+
+    /// Sets the starting 1-indexed grid column.
+    pub fn column(mut self, column: i16) -> Self {
+        self.style.grid_column.start = GridPlacement::from_line_index(column);
+        self
+    }
+
+    /// Sets the starting 1-indexed grid row.
+    pub fn row(mut self, row: i16) -> Self {
+        self.style.grid_row.start = GridPlacement::from_line_index(row);
+        self
+    }
+
+    /// Makes the item span `count` columns.
+    pub fn column_span(mut self, count: u16) -> Self {
+        self.style.grid_column.end = GridPlacement::Span(count);
+        self
+    }
+
+    /// Makes the item span `count` rows.
+    pub fn row_span(mut self, count: u16) -> Self {
+        self.style.grid_row.end = GridPlacement::Span(count);
+        self
+    }
+
+    /// Adds the item's content.
+    pub fn child(mut self, child: BoxedWidget) -> Self {
+        self.children.push(child);
+        self
+    }
+
+    /// Adds all item content at once.
+    pub fn with_children(mut self, children: Vec<BoxedWidget>) -> Self {
+        self.children = children;
+        self
+    }
+}
+
+impl Default for GridItem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Widget for GridItem {
+    fn style(&self) -> Style {
+        self.style.clone()
+    }
+
+    fn paint(&self, _: &mut dyn Painter, _: Rect) {}
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        std::mem::take(&mut self.children)
+    }
+}
+
+fn equal_tracks(count: usize) -> Vec<TrackSizingFunction> {
+    let track: NonRepeatedTrackSizingFunction = creamui_core::layout::fr(1.0f32);
+    vec![TrackSizingFunction::Single(track); count]
+}
+
 /// Chainable CSS-like layout properties for a raw Taffy [`Style`].
 ///
 /// This is useful for a flex *item* or for adding flex behavior to another
@@ -418,6 +721,8 @@ impl Widget for Flex {
 pub trait StyleExt: Sized {
     /// Enables block layout, equivalent to CSS `display: block`.
     fn block(self) -> Self;
+    /// Enables CSS grid layout.
+    fn grid(self) -> Self;
     /// Enables flex layout while keeping the current direction.
     fn flex(self) -> Self;
     /// Enables flex layout in a row.
@@ -460,11 +765,22 @@ pub trait StyleExt: Sized {
     fn basis(self, value: f32) -> Self;
     /// Sets `align-self` on a flex item.
     fn align_self(self, value: Align) -> Self;
+    /// Places a grid item at a 1-indexed `(column, row)` cell.
+    fn grid_cell(self, column: i16, row: i16) -> Self;
+    /// Makes a grid item span `count` columns.
+    fn grid_column_span(self, count: u16) -> Self;
+    /// Makes a grid item span `count` rows.
+    fn grid_row_span(self, count: u16) -> Self;
 }
 
 impl StyleExt for Style {
     fn block(mut self) -> Self {
         self.display = Display::Block;
+        self
+    }
+
+    fn grid(mut self) -> Self {
+        self.display = Display::Grid;
         self
     }
 
@@ -572,6 +888,24 @@ impl StyleExt for Style {
 
     fn align_self(mut self, value: Align) -> Self {
         self.align_self = Some(value.into());
+        self
+    }
+
+    fn grid_cell(mut self, column: i16, row: i16) -> Self {
+        self.grid_column.start = GridPlacement::from_line_index(column);
+        self.grid_column.end = GridPlacement::Auto;
+        self.grid_row.start = GridPlacement::from_line_index(row);
+        self.grid_row.end = GridPlacement::Auto;
+        self
+    }
+
+    fn grid_column_span(mut self, count: u16) -> Self {
+        self.grid_column.end = GridPlacement::Span(count);
+        self
+    }
+
+    fn grid_row_span(mut self, count: u16) -> Self {
+        self.grid_row.end = GridPlacement::Span(count);
         self
     }
 }
@@ -855,5 +1189,24 @@ mod tests {
         .style();
 
         assert_eq!(style.display, creamui_core::layout::Display::Block);
+    }
+
+    #[test]
+    fn grid_expresses_tracks_and_item_placement() {
+        let style = Grid::new()
+            .columns(2)
+            .template_rows([Track::Px(40.0), Track::Fr(1.0)])
+            .gap(12.0)
+            .style();
+        let item = GridItem::new().at(2, 1).column_span(2).row_span(3).style();
+
+        assert_eq!(style.display, creamui_core::layout::Display::Grid);
+        assert_eq!(style.grid_template_columns.len(), 2);
+        assert_eq!(style.grid_template_rows.len(), 2);
+        assert_eq!(style.gap.width, LengthPercentage::Length(12.0));
+        assert_eq!(item.grid_column.start, GridPlacement::from_line_index(2));
+        assert_eq!(item.grid_column.end, GridPlacement::Span(2));
+        assert_eq!(item.grid_row.start, GridPlacement::from_line_index(1));
+        assert_eq!(item.grid_row.end, GridPlacement::Span(3));
     }
 }

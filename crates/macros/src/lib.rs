@@ -221,6 +221,8 @@ impl Element {
             "Block"
                 | "RawView"
                 | "Flex"
+                | "Grid"
+                | "GridItem"
                 | "RawText"
                 | "RawButton"
                 | "ScrollView"
@@ -478,6 +480,132 @@ impl Element {
                 }
                 if let Some(radius) = self.prop("corner_radius")? {
                     output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "Grid" => {
+                self.reject_unknown_props(&[
+                    "columns",
+                    "rows",
+                    "template_columns",
+                    "template_rows",
+                    "gap",
+                    "gap_x",
+                    "gap_y",
+                    "justify",
+                    "align_content",
+                    "flow",
+                    "padding",
+                    "padding_xy",
+                    "size",
+                    "fill",
+                    "grow",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = quote!(#widgets::layout::Grid::new());
+                if let Some(columns) = self.prop("columns")? {
+                    output = quote!(#output.columns(#columns));
+                }
+                if let Some(rows) = self.prop("rows")? {
+                    output = quote!(#output.rows(#rows));
+                }
+                if let Some(tracks) = self.prop("template_columns")? {
+                    output = quote!(#output.template_columns(#tracks));
+                }
+                if let Some(tracks) = self.prop("template_rows")? {
+                    output = quote!(#output.template_rows(#tracks));
+                }
+                if let Some(gap) = self.prop("gap")? {
+                    output = quote!(#output.gap(#gap));
+                }
+                if let Some(gap) = self.prop("gap_x")? {
+                    output = quote!(#output.gap_x(#gap));
+                }
+                if let Some(gap) = self.prop("gap_y")? {
+                    output = quote!(#output.gap_y(#gap));
+                }
+                if let Some(justify) = self.prop("justify")? {
+                    output = quote!(#output.justify(#justify));
+                }
+                if let Some(align_content) = self.prop("align_content")? {
+                    output = quote!(#output.align_content(#align_content));
+                }
+                if let Some(flow) = self.prop("flow")? {
+                    output = quote!(#output.flow(#flow));
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "GridItem" => {
+                self.reject_unknown_props(&[
+                    "column",
+                    "row",
+                    "column_span",
+                    "row_span",
+                    "children",
+                ])?;
+                let column = self.prop("column")?;
+                let row = self.prop("row")?;
+                let mut output = quote!(#widgets::layout::GridItem::new());
+                match (column, row) {
+                    (Some(column), Some(row)) => output = quote!(#output.at(#column, #row)),
+                    (Some(column), None) => output = quote!(#output.column(#column)),
+                    (None, Some(row)) => output = quote!(#output.row(#row)),
+                    (None, None) => {}
+                }
+                if let Some(span) = self.prop("column_span")? {
+                    output = quote!(#output.column_span(#span));
+                }
+                if let Some(span) = self.prop("row_span")? {
+                    output = quote!(#output.row_span(#span));
                 }
                 if let Some(children) = self.prop("children")? {
                     if !self.children.is_empty() {

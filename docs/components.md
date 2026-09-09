@@ -9,7 +9,7 @@ This makes it practical to start with the standard visual language and customize
 
 | Area | Themed components | Raw building blocks |
 |---|---|---|
-| Content | `Text`, `Heading`, `Card`, `Image` | `Block`, `Flex`, `RawText` |
+| Content | `Text`, `Heading`, `Card`, `Image` | `Block`, `Flex`, `Grid`, `RawText` |
 | Actions | `Button` | `RawButton` |
 | Text input | `TextInput`, `TextArea` | `RawTextInput`, `RawTextArea` |
 | Values | `Checkbox`, `Switch`, `Slider` | `RawCheckbox`, `RawSwitch`, `RawSlider` |

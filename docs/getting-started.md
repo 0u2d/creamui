@@ -64,6 +64,18 @@ let cards = Flex::row()
     .wrap(Wrap::Wrap);
 ```
 
+For two-dimensional layout, use `Grid` and position only the items that need
+an explicit cell or span:
+
+```rust
+use creamui::widgets::layout::{Grid, GridItem, Track};
+
+let dashboard = Grid::new()
+    .template_columns([Track::px(240.0), Track::fr(1.0), Track::fr(1.0)])
+    .gap(16.0)
+    .child(Box::new(GridItem::new().at(1, 1).column_span(2)));
+```
+
 The same container is available in JSX when the `jsx` feature is enabled:
 
 ```rust
@@ -81,7 +93,7 @@ jsx! {
 support `gap`, axis alignment, `justify`, wrapping, padding, fixed/fill sizes,
 and item behavior (`grow`, `shrink`, `basis`, `align_self`). For the same
 chainable properties on any `Style`, import `StyleExt` and start with
-`Style::default().flex_row()` or `.flex_column()`.
+`Style::default().flex_row()`, `.flex_column()`, or `.grid()`.
 
 For advanced layout properties, use the re-exported Taffy types through
 `creamui::core::layout`.
