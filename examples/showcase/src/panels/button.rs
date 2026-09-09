@@ -6,77 +6,70 @@ use crate::prelude::*;
 #[component]
 pub fn ButtonPanel(clicks: Signal<i32>) -> BoxedWidget {
     let theme = use_theme();
-    let mut actions = RawView::new(row(10.));
-    for (label, variant) in [
-        ("Continue", creamui_widgets::ButtonVariant::Primary),
-        ("Cancel", creamui_widgets::ButtonVariant::Secondary),
-        ("Learn more", creamui_widgets::ButtonVariant::Tertiary),
-        ("Delete", creamui_widgets::ButtonVariant::Destructive),
-    ] {
+    let actions: Vec<BoxedWidget> = [
+        ("Continue", ButtonVariant::Primary),
+        ("Cancel", ButtonVariant::Secondary),
+        ("Learn more", ButtonVariant::Tertiary),
+        ("Delete", ButtonVariant::Destructive),
+    ]
+    .into_iter()
+    .map(|(label, variant)| {
         let clicks = clicks.clone();
-        actions = actions.child(Box::new(Button::styled(
-            variant,
-            ButtonSize::Md,
-            label,
-            ButtonState::Normal,
-            move || clicks.update(|c| *c += 1),
-        )));
-    }
-    let mut sizes = RawView::new(row(10.));
-    for (label, size) in [
+        jsx! {
+            <StyledButton
+                variant={variant}
+                size={ButtonSize::Md}
+                label={label.to_owned()}
+                state={ButtonState::Normal}
+                on_click={Box::new(move || clicks.update(|c| *c += 1)) as Box<dyn Fn()>}
+                disabled={false}
+            />
+        }
+    })
+    .collect();
+
+    let sizes: Vec<BoxedWidget> = [
         ("Extra small", ButtonSize::Xs),
         ("Small", ButtonSize::Sm),
         ("Medium", ButtonSize::Md),
         ("Large", ButtonSize::Lg),
-    ] {
+    ]
+    .into_iter()
+    .map(|(label, size)| {
         let clicks = clicks.clone();
-        sizes = sizes.child(Box::new(Button::secondary(size, label, move || {
-            clicks.update(|c| *c += 1)
-        })));
-    }
-    Box::new(
-        RawView::new(column(section_gap()))
-            .child(SectionHeader(SectionHeaderProps {
-                title: "Buttons".into(),
-                subtitle: "A clear hierarchy, from everyday actions to important decisions.".into(),
-            }))
-            .child(Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Variants"))
-                    .child(Box::new(actions)),
-            ))
-            .child(Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("One family, four sizes"))
-                    .child(Box::new(sizes)),
-            ))
-            .child(Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("States"))
-                    .child(Box::new(
-                        RawView::new(row(10.))
-                            .child(Box::new(Button::new("Unavailable", || {}).disabled(true)))
-                            .child(Box::new(Button::state(
-                                ButtonSize::Md,
-                                "Working",
-                                ButtonState::Loading,
-                                || {},
-                            )))
-                            .child(Box::new(Button::state(
-                                ButtonSize::Md,
-                                "Saved",
-                                ButtonState::Success,
-                                || {},
-                            ))),
-                    ))
-                    .child(Box::new(
-                        RawText::new(
-                            format!("{} actions · Try Tab, then Enter or Space", clicks.get()),
-                            theme.text_secondary,
-                            12.,
-                        )
-                        .align(TextAlign::Start),
-                    )),
-            )),
-    )
+        jsx! {
+            <StyledButton
+                variant={ButtonVariant::Secondary}
+                size={size}
+                label={label.to_owned()}
+                state={ButtonState::Normal}
+                on_click={Box::new(move || clicks.update(|c| *c += 1)) as Box<dyn Fn()>}
+                disabled={false}
+            />
+        }
+    })
+    .collect();
+
+    Box::new(jsx! {
+        <RawView style={column(section_gap())}>
+            <SectionHeader title={"Buttons".to_owned()} subtitle={"A clear hierarchy, from everyday actions to important decisions.".to_owned()} />
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Variants".to_owned()} />
+                <RawView style={row(10.)} children={actions} />
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"One family, four sizes".to_owned()} />
+                <RawView style={row(10.)} children={sizes} />
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"States".to_owned()} />
+                <RawView style={row(10.)}>
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Unavailable".to_owned()} state={ButtonState::Normal} on_click={Box::new(|| {}) as Box<dyn Fn()>} disabled={true} />
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Working".to_owned()} state={ButtonState::Loading} on_click={Box::new(|| {}) as Box<dyn Fn()>} disabled={false} />
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Saved".to_owned()} state={ButtonState::Success} on_click={Box::new(|| {}) as Box<dyn Fn()>} disabled={false} />
+                </RawView>
+                <RawText color={theme.text_secondary} font_size={12.0} align={TextAlign::Start}>{format!("{} actions · Try Tab, then Enter or Space", clicks.get())}</RawText>
+            </Card>
+        </RawView>
+    })
 }

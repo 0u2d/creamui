@@ -31,31 +31,33 @@ fn tab_bar(
         inset,
     );
     let styles = tab_styles(labels, sizing, height, tab_padding);
-    let mut bar = Tabs::new(colors, bar_style);
-    for (index, label) in labels.iter().enumerate() {
-        let tabs = controller.clone();
-        bar = bar.child(Box::new(Tab::new(
-            colors,
-            styles[index].clone(),
-            *label,
-            controller.is_selected(index),
-            move || tabs.select(index),
-        )));
-    }
-    Box::new(bar)
+    let tabs: Vec<BoxedWidget> = labels
+        .iter()
+        .enumerate()
+        .map(|(index, label)| {
+            let tabs = controller.clone();
+            jsx! {
+                <Tab
+                    colors={colors}
+                    style={styles[index].clone()}
+                    label={(*label).to_owned()}
+                    active={controller.is_selected(index)}
+                    on_click={Box::new(move || tabs.select(index)) as Box<dyn Fn()>}
+                />
+            }
+        })
+        .collect();
+    jsx! { <Tabs colors={colors} style={bar_style} children={tabs} /> }
 }
 
 fn tab_example(label: &str, bar: BoxedWidget) -> BoxedWidget {
     let theme = use_theme();
-    Box::new(
-        RawView::new(column(theme.spacing_small))
-            .child(Box::new(
-                RawText::new(label, theme.text_secondary, theme.typography.caption)
-                    .bold(true)
-                    .align(TextAlign::Start),
-            ))
-            .child(bar),
-    )
+    Box::new(jsx! {
+        <RawView style={column(theme.spacing_small)}>
+            <BoldText text={label.to_owned()} color={theme.text_secondary} font_size={theme.typography.caption} align={TextAlign::Start} />
+            {bar}
+        </RawView>
+    })
 }
 
 /// Filled, pill, and indicator treatments plus a content-linked tab set.
@@ -113,25 +115,73 @@ pub fn TabsPanel(
             "Preferences stay close without leaving this view.",
         ),
     };
+    let filled_example = tab_example(
+        "Filled tabs · content width",
+        tab_bar(
+            &TAB_LABELS,
+            filled,
+            filled_colors,
+            TabSizing::Content,
+            38.0,
+            theme.spacing_medium,
+            theme.spacing_small,
+        ),
+    );
+    let pill_example = tab_example(
+        "Pill tabs · equal width",
+        tab_bar(
+            &TAB_LABELS,
+            pill,
+            pill_colors,
+            TabSizing::Equal,
+            34.0,
+            theme.spacing_medium,
+            theme.spacing_small,
+        ),
+    );
+    let indicator_example = tab_example(
+        "Indicator tabs · content width",
+        tab_bar(
+            &TAB_LABELS,
+            indicator,
+            indicator_colors,
+            TabSizing::Content,
+            34.0,
+            theme.spacing_medium,
+            theme.spacing_small,
+        ),
+    );
+    let content_bar = tab_bar(
+        &TAB_LABELS,
+        content,
+        filled_colors,
+        TabSizing::Equal,
+        36.0,
+        theme.spacing_medium,
+        theme.spacing_small,
+    );
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Tabs".to_owned()} subtitle={"Three visual styles, followed by a tab bar connected to its content.".to_owned()} />
-            {Box::new(
-                RawView::new(column(theme.spacing_large))
-                    .child(tab_example("Filled tabs · content width", tab_bar(&TAB_LABELS, filled, filled_colors, TabSizing::Content, 38.0, theme.spacing_medium, theme.spacing_small)))
-                    .child(tab_example("Pill tabs · equal width", tab_bar(&TAB_LABELS, pill, pill_colors, TabSizing::Equal, 34.0, theme.spacing_medium, theme.spacing_small)))
-                    .child(tab_example("Indicator tabs · content width", tab_bar(&TAB_LABELS, indicator, indicator_colors, TabSizing::Content, 34.0, theme.spacing_medium, theme.spacing_small)))
-            ) as BoxedWidget}
-            {Box::new(Surface::new(SurfaceRole::Inset, padding(Style {
-                size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
-                ..column(theme.spacing_large)
-            }, theme.spacing_medium))
-                .child(tab_bar(&TAB_LABELS, content, filled_colors, TabSizing::Equal, 36.0, theme.spacing_medium, theme.spacing_small))
-                .child(Box::new(Card::new(preview_style)
-                    .child(Box::new(Heading::new(title)))
-                    .child(Box::new(Text::secondary(detail)))
-                    .child(Box::new(RawText::new(current_label, theme.accent, 12.).bold(true).align(TextAlign::Start)))))
-            ) as BoxedWidget}
+            <RawView style={column(theme.spacing_large)}>
+                {filled_example}
+                {pill_example}
+                {indicator_example}
+            </RawView>
+            <Surface
+                role={SurfaceRole::Inset}
+                style={padding(Style {
+                    size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(184.0) },
+                    ..column(theme.spacing_large)
+                }, theme.spacing_medium)}
+            >
+                {content_bar}
+                <PreviewCard style={preview_style}>
+                    <Heading>{title.to_owned()}</Heading>
+                    <Text secondary={true}>{detail.to_owned()}</Text>
+                    <BoldText text={current_label.to_owned()} color={theme.accent} font_size={12.0} align={TextAlign::Start} />
+                </PreviewCard>
+            </Surface>
         </RawView>
     })
 }

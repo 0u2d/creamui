@@ -13,35 +13,17 @@ pub fn ImagesPanel(png: ImageData, jpeg: ImageData, webp: ImageData) -> BoxedWid
         flex_shrink: 0.,
         ..Default::default()
     };
-    Box::new(
-        RawView::new(column(section_gap()))
-            .child(SectionHeader(SectionHeaderProps {
-                title: "Images".into(),
-                subtitle:
-                    "Local PNG, JPEG, and WebP assets, each cropped with a different fit and shape."
-                        .into(),
-            }))
-            .child(card_row(vec![
-                field_card(
-                    "PNG · square",
-                    Box::new(Image::with_style(png, square.clone()).fit(ImageFit::Cover)),
-                ),
-                field_card(
-                    "JPEG · rounded corners",
-                    Box::new(
-                        Image::with_style(jpeg, landscape)
-                            .fit(ImageFit::Cover)
-                            .corner_radius(theme.card_radius),
-                    ),
-                ),
-                field_card(
-                    "WebP · full circle",
-                    Box::new(
-                        Image::with_style(webp, square)
-                            .fit(ImageFit::Cover)
-                            .corner_radius(84.),
-                    ),
-                ),
-            ])),
-    )
+    Box::new(jsx! {
+        <RawView style={column(section_gap())}>
+            <SectionHeader
+                title={"Images".to_owned()}
+                subtitle={"Local PNG, JPEG, and WebP assets, each cropped with a different fit and shape.".to_owned()}
+            />
+            <CardRow>
+                <FieldCard label={"PNG · square".to_owned()} control={Box::new(jsx!{<Image data={png} style={square.clone()} fit={ImageFit::Cover} />}) as BoxedWidget} />
+                <FieldCard label={"JPEG · rounded corners".to_owned()} control={Box::new(jsx!{<Image data={jpeg} style={landscape} fit={ImageFit::Cover} corner_radius={theme.card_radius} />}) as BoxedWidget} />
+                <FieldCard label={"WebP · full circle".to_owned()} control={Box::new(jsx!{<Image data={webp} style={square} fit={ImageFit::Cover} corner_radius={84.0} />}) as BoxedWidget} />
+            </CardRow>
+        </RawView>
+    })
 }

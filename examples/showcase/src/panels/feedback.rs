@@ -13,47 +13,44 @@ pub fn FeedbackPanel(
     let set_progress = progress.clone();
     let open_popover = show_popover.clone();
     let open_alert = show_alert.clone();
-    let popover = if show_popover.get() {
-        Box::new(
-            Popover::new(padding(column(theme.spacing_small), theme.spacing_medium))
-                .child(Box::new(
-                    RawText::new("Popover", theme.text_primary, 13.).bold(true),
-                ))
-                .child(Box::new(RawText::new(
-                    "A floating surface can contain any widget tree.",
-                    theme.text_secondary,
-                    12.,
-                ))),
-        ) as BoxedWidget
+    let popover: BoxedWidget = if show_popover.get() {
+        jsx! {
+            <Popover style={padding(column(theme.spacing_small), theme.spacing_medium)}>
+                <BoldText text={"Popover".to_owned()} color={theme.text_primary} font_size={13.0} align={TextAlign::Center} />
+                <RawText color={theme.text_secondary} font_size={12.0}>"A floating surface can contain any widget tree."</RawText>
+            </Popover>
+        }
     } else {
-        Box::new(RawView::new(Style::default())) as BoxedWidget
+        Box::new(jsx! { <RawView style={Style::default()} /> })
     };
+    let progress_detail: BoxedWidget = Box::new(jsx! {
+        <RawView style={column(theme.spacing_small)}>
+            <ProgressBar value={Some(value)} />
+            <Slider value={value} on_change={move |next| set_progress.set(next)} />
+        </RawView>
+    });
+    let progress_ring_detail: BoxedWidget = Box::new(jsx! {
+        <RawView style={row(theme.spacing_medium)}>
+            <ProgressRing value={Some(value)} size={32.0} />
+            <ProgressRing value={None} size={32.0} />
+        </RawView>
+    });
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Feedback & overlays".to_owned()} subtitle={"Show work in progress, surface contextual detail, and ask for confirmation without losing context.".to_owned()} />
-            {field_card(&format!("Determinate progress · {:.0}%", value * 100.0), Box::new(
-                RawView::new(column(theme.spacing_small))
-                    .child(Box::new(ProgressBar::new(value)))
-                    .child(Box::new(jsx!{<Slider value={value} on_change={move |next| set_progress.set(next)} />})),
-            ))}
-            {card_row(vec![
-                field_card("Progress ring", Box::new(
-                    RawView::new(row(theme.spacing_medium))
-                        .child(Box::new(ProgressRing::new(value).size(32.0)))
-                        .child(Box::new(ProgressRing::indeterminate().size(32.0))),
-                )),
-                field_card("Indeterminate bar", Box::new(ProgressBar::indeterminate())),
-            ])}
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Overlays"))
-                    .child(Box::new(
-                        RawView::new(row(theme.spacing_medium))
-                            .child(Box::new(Button::secondary(ButtonSize::Md, "Toggle popover", move || open_popover.update(|open| *open = !*open))))
-                            .child(Box::new(Button::new("Open alert dialog", move || open_alert.set(true)))),
-                    ))
-                    .child(popover)
-            ) as BoxedWidget}
+            <FieldCard label={format!("Determinate progress · {:.0}%", value * 100.0)} control={progress_detail} />
+            <CardRow>
+                <FieldCard label={"Progress ring".to_owned()} control={progress_ring_detail} />
+                <FieldCard label={"Indeterminate bar".to_owned()} control={jsx!{<ProgressBar value={None} />}} />
+            </CardRow>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Overlays".to_owned()} />
+                <RawView style={row(theme.spacing_medium)}>
+                    <StyledButton variant={ButtonVariant::Secondary} size={ButtonSize::Md} label={"Toggle popover".to_owned()} state={ButtonState::Normal} on_click={Box::new(move || open_popover.update(|open| *open = !*open)) as Box<dyn Fn()>} disabled={false} />
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Open alert dialog".to_owned()} state={ButtonState::Normal} on_click={Box::new(move || open_alert.set(true)) as Box<dyn Fn()>} disabled={false} />
+                </RawView>
+                {popover}
+            </Card>
         </RawView>
     })
 }

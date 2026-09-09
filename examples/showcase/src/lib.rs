@@ -19,6 +19,7 @@
 //! reads it with `use_theme()` instead of recomputing it locally.
 
 mod common;
+mod kit;
 mod nav;
 mod panels;
 mod prelude;
@@ -232,29 +233,45 @@ pub fn launch() {
                 },
                 ..Default::default()
             };
-            let content = RawScrollView::controlled(scroll_style, content_scroll.clone()).child(
-                Box::new(Surface::new(SurfaceRole::Panel, content_style).child(panel)),
-            );
+            let panel_surface: BoxedWidget = jsx! {
+                <Surface role={SurfaceRole::Panel} style={content_style} children={vec![panel]} />
+            };
+            let content: BoxedWidget = jsx! {
+                <RawScrollView
+                    style={scroll_style}
+                    controller={content_scroll.clone()}
+                    content_gap={None}
+                    scrollbar_gap={None}
+                    background={None}
+                    corner_radius={None}
+                    scrollbar_width={None}
+                    scrollbar_color={None}
+                    scrollbar_hover_color={None}
+                    children={vec![panel_surface]}
+                />
+            };
             let dialog: BoxedWidget = if show_alert.get() {
                 let dismiss = show_alert.clone();
-                Box::new(
-                    AlertDialog::new(
-                        "Delete this draft?",
-                        "This example uses an Overlay backdrop. Clicking outside or Cancel closes it.",
-                        move || dismiss.set(false),
-                    )
-                    .dismiss_button("Cancel")
-                    .confirm("Delete", { let dismiss = show_alert.clone(); move || dismiss.set(false) }),
-                )
+                let confirm_dismiss = show_alert.clone();
+                jsx! {
+                    <AlertDialog
+                        title={"Delete this draft?".to_owned()}
+                        message={"This example uses an Overlay backdrop. Clicking outside or Cancel closes it.".to_owned()}
+                        on_dismiss={Box::new(move || dismiss.set(false)) as Box<dyn Fn()>}
+                        dismiss_label={"Cancel".to_owned()}
+                        confirm_label={"Delete".to_owned()}
+                        on_confirm={Box::new(move || confirm_dismiss.set(false)) as Box<dyn Fn()>}
+                    />
+                }
             } else {
-                Box::new(RawView::new(Style::default()))
+                Box::new(jsx! { <RawView style={Style::default()} /> })
             };
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
                     <Nav active={active_section.clone()} content_scroll={content_scroll.clone()} nav_scroll={nav_scroll.clone()} />
                     <RawView style={content_outer_style} background={theme.surface}>
-                        {Box::new(content) as BoxedWidget}
+                        {content}
                     </RawView>
                     {dialog}
                 </RawView>

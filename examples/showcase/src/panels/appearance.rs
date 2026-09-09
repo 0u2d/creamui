@@ -4,7 +4,7 @@ use crate::prelude::*;
 /// pickers on the Appearance page. Selection is fully controlled: it carries
 /// no state of its own.
 fn pill(label: &str, active: bool, on_click: impl Fn() + 'static) -> BoxedWidget {
-    Box::new(Choice::new(label, active, on_click))
+    jsx! { <Choice label={label.to_owned()} active={active} on_click={Box::new(on_click) as Box<dyn Fn()>} /> }
 }
 
 /// A single accent color swatch: a rounded square filled with the color
@@ -66,34 +66,33 @@ pub fn AppearancePanel(dark_mode: Signal<bool>, accent_index: Signal<usize>) -> 
         accent_name
     );
 
+    let primary_mode = dark_mode.clone();
+    let secondary_mode = dark_mode.clone();
+
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Appearance".to_owned()} subtitle={"Explore the same components in a different light.".to_owned()} />
-            {Box::new(
-                card(theme.spacing_large)
-                    .child(Box::new(
-                        card(theme.spacing_small)
-                            .child(field_label("Mode"))
-                            .child(Box::new(RawView::new(row(theme.spacing_medium)).with_children(mode_pills))),
-                    ))
-                    .child(Box::new(
-                        card(theme.spacing_small)
-                            .child(field_label("Accent color"))
-                            .child(Box::new(RawView::new(row(theme.spacing_medium)).with_children(swatches))),
-                    ))
-                    .child(Box::new(Text::new(summary).align(TextAlign::Start).color(theme.text_disabled).style(label_style())))
-            ) as BoxedWidget}
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(Box::new(Heading::new("Component preview")))
-                    .child(Box::new(Text::secondary("Open a category to explore sizes, states, and interactions.").align(TextAlign::Start)))
-                    .child(card_row(vec![
-                        Box::new(Button::new("Primary", { let mode = dark_mode.clone(); move || mode.update(|v| *v = !*v) })),
-                        Box::new(Button::secondary(ButtonSize::Md, "Secondary", { let mode = dark_mode.clone(); move || mode.update(|v| *v = !*v) })),
-                        Box::new(Button::new("Disabled", || {}).disabled(true)),
-                    ]))
-                    .child(Box::new(Text::secondary("These preview buttons switch the color scheme.").align(TextAlign::Start)))
-            ) as BoxedWidget}
+            <Card gap={theme.spacing_large}>
+                <Card gap={theme.spacing_small}>
+                    <FieldLabel text={"Mode".to_owned()} />
+                    <RawView style={row(theme.spacing_medium)} children={mode_pills} />
+                </Card>
+                <Card gap={theme.spacing_small}>
+                    <FieldLabel text={"Accent color".to_owned()} />
+                    <RawView style={row(theme.spacing_medium)} children={swatches} />
+                </Card>
+                <Text align={TextAlign::Start} color={theme.text_disabled} style={label_style()}>{summary}</Text>
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <Heading>"Component preview"</Heading>
+                <Text secondary={true} align={TextAlign::Start}>"Open a category to explore sizes, states, and interactions."</Text>
+                <CardRow>
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Primary".to_owned()} state={ButtonState::Normal} on_click={Box::new(move || primary_mode.update(|v| *v = !*v)) as Box<dyn Fn()>} disabled={false} />
+                    <StyledButton variant={ButtonVariant::Secondary} size={ButtonSize::Md} label={"Secondary".to_owned()} state={ButtonState::Normal} on_click={Box::new(move || secondary_mode.update(|v| *v = !*v)) as Box<dyn Fn()>} disabled={false} />
+                    <StyledButton variant={ButtonVariant::Primary} size={ButtonSize::Md} label={"Disabled".to_owned()} state={ButtonState::Normal} on_click={Box::new(|| {}) as Box<dyn Fn()>} disabled={true} />
+                </CardRow>
+                <Text secondary={true} align={TextAlign::Start}>"These preview buttons switch the color scheme."</Text>
+            </Card>
         </RawView>
     })
 }

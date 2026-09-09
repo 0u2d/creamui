@@ -29,18 +29,23 @@ pub fn SidebarPanel(active: Signal<usize>) -> BoxedWidget {
         },
         theme.spacing_medium,
     );
-    let mut rail = Sidebar::new(colors, rail_style);
-    for (index, label) in ITEMS.iter().enumerate() {
-        let is_active = active.get() == index;
-        let select = active.clone();
-        rail = rail.child(Box::new(SidebarItem::new(
-            colors,
-            item_style.clone(),
-            *label,
-            is_active,
-            move || select.set(index),
-        )));
-    }
+    let items: Vec<BoxedWidget> = ITEMS
+        .iter()
+        .enumerate()
+        .map(|(index, label)| {
+            let is_active = active.get() == index;
+            let select = active.clone();
+            jsx! {
+                <SidebarItem
+                    colors={colors}
+                    style={item_style.clone()}
+                    label={(*label).to_owned()}
+                    active={is_active}
+                    on_click={Box::new(move || select.set(index)) as Box<dyn Fn()>}
+                />
+            }
+        })
+        .collect();
     let preview_style = padding(
         Style {
             size: creamui_core::layout::Size {
@@ -55,16 +60,20 @@ pub fn SidebarPanel(active: Signal<usize>) -> BoxedWidget {
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Sidebar".to_owned()} subtitle={"A compact navigation rail with independent selection.".to_owned()} />
-            {Box::new(Surface::new(SurfaceRole::Inset, padding(Style {
-                size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(192.0) },
-                align_items: Some(AlignItems::Stretch),
-                ..row(theme.spacing_large)
-            }, theme.spacing_medium))
-                .child(Box::new(rail))
-                .child(Box::new(Card::new(preview_style)
-                    .child(Box::new(Heading::new(current_label.clone())))
-                    .child(Box::new(Text::secondary("The selected section is shown here.")))))
-            ) as BoxedWidget}
+            <Surface
+                role={SurfaceRole::Inset}
+                style={padding(Style {
+                    size: creamui_core::layout::Size { width: Dimension::Length(488.0), height: Dimension::Length(192.0) },
+                    align_items: Some(AlignItems::Stretch),
+                    ..row(theme.spacing_large)
+                }, theme.spacing_medium)}
+            >
+                <Sidebar colors={colors} style={rail_style} children={items} />
+                <PreviewCard style={preview_style}>
+                    <Heading>{current_label.clone()}</Heading>
+                    <Text secondary={true}>"The selected section is shown here."</Text>
+                </PreviewCard>
+            </Surface>
         </RawView>
     })
 }

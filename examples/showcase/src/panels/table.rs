@@ -32,13 +32,22 @@ Radia Perlman,Engineer,1951";
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let table = Table::new(table_style, table_scroll, columns)
-        .rows(rows)
-        .on_row_click(Some(selected), move |index| set_selected.set(index));
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Table".to_owned()} subtitle={"A CSV-shaped grid: fixed columns, a header that stays put, and a scrollable body. Click a row to select it.".to_owned()} />
-            {field_card("Notable computer scientists", Box::new(table))}
+            <FieldCard
+                label={"Notable computer scientists".to_owned()}
+                control={jsx!{
+                    <Table
+                        style={table_style}
+                        scroll={table_scroll}
+                        columns={columns}
+                        rows={rows}
+                        selected={Some(selected)}
+                        on_row_click={Box::new(move |index| set_selected.set(index)) as Box<dyn Fn(usize)>}
+                    />
+                }}
+            />
         </RawView>
     })
 }

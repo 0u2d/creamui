@@ -22,48 +22,40 @@ pub fn InputPanel(
             ..Default::default()
         }
     }
-    let error_field: BoxedWidget = Box::new(
-        RawView::new(column(theme.spacing_small))
-            .child(Box::new(TextInput::new("", |_| {}).border(theme.danger)))
-            .child(Box::new(
-                Text::new("Error: this field is required")
-                    .align(TextAlign::Start)
-                    .color(theme.danger)
-                    .style(label_style()),
-            )),
-    );
-    let warning_field: BoxedWidget = Box::new(
-        RawView::new(column(theme.spacing_small))
-            .child(Box::new(TextInput::new("", |_| {}).border(theme.warning)))
-            .child(Box::new(
-                Text::new("Warning: verify this value")
-                    .align(TextAlign::Start)
-                    .color(theme.warning)
-                    .style(label_style()),
-            )),
-    );
+    let error_field: BoxedWidget = Box::new(jsx! {
+        <RawView style={column(theme.spacing_small)}>
+            <BorderedInput border={theme.danger} />
+            <Text align={TextAlign::Start} color={theme.danger} style={label_style()}>"Error: this field is required"</Text>
+        </RawView>
+    });
+    let warning_field: BoxedWidget = Box::new(jsx! {
+        <RawView style={column(theme.spacing_small)}>
+            <BorderedInput border={theme.warning} />
+            <Text align={TextAlign::Start} color={theme.warning} style={label_style()}>"Warning: verify this value"</Text>
+        </RawView>
+    });
 
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Input".to_owned()} subtitle={"Write, select, and edit. Each field keeps its own content.".to_owned()} />
-            {Box::new(
-                card(theme.spacing_large)
-                    .child(stacked_field("Default", Box::new(jsx!{<TextInput controller={&plain} />})))
-                    .child(stacked_field("With placeholder", Box::new(jsx!{<TextInput controller={&with_placeholder} placeholder={"Type something…".to_owned()} />})))
-            ) as BoxedWidget}
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Validation states"))
-                    .child(card_row(vec![error_field, warning_field]))
-            ) as BoxedWidget}
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Text area"))
-                    .child(card_row(vec![
-                        stacked_field("Horizontal scrolling", Box::new(jsx!{<TextArea controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />})),
-                        stacked_field("Wrap to fit", Box::new(jsx!{<TextArea controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />})),
-                    ]))
-            ) as BoxedWidget}
+            <Card gap={theme.spacing_large}>
+                <StackedField label={"Default".to_owned()} control={Box::new(jsx!{<TextInput controller={&plain} />}) as BoxedWidget} />
+                <StackedField label={"With placeholder".to_owned()} control={Box::new(jsx!{<TextInput controller={&with_placeholder} placeholder={"Type something…".to_owned()} />}) as BoxedWidget} />
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Validation states".to_owned()} />
+                <CardRow>
+                    {error_field}
+                    {warning_field}
+                </CardRow>
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Text area".to_owned()} />
+                <CardRow>
+                    <StackedField label={"Horizontal scrolling".to_owned()} control={Box::new(jsx!{<TextArea controller={&notes} style={textarea_style()} placeholder={"Notes…".to_owned()} />}) as BoxedWidget} />
+                    <StackedField label={"Wrap to fit".to_owned()} control={Box::new(jsx!{<TextArea controller={&notes_wrapped} style={textarea_style()} wrap={true} placeholder={"Notes…".to_owned()} />}) as BoxedWidget} />
+                </CardRow>
+            </Card>
         </RawView>
     })
 }

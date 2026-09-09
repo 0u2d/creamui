@@ -33,25 +33,27 @@ pub fn CheckboxPanel(
     beta_features: Signal<bool>,
 ) -> BoxedWidget {
     let theme = use_theme();
+    let notifications_row = checkbox_row("Notifications", notifications);
+    let auto_save_row = checkbox_row("Auto-save", auto_save.clone());
+    let beta_row = checkbox_row("Beta features", beta_features);
+    let switch_checked = auto_save.get();
+    let switch_toggle = auto_save.clone();
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Checkbox".to_owned()} subtitle={"Small preferences, clearly expressed.".to_owned()} />
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Preferences"))
-                    .child(checkbox_row("Notifications", notifications))
-                    .child(checkbox_row("Auto-save", auto_save.clone()))
-                    .child(checkbox_row("Beta features", beta_features))
-            ) as BoxedWidget}
-            {Box::new(
-                card(theme.spacing_medium)
-                    .child(field_label("Switch presentation"))
-                    .child(Box::new(
-                        RawView::new(Style { align_items: Some(AlignItems::Center), ..row(theme.spacing_medium) })
-                            .child(Box::new(Switch::new(auto_save.get(), { let set = auto_save.clone(); move || set.update(|value| *value = !*value) })))
-                            .child(Box::new(Text::secondary("The same boolean, shown as a switch instead of a checkbox.").align(TextAlign::Start))),
-                    ))
-            ) as BoxedWidget}
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Preferences".to_owned()} />
+                {notifications_row}
+                {auto_save_row}
+                {beta_row}
+            </Card>
+            <Card gap={theme.spacing_medium}>
+                <FieldLabel text={"Switch presentation".to_owned()} />
+                <RawView style={Style { align_items: Some(AlignItems::Center), ..row(theme.spacing_medium) }}>
+                    <Switch checked={switch_checked} on_click={Box::new(move || switch_toggle.update(|value| *value = !*value)) as Box<dyn Fn()>} />
+                    <Text secondary={true} align={TextAlign::Start}>"The same boolean, shown as a switch instead of a checkbox."</Text>
+                </RawView>
+            </Card>
         </RawView>
     })
 }

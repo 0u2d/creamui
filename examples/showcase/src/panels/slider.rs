@@ -18,15 +18,17 @@ fn slider_row(label: &str, value: Signal<f32>, format: impl Fn(f32) -> String) -
 #[component]
 pub fn SliderPanel(volume: Signal<f32>, brightness: Signal<f32>, zoom: Signal<f32>) -> BoxedWidget {
     let theme = use_theme();
+    let volume_row = slider_row("Volume", volume, |v| format!("{:.0}%", v * 100.0));
+    let brightness_row = slider_row("Brightness", brightness, |v| format!("{:.0}%", v * 100.0));
+    let zoom_row = slider_row("Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5));
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Slider".to_owned()} subtitle={"Fine adjustments with immediate feedback.".to_owned()} />
-            {Box::new(
-                card(theme.spacing_large)
-                    .child(slider_row("Volume", volume, |v| format!("{:.0}%", v * 100.0)))
-                    .child(slider_row("Brightness", brightness, |v| format!("{:.0}%", v * 100.0)))
-                    .child(slider_row("Zoom", zoom, |v| format!("{:.2}x", 0.5 + v * 1.5)))
-            ) as BoxedWidget}
+            <Card gap={theme.spacing_large}>
+                {volume_row}
+                {brightness_row}
+                {zoom_row}
+            </Card>
         </RawView>
     })
 }

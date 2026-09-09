@@ -25,11 +25,13 @@ pub fn TreePanel(tree_scroll: ScrollController, tree: TreeController) -> BoxedWi
         flex_shrink: 0.0,
         ..Default::default()
     };
-    let view = TreeView::new(tree_style, tree_scroll, tree, &nodes);
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Tree".to_owned()} subtitle={"Click a chevron to expand or collapse a folder, click a row to select it, or use the arrow keys once focused.".to_owned()} />
-            {field_card("File browser", Box::new(view))}
+            <FieldCard
+                label={"File browser".to_owned()}
+                control={jsx!{<TreeView style={tree_style} scroll={tree_scroll} controller={tree} nodes={nodes} />}}
+            />
         </RawView>
     })
 }

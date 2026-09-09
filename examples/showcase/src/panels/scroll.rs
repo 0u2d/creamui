@@ -18,15 +18,11 @@ fn scroll_rows(count: usize, row_style: Style, text_color: Color) -> Vec<BoxedWi
             } else {
                 theme.surface
             };
-            Box::new(
-                RawView::new(row_style.clone())
-                    .background(background)
-                    .child(Box::new(
-                        RawText::new(format!("Row {:02}", i + 1), text_color, 13.0)
-                            .align(TextAlign::Start)
-                            .layout_style(text_style.clone()),
-                    )),
-            ) as BoxedWidget
+            Box::new(jsx! {
+                <RawView style={row_style.clone()} background={background}>
+                    <RawText color={text_color} font_size={13.0} align={TextAlign::Start} style={text_style.clone()}>{format!("Row {:02}", i + 1)}</RawText>
+                </RawView>
+            }) as BoxedWidget
         })
         .collect()
 }
@@ -62,25 +58,35 @@ pub fn ScrollPanel(
         theme.spacing_medium,
     );
 
-    let themed_list = ScrollView::controlled(list_style.clone(), themed_scroll)
-        .with_children(scroll_rows(ROWS, row_style.clone(), theme.text_primary));
-
     const NEON: Color = Color::rgb(0x5c, 0xe1, 0xff);
-    let custom_list = RawScrollView::controlled(list_style, custom_scroll)
-        .background(Color::rgb(0x0c, 0x14, 0x1a))
-        .corner_radius(theme.radius_medium)
-        .scrollbar_width(7.0)
-        .scrollbar_color(Color::rgba(NEON.r, NEON.g, NEON.b, 150))
-        .scrollbar_hover_color(Color::rgba(NEON.r, NEON.g, NEON.b, 220))
-        .with_children(scroll_rows(ROWS, row_style, Color::rgb(0xbf, 0xef, 0xff)));
+    let themed_rows = scroll_rows(ROWS, row_style.clone(), theme.text_primary);
+    let custom_rows = scroll_rows(ROWS, row_style, Color::rgb(0xbf, 0xef, 0xff));
+
+    let themed_list: BoxedWidget = jsx! {
+        <ControlledScrollView style={list_style.clone()} controller={themed_scroll} children={themed_rows} />
+    };
+    let custom_list: BoxedWidget = jsx! {
+        <RawScrollView
+            style={list_style}
+            controller={custom_scroll}
+            content_gap={None}
+            scrollbar_gap={None}
+            background={Some(Color::rgb(0x0c, 0x14, 0x1a))}
+            corner_radius={Some(theme.radius_medium)}
+            scrollbar_width={Some(7.0)}
+            scrollbar_color={Some(Color::rgba(NEON.r, NEON.g, NEON.b, 150))}
+            scrollbar_hover_color={Some(Color::rgba(NEON.r, NEON.g, NEON.b, 220))}
+            children={custom_rows}
+        />
+    };
 
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader title={"Scroll".to_owned()} subtitle={"A draggable scrollbar thumb tracks the mouse wheel automatically, and vice versa.".to_owned()} />
-            {card_row(vec![
-                field_card("Themed · ScrollView", Box::new(themed_list)),
-                field_card("Custom · RawScrollView", Box::new(custom_list)),
-            ])}
+            <CardRow>
+                <FieldCard label={"Themed · ScrollView".to_owned()} control={themed_list} />
+                <FieldCard label={"Custom · RawScrollView".to_owned()} control={custom_list} />
+            </CardRow>
         </RawView>
     })
 }

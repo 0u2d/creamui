@@ -13,41 +13,30 @@ const GALLERY_CARD_HEIGHT: f32 = 96.0;
 
 /// A card that fills whatever grid cell it's placed in, rather than
 /// carrying its own pixel dimensions.
-fn demo_card(title: &str, description: &str, accent: Color) -> BoxedWidget {
+#[component]
+fn DemoCard(title: String, description: String, accent: Color) -> BoxedWidget {
     let theme = use_theme();
-    Box::new(
-        Flex::column()
-            .fill()
-            .gap(theme.spacing_small)
-            .padding(theme.spacing_large)
-            .background(theme.surface_elevated)
-            .corner_radius(theme.card_radius)
-            .child(Box::new(RawText::new(title, accent, 16.0).bold(true)))
-            .child(Box::new(
-                RawText::new(description, theme.text_secondary, 13.0)
-                    .layout_style(Style::default().grow(1.0)),
-            )),
-    )
+    Box::new(jsx! {
+        <Flex direction={FlexDirection::Column} fill={true} gap={theme.spacing_small} padding={theme.spacing_large} background={theme.surface_elevated} corner_radius={theme.card_radius}>
+            <BoldText text={title} color={accent} font_size={16.0} align={TextAlign::Center} />
+            <RawText color={theme.text_secondary} font_size={13.0} style={Style::default().grow(1.0)}>{description}</RawText>
+        </Flex>
+    })
 }
 
 /// A fixed-height gallery card that stretches to whatever width its
 /// `auto_fit_columns` track resolves to.
-fn gallery_card(title: &str, description: &str, accent: Color) -> BoxedWidget {
+#[component]
+fn GalleryCard(title: String, description: String, accent: Color) -> BoxedWidget {
     let theme = use_theme();
     Box::new(
-        Flex::column()
-            .full_width()
-            .height(GALLERY_CARD_HEIGHT)
-            .gap(6.0)
-            .padding(theme.spacing_medium)
-            .background(theme.surface_elevated)
-            .corner_radius(theme.card_radius)
-            .child(Box::new(RawText::new(title, accent, 15.0).bold(true)))
-            .child(Box::new(RawText::new(
-                description,
-                theme.text_secondary,
-                12.0,
-            ))),
+        jsx! {
+            <Flex direction={FlexDirection::Column} full_width={true} gap={6.0} padding={theme.spacing_medium} background={theme.surface_elevated} corner_radius={theme.card_radius}>
+                <BoldText text={title} color={accent} font_size={15.0} align={TextAlign::Center} />
+                <RawText color={theme.text_secondary} font_size={12.0}>{description}</RawText>
+            </Flex>
+        }
+        .height(GALLERY_CARD_HEIGHT),
     )
 }
 
@@ -55,37 +44,27 @@ fn gallery_card(title: &str, description: &str, accent: Color) -> BoxedWidget {
 /// are the one thing that genuinely needs an explicit template — there's no
 /// way to say "twice as wide as your neighbor" without naming a track — but
 /// every cell still just says `fill()` and lets the grid resolve the actual
-/// pixels.
+/// pixels. `full_width`/`height` aren't `jsx!`'s `Grid` props, so they're
+/// chained onto the constructed value below.
 fn bento_grid() -> BoxedWidget {
     let theme = use_theme();
+    let overview = jsx! { <DemoCard title={"Overview".to_owned()} description={"Column 1, row 1 · spans 2 columns and 2 rows.".to_owned()} accent={theme.accent} /> };
+    let cell = jsx! { <DemoCard title={"Cell".to_owned()} description={"Targets one explicit cell.".to_owned()} accent={Color::rgb(0x8b, 0x5c, 0xf6)} /> };
+    let tracks = jsx! { <DemoCard title={"Tracks".to_owned()} description={"Three 1fr columns share the width evenly.".to_owned()} accent={Color::rgb(0x22, 0xc5, 0x5e)} /> };
     Box::new(
-        Grid::new()
-            .full_width()
-            .height(220.0)
-            .gap(GAP)
-            .template_columns([Track::fr(1.0), Track::fr(1.0), Track::fr(1.0)])
-            .template_rows([Track::fr(1.0), Track::fr(1.0)])
-            .child(Box::new(
-                GridItem::new()
-                    .at(1, 1)
-                    .column_span(2)
-                    .row_span(2)
-                    .child(demo_card(
-                        "Overview",
-                        "Column 1, row 1 · spans 2 columns and 2 rows.",
-                        theme.accent,
-                    )),
-            ))
-            .child(Box::new(GridItem::new().at(3, 1).child(demo_card(
-                "Cell",
-                "Targets one explicit cell.",
-                Color::rgb(0x8b, 0x5c, 0xf6),
-            ))))
-            .child(Box::new(GridItem::new().at(3, 2).child(demo_card(
-                "Tracks",
-                "Three 1fr columns share the width evenly.",
-                Color::rgb(0x22, 0xc5, 0x5e),
-            )))),
+        jsx! {
+            <Grid
+                template_columns={[Track::fr(1.0), Track::fr(1.0), Track::fr(1.0)]}
+                template_rows={[Track::fr(1.0), Track::fr(1.0)]}
+                gap={GAP}
+            >
+                <GridItem column={1} row={1} column_span={2} row_span={2}>{overview}</GridItem>
+                <GridItem column={3} row={1}>{cell}</GridItem>
+                <GridItem column={3} row={2}>{tracks}</GridItem>
+            </Grid>
+        }
+        .full_width()
+        .height(220.0),
     )
 }
 
@@ -93,6 +72,8 @@ fn bento_grid() -> BoxedWidget {
 /// 176px-or-wider columns as fit the row, sharing whatever's left evenly,
 /// collapsing unused tracks instead of leaving gaps. Taffy resolves the
 /// column count during layout — this function never sees a pixel width.
+/// `full_width`/`auto_fit_columns` aren't `jsx!`'s `Grid` props, so they're
+/// chained onto the constructed value below.
 fn gallery_grid() -> BoxedWidget {
     let cards = [
         (
@@ -127,23 +108,23 @@ fn gallery_grid() -> BoxedWidget {
         ),
     ];
     let theme = use_theme();
+    let children: Vec<BoxedWidget> = cards
+        .into_iter()
+        .map(|(title, description, accent)| {
+            let card = jsx! {
+                <GalleryCard
+                    title={title.to_owned()}
+                    description={description.to_owned()}
+                    accent={accent.unwrap_or(theme.accent)}
+                />
+            };
+            Box::new(jsx! { <GridItem>{card}</GridItem> }) as BoxedWidget
+        })
+        .collect();
     Box::new(
-        Grid::new()
+        jsx! { <Grid gap={GAP} children={children} /> }
             .full_width()
-            .auto_fit_columns(GALLERY_MIN_CARD_WIDTH)
-            .gap(GAP)
-            .with_children(
-                cards
-                    .into_iter()
-                    .map(|(title, description, accent)| {
-                        Box::new(GridItem::new().child(gallery_card(
-                            title,
-                            description,
-                            accent.unwrap_or(theme.accent),
-                        ))) as BoxedWidget
-                    })
-                    .collect(),
-            ),
+            .auto_fit_columns(GALLERY_MIN_CARD_WIDTH),
     )
 }
 
@@ -152,14 +133,16 @@ fn gallery_grid() -> BoxedWidget {
 /// computed by hand.
 #[allow(non_snake_case)]
 pub fn GridPanel() -> BoxedWidget {
+    let bento = bento_grid();
+    let gallery = gallery_grid();
     Box::new(jsx! {
         <RawView style={column(section_gap())}>
             <SectionHeader
                 title={"Grid".to_owned()}
                 subtitle={"Grid containers that size themselves from whatever space their parent actually has.".to_owned()}
             />
-            {field_card("Grid · GridItem::at · column_span · row_span · fr tracks", bento_grid())}
-            {field_card("Grid::auto_fit_columns · repeat(auto-fit, minmax(176px, 1fr))", gallery_grid())}
+            <FieldCard label={"Grid · GridItem::at · column_span · row_span · fr tracks".to_owned()} control={bento} />
+            <FieldCard label={"Grid::auto_fit_columns · repeat(auto-fit, minmax(176px, 1fr))".to_owned()} control={gallery} />
         </RawView>
     })
 }

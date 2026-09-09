@@ -25,41 +25,35 @@ pub fn PickersPanel(
     } else {
         file_label.clone()
     };
-    Box::new(
-        RawView::new(column(section_gap()))
-            .child(SectionHeader(SectionHeaderProps {
-                title: "Pickers".into(),
-                subtitle: "Structured values, controlled by the application and styled from the active theme.".into(),
-            }))
-            .child(field_card(
-                "Date & time · arrows or upper/lower portions adjust it",
-                Box::new(DateTimePicker::controlled(&date_time)),
-            ))
-            .child(card_row(
-                vec![
-                    field_card(
-                        &format!("Color · {color_label}"),
-                        Box::new(ColorPicker::controlled(selected_color, &color_picker, move |next| {
-                            set_color.set(next)
-                        })),
-                    ),
-                    field_card(
-                        "File · native system dialog",
-                        Box::new(
-                            RawView::new(column(theme.spacing_small))
-                                .child(Box::new(
-                                    FilePicker::new(file_label, move |path| {
-                                        set_file.set(path.display().to_string())
-                                    })
-                                    .title("Choose an asset")
-                                    .filter("Images", ["png", "jpg", "jpeg", "webp"]),
-                                ))
-                                .child(Box::new(
-                                    Text::secondary(file_caption).align(TextAlign::Start),
-                                )),
-                        ),
-                    ),
-                ],
-            )),
-    )
+    let file_control: BoxedWidget = Box::new(jsx! {
+        <RawView style={column(theme.spacing_small)}>
+            <FilePicker
+                value={file_label}
+                on_change={Box::new(move |path: std::path::PathBuf| set_file.set(path.display().to_string())) as Box<dyn Fn(std::path::PathBuf)>}
+                title={"Choose an asset".to_owned()}
+                filter_label={"Images".to_owned()}
+                filter_extensions={vec!["png".to_owned(), "jpg".to_owned(), "jpeg".to_owned(), "webp".to_owned()]}
+            />
+            <Text secondary={true} align={TextAlign::Start}>{file_caption}</Text>
+        </RawView>
+    });
+    Box::new(jsx! {
+        <RawView style={column(section_gap())}>
+            <SectionHeader
+                title={"Pickers".to_owned()}
+                subtitle={"Structured values, controlled by the application and styled from the active theme.".to_owned()}
+            />
+            <FieldCard
+                label={"Date & time · arrows or upper/lower portions adjust it".to_owned()}
+                control={Box::new(jsx!{<DateTimePicker controller={&date_time} />}) as BoxedWidget}
+            />
+            <CardRow>
+                <FieldCard
+                    label={format!("Color · {color_label}")}
+                    control={Box::new(jsx!{<ColorPicker controller={&color_picker} value={selected_color} on_change={move |next| set_color.set(next)} />}) as BoxedWidget}
+                />
+                <FieldCard label={"File · native system dialog".to_owned()} control={file_control} />
+            </CardRow>
+        </RawView>
+    })
 }
