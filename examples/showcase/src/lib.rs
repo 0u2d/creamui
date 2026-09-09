@@ -73,7 +73,6 @@ pub fn launch() {
     let tabs_pill = TabController::new(1);
     let tabs_indicator = TabController::new(2);
     let tabs_content = TabController::default();
-    let layout_tab = TabController::default();
     let content_scroll = ScrollController::default();
     let nav_scroll = ScrollController::default();
     let themed_scroll_demo = ScrollController::default();
@@ -221,9 +220,8 @@ pub fn launch() {
                     table_scroll: table_scroll_demo.clone(),
                     table_selected: table_selected.clone(),
                 }),
-                _ => LayoutPanel(LayoutPanelProps {
-                    layout_tab: layout_tab.clone(),
-                }),
+                15 => GridPanel(),
+                _ => FlexPanel(),
             };
 
             let scroll_style = Style {

@@ -3,7 +3,7 @@
 use crate::prelude::*;
 
 /// Sidebar categories in display order.
-pub const NAV_LABELS: [&str; 16] = [
+pub const NAV_LABELS: [&str; 17] = [
     "Appearance",
     "Typography",
     "Input",
@@ -19,7 +19,8 @@ pub const NAV_LABELS: [&str; 16] = [
     "Scroll",
     "Tree",
     "Table",
-    "Layout",
+    "Grid",
+    "Flex",
 ];
 pub const ACCENTS: [(&str, Color); 5] = [
     ("Lilac", Color::rgb(181, 139, 255)),

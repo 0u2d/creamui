@@ -55,6 +55,7 @@ pub fn Nav(
         Symbol::Folder,
         Symbol::Grid,
         Symbol::Grid,
+        Symbol::Controls,
     ];
     let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
