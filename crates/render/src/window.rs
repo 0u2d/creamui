@@ -1050,6 +1050,15 @@ impl ApplicationHandler for AppHandler {
 /// window-level operations (resize, move, always-on-top) later — e.g. from
 /// a click handler.
 ///
+/// The `on_window_ready` closure itself is dropped right after that one
+/// call — it is not kept around for the window's lifetime. Anything created
+/// inside it that must keep running afterwards (e.g. a
+/// `creamui_reactive::create_effect` that calls `WindowHandle::set_theme`)
+/// needs an owner that outlives the closure: clone the value being stored
+/// into (not moved into) the closure, and keep the original alive on the
+/// caller's own stack for as long as `run`/`AppBuilder::run` is running —
+/// see `examples/showcase`'s `theme_sync` for a worked example.
+///
 /// To open several windows sharing one process and event loop (e.g. a
 /// desktop-shell dock), use [`AppBuilder`] instead.
 pub fn run(

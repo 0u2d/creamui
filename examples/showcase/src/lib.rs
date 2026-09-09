@@ -101,6 +101,7 @@ pub fn launch() {
         {
             let dark_mode = dark_mode.clone();
             let accent_index = accent_index.clone();
+            let theme_sync = theme_sync.clone();
             move |handle: WindowHandle| {
                 let dark_mode = dark_mode.clone();
                 let accent_index = accent_index.clone();
