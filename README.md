@@ -125,6 +125,7 @@ faster, unoptimized build while iterating.
 | `creamui-widgets` | Raw and themed components |
 | `creamui-image` | PNG, JPEG, and WebP image widgets |
 | `creamui-render` | Native windows and frame presentation |
+| `creamui-devtools` | Development-only FPS/frame-time/CPU/RAM overlay (F3) |
 | `creamui-macros` / `creamui-jsx` | JSX syntax and component support |
 | `creamui-abi`, `creamui-ffi`, `creamui-dynamic` | Optional dynamic-runtime and C ABI integration |
 

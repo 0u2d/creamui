@@ -9,6 +9,7 @@ members = [
     "crates/widgets",
     "crates/image",
     "crates/render",
+    "crates/devtools",
     "crates/abi",
     "crates/ffi",
     "crates/jsx",
@@ -47,6 +48,7 @@ creamui-fonts = { version = "0.1.1", path = "crates/fonts" }
 creamui-widgets = { version = "0.1.1", path = "crates/widgets" }
 creamui-image = { version = "0.1.1", path = "crates/image" }
 creamui-render = { version = "0.1.1", path = "crates/render" }
+creamui-devtools = { version = "0.1.1", path = "crates/devtools" }
 creamui-jsx = { version = "0.1.1", path = "crates/jsx" }
 creamui-macros = { version = "0.1.1", path = "crates/macros" }
 creamui-abi = { version = "0.1.1", path = "crates/abi" }
