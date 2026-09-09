@@ -66,6 +66,63 @@ fn clipboard_read() -> Option<String> {
     None
 }
 
+/// Draws an underline and/or strikethrough rule under/through a run of text
+/// painted with [`Painter::fill_text_weight`], shared by [`RawText`] and
+/// [`RawLink`] so both decorate exactly the same way. `rect`, `font_size`,
+/// `bold` and `align` must match the values the text itself was painted
+/// with — the rule's width and horizontal position are derived from
+/// [`crate::text_metrics::measure_weight`] using them, not from re-measuring
+/// glyphs the painter already laid out.
+fn draw_text_decorations(
+    painter: &mut dyn Painter,
+    rect: Rect,
+    text: &str,
+    font_size: f32,
+    bold: bool,
+    align: TextAlign,
+    color: Color,
+    underline: bool,
+    strikethrough: bool,
+) {
+    if !underline && !strikethrough {
+        return;
+    }
+    let (width, _) = crate::text_metrics::measure_weight(text, font_size, rect.width, bold);
+    let x = match align {
+        TextAlign::Start => rect.x,
+        TextAlign::Center => rect.x + (rect.width - width) / 2.0,
+        TextAlign::End => rect.x + rect.width - width,
+    };
+    let center_y = rect.y + rect.height / 2.0;
+    let thickness = (font_size * 0.06).max(1.0);
+    if underline {
+        let y = center_y + font_size * 0.32;
+        painter.fill_rect(
+            Rect {
+                x,
+                y: y - thickness / 2.0,
+                width,
+                height: thickness,
+            },
+            color,
+            0.0,
+        );
+    }
+    if strikethrough {
+        let y = center_y - font_size * 0.02;
+        painter.fill_rect(
+            Rect {
+                x,
+                y: y - thickness / 2.0,
+                width,
+                height: thickness,
+            },
+            color,
+            0.0,
+        );
+    }
+}
+
 mod button;
 mod controls;
 mod dataview;
@@ -75,6 +132,7 @@ mod pickers;
 mod scroll;
 mod spinner;
 mod text_input;
+mod typography;
 
 pub use button::*;
 pub use controls::*;
@@ -85,3 +143,4 @@ pub use pickers::*;
 pub use scroll::*;
 pub use spinner::*;
 pub use text_input::*;
+pub use typography::*;

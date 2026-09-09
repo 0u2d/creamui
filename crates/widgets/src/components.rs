@@ -358,6 +358,7 @@ impl Widget for NavigationItem {
             t.typography.body,
             TextAlign::Start,
             self.active,
+            false,
         );
     }
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {

@@ -18,17 +18,18 @@ use creamui_theme::{Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ColorPicker, ColorPickerController,
-    DateTime, DateTimeController, DateTimePicker, FilePicker, Heading, ListBox, Popover,
-    ProgressBar, ProgressRing, RadioGroup, RawScrollView, RawText, RawView, ScrollController,
-    ScrollView, SegmentedControl, Select, SelectController, Sidebar, SidebarItem, Switch, Tab,
-    TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text, TextController, TextInput,
-    TextSize, TreeController, TreeNode, TreeView, View,
+    DateTime, DateTimeController, DateTimePicker, FilePicker, Heading, Link, ListBox, Popover,
+    Pre, ProgressBar, ProgressRing, Quote, RadioGroup, RawScrollView, RawText, RawView,
+    ScrollController, ScrollView, SegmentedControl, Select, SelectController, Sidebar,
+    SidebarItem, Switch, Tab, TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text,
+    TextController, TextInput, TextSize, TreeController, TreeNode, TreeView, View,
 };
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
-const NAV_LABELS: [&str; 14] = [
+const NAV_LABELS: [&str; 15] = [
     "Appearance",
+    "Typography",
     "Input",
     "Pickers",
     "Images",
@@ -195,6 +196,7 @@ fn Nav(
     ));
     let symbols = [
         Symbol::Appearance,
+        Symbol::Display,
         Symbol::Keyboard,
         Symbol::Controls,
         Symbol::Display,
@@ -211,17 +213,17 @@ fn Nav(
     ];
     let mut items: Vec<BoxedWidget> = Vec::new();
     for (i, label) in NAV_LABELS.iter().enumerate() {
-        if i == 0 || i == 1 || i == 7 || i == 9 || i == 12 {
+        if i == 0 || i == 2 || i == 8 || i == 10 || i == 13 {
             items.push(Box::new(
                 RawView::new(padding(column(0.), 8.)).child(Box::new(
                     RawText::new(
                         if i == 0 {
                             "SHOWCASE"
-                        } else if i == 1 {
+                        } else if i == 2 {
                             "CONTROLS"
-                        } else if i == 7 {
+                        } else if i == 8 {
                             "SELECTION"
-                        } else if i == 12 {
+                        } else if i == 13 {
                             "DATA VIEW"
                         } else {
                             "NAVIGATION"
@@ -395,6 +397,134 @@ fn AppearancePanel(
                         Box::new(Button::new(&theme, "Disabled", || {}).disabled(true)),
                     ]))
                     .child(Box::new(Text::secondary(&theme, "These preview buttons switch the color scheme.").align(TextAlign::Start)))
+            ) as BoxedWidget}
+        </RawView>
+    })
+}
+
+/// A fixed-width, secondary-colored row caption — like [`field_label`] but
+/// sized to sit beside its control in a row instead of stacked above it
+/// full-width.
+fn row_caption(theme: &Theme, text: &str, width: f32) -> BoxedWidget {
+    Box::new(
+        Text::secondary(theme, text)
+            .align(TextAlign::Start)
+            .style(Style {
+                size: creamui_core::layout::Size {
+                    width: Dimension::Length(width),
+                    height: Dimension::Length(18.0),
+                },
+                flex_shrink: 0.0,
+                ..Default::default()
+            }),
+    )
+}
+
+/// The "Typography" panel: the heading scale (h1-h5) plus one heading per
+/// semantic theme color, then every inline text treatment — weight, slant,
+/// underline, strikethrough, a blockquote, a preformatted code block, and
+/// clickable links.
+#[component]
+fn TypographyPanel(theme: Theme, link_clicks: Signal<i32>) -> BoxedWidget {
+    let row_style = Style {
+        align_items: Some(AlignItems::Center),
+        ..row(theme.spacing_medium)
+    };
+
+    let sizes = [
+        (TextSize::Xl, "Xl · h1"),
+        (TextSize::Lg, "Lg · h2"),
+        (TextSize::Md, "Md · h3"),
+        (TextSize::Sm, "Sm · h4"),
+        (TextSize::Xs, "Xs · h5"),
+    ];
+    let mut scale_children: Vec<BoxedWidget> = vec![field_label(&theme, "Heading scale")];
+    for (size, label) in sizes {
+        scale_children.push(Box::new(
+            RawView::new(row_style.clone())
+                .child(row_caption(&theme, label, 60.0))
+                .child(Box::new(Heading::sized(&theme, size, "Heading"))),
+        ));
+    }
+
+    let semantic_colors: [(&str, Color); 7] = [
+        ("Primary", theme.text_primary),
+        ("Secondary", theme.text_secondary),
+        ("Disabled", theme.text_disabled),
+        ("Accent", theme.accent),
+        ("Danger", theme.danger),
+        ("Warning", theme.warning),
+        ("Success", theme.success),
+    ];
+    let mut color_children: Vec<BoxedWidget> =
+        vec![field_label(&theme, "Heading · one per semantic color")];
+    for (label, color) in semantic_colors {
+        color_children.push(Box::new(
+            RawView::new(row_style.clone())
+                .child(row_caption(&theme, label, 78.0))
+                .child(Box::new(
+                    Heading::new(&theme, "The quick brown fox").color(color),
+                )),
+        ));
+    }
+
+    const SAMPLE: &str = "The quick brown fox jumps over the lazy dog.";
+    let mut text_children: Vec<BoxedWidget> =
+        vec![field_label(&theme, "Text · weight and decoration")];
+    for (label, text) in [
+        ("Normal", Text::new(&theme, SAMPLE).align(TextAlign::Start)),
+        (
+            "Bold",
+            Text::new(&theme, SAMPLE).align(TextAlign::Start).bold(true),
+        ),
+        (
+            "Italic",
+            Text::new(&theme, SAMPLE)
+                .align(TextAlign::Start)
+                .italic(true),
+        ),
+        (
+            "Underline",
+            Text::new(&theme, SAMPLE)
+                .align(TextAlign::Start)
+                .underline(true),
+        ),
+        (
+            "Strikethrough",
+            Text::new(&theme, SAMPLE)
+                .align(TextAlign::Start)
+                .strikethrough(true),
+        ),
+    ] {
+        text_children.push(Box::new(
+            RawView::new(row_style.clone())
+                .child(row_caption(&theme, label, 100.0))
+                .child(Box::new(text)),
+        ));
+    }
+
+    const CODE: &str = "fn main() {\n    println!(\"Hello, CreamUI!\");\n}";
+    let clicks = link_clicks.get();
+    let link_a = link_clicks.clone();
+    let link_b = link_clicks.clone();
+
+    Box::new(jsx! {
+        <RawView style={column(section_gap(&theme))}>
+            <SectionHeader theme={theme} title={"Typography".to_owned()} subtitle={"Every heading size and semantic color, plus every inline text treatment.".to_owned()} />
+            {Box::new(card(&theme, theme.spacing_medium).with_children(scale_children)) as BoxedWidget}
+            {Box::new(card(&theme, theme.spacing_medium).with_children(color_children)) as BoxedWidget}
+            {Box::new(card(&theme, theme.spacing_medium).with_children(text_children)) as BoxedWidget}
+            {field_card(&theme, "Quote", Box::new(Quote::new(&theme, "Design is not just what it looks like and feels like. Design is how it works.")))}
+            {field_card(&theme, "Pre / code", Box::new(Pre::new(&theme, CODE)))}
+            {Box::new(
+                card(&theme, theme.spacing_medium)
+                    .child(field_label(&theme, "Links"))
+                    .child(Box::new(
+                        RawView::new(row(theme.spacing_large))
+                            .child(Box::new(Link::new(&theme, "Documentation", move || link_a.update(|v| *v += 1))))
+                            .child(Box::new(Link::new(&theme, "Source on GitHub", move || link_b.update(|v| *v += 1)))),
+                    ))
+                    .child(Box::new(Text::secondary(&theme, format!("{clicks} link clicks")).align(TextAlign::Start)))
             ) as BoxedWidget}
         </RawView>
     })
@@ -1316,6 +1446,7 @@ pub fn launch() {
     let picker_file = Signal::new(String::new());
 
     let clicks = Signal::new(0i32);
+    let typography_link_clicks = Signal::new(0i32);
 
     let volume = Signal::new(0.6f32);
     let brightness = Signal::new(0.8f32);
@@ -1402,43 +1533,47 @@ pub fn launch() {
                     dark_mode: dark_mode.clone(),
                     accent_index: accent_index.clone(),
                 }),
-                1 => InputPanel(InputPanelProps {
+                1 => TypographyPanel(TypographyPanelProps {
+                    theme,
+                    link_clicks: typography_link_clicks.clone(),
+                }),
+                2 => InputPanel(InputPanelProps {
                     theme,
                     plain: plain.clone(),
                     with_placeholder: with_placeholder.clone(),
                     notes: notes.clone(),
                     notes_wrapped: notes_wrapped.clone(),
                 }),
-                2 => PickersPanel(PickersPanelProps {
+                3 => PickersPanel(PickersPanelProps {
                     theme,
                     date_time: picker_date_time.clone(),
                     color: picker_color.clone(),
                     color_picker: picker_color_popup.clone(),
                     file: picker_file.clone(),
                 }),
-                3 => ImagesPanel(ImagesPanelProps {
+                4 => ImagesPanel(ImagesPanelProps {
                     theme,
                     png: image_png.clone(),
                     jpeg: image_jpeg.clone(),
                     webp: image_webp.clone(),
                 }),
-                4 => ButtonPanel(ButtonPanelProps {
+                5 => ButtonPanel(ButtonPanelProps {
                     theme,
                     clicks: clicks.clone(),
                 }),
-                5 => SliderPanel(SliderPanelProps {
+                6 => SliderPanel(SliderPanelProps {
                     theme,
                     volume: volume.clone(),
                     brightness: brightness.clone(),
                     zoom: zoom.clone(),
                 }),
-                6 => CheckboxPanel(CheckboxPanelProps {
+                7 => CheckboxPanel(CheckboxPanelProps {
                     theme,
                     notifications: notifications.clone(),
                     auto_save: auto_save.clone(),
                     beta_features: beta_features.clone(),
                 }),
-                7 => SelectionPanel(SelectionPanelProps {
+                8 => SelectionPanel(SelectionPanelProps {
                     theme,
                     select: select.clone(),
                     radio: radio.clone(),
@@ -1446,29 +1581,29 @@ pub fn launch() {
                     list_scroll: list_scroll_demo.clone(),
                     list_selected: list_selected.clone(),
                 }),
-                8 => FeedbackPanel(FeedbackPanelProps {
+                9 => FeedbackPanel(FeedbackPanelProps {
                     theme,
                     progress: progress.clone(),
                     show_popover: show_popover.clone(),
                     show_alert: show_alert.clone(),
                 }),
-                9 => SidebarPanel(SidebarPanelProps {
+                10 => SidebarPanel(SidebarPanelProps {
                     theme,
                     active: sidebar_demo_active.clone(),
                 }),
-                10 => TabsPanel(TabsPanelProps {
+                11 => TabsPanel(TabsPanelProps {
                     theme,
                     filled: tabs_filled.clone(),
                     pill: tabs_pill.clone(),
                     indicator: tabs_indicator.clone(),
                     content: tabs_content.clone(),
                 }),
-                11 => ScrollPanel(ScrollPanelProps {
+                12 => ScrollPanel(ScrollPanelProps {
                     theme,
                     themed_scroll: themed_scroll_demo.clone(),
                     custom_scroll: custom_scroll_demo.clone(),
                 }),
-                12 => TreePanel(TreePanelProps {
+                13 => TreePanel(TreePanelProps {
                     theme,
                     tree_scroll: tree_scroll_demo.clone(),
                     tree: tree_demo.clone(),

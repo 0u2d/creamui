@@ -109,6 +109,7 @@ impl SkiaPainter {
         font_size: f32,
         align: TextAlign,
         bold: bool,
+        italic: bool,
     ) {
         let horizontal_align = match align {
             TextAlign::Start => HorizontalAlign::Left,
@@ -134,6 +135,11 @@ impl SkiaPainter {
         let pixmap_height = self.pixmap.height() as i32;
         let clip_mask = self.clip_stack.last();
         let pixels = self.pixmap.pixels_mut();
+        // No italic face is bundled, so italics are synthesized by shearing
+        // each glyph's rows rightward the further they sit above its
+        // baseline (its own bottom row) — a cheap oblique that avoids
+        // shipping and layout-matching a second font file.
+        const ITALIC_SHEAR: f32 = 0.22;
         for glyph in glyphs {
             let glyph_color = selected
                 .as_ref()
@@ -145,8 +151,13 @@ impl SkiaPainter {
                 if py < 0 || py >= pixmap_height {
                     continue;
                 }
+                let shear = if italic {
+                    ((glyph.height as i32 - 1 - gy as i32) as f32 * ITALIC_SHEAR).round() as i32
+                } else {
+                    0
+                };
                 for gx in 0..glyph.width {
-                    let px = glyph.x + gx as i32;
+                    let px = glyph.x + gx as i32 + shear;
                     if px < 0 || px >= pixmap_width {
                         continue;
                     }
@@ -257,8 +268,9 @@ impl Painter for SkiaPainter {
         font_size: f32,
         align: TextAlign,
         bold: bool,
+        italic: bool,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, bold);
+        self.draw_text(rect, text, color, None, font_size, align, bold, italic);
     }
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
         let Some(path) =
@@ -390,7 +402,7 @@ impl Painter for SkiaPainter {
         font_size: f32,
         align: TextAlign,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, false);
+        self.draw_text(rect, text, color, None, font_size, align, false, false);
     }
 
     fn fill_text_selected(
@@ -410,6 +422,7 @@ impl Painter for SkiaPainter {
             Some((selected, selected_color)),
             font_size,
             align,
+            false,
             false,
         );
     }

@@ -50,6 +50,23 @@ impl Text {
         self.inner.bold = bold;
         self
     }
+
+    /// Synthesized by shearing the glyph raster — see [`RawText::italic`].
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.inner.italic = italic;
+        self
+    }
+
+    pub fn underline(mut self, underline: bool) -> Self {
+        self.inner.underline = underline;
+        self
+    }
+
+    pub fn strikethrough(mut self, strikethrough: bool) -> Self {
+        self.inner.strikethrough = strikethrough;
+        self
+    }
+
     pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
         Text {
             inner: RawText::new(text, theme.text_primary, theme.typography.body),
@@ -174,6 +191,16 @@ impl Heading {
     /// heading.
     pub fn color(mut self, color: creamui_theme::Color) -> Self {
         self.inner.color = color;
+        self
+    }
+
+    pub fn underline(mut self, underline: bool) -> Self {
+        self.inner.underline = underline;
+        self
+    }
+
+    pub fn strikethrough(mut self, strikethrough: bool) -> Self {
+        self.inner.strikethrough = strikethrough;
         self
     }
 

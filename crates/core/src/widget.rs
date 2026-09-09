@@ -108,6 +108,7 @@ pub trait Painter {
         font_size: f32,
         align: TextAlign,
         _bold: bool,
+        _italic: bool,
     ) {
         self.fill_text(rect, text, color, font_size, align);
     }

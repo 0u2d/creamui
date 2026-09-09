@@ -493,6 +493,7 @@ impl Widget for Badge {
                 (rect.height * 0.6).max(9.0),
                 TextAlign::Center,
                 true,
+                false,
             );
         }
     }

@@ -83,6 +83,9 @@ impl Widget for RawView {
 /// Unstyled text with no color or size opinion beyond what's passed in.
 pub struct RawText {
     pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
     pub text: String,
     pub color: Color,
     pub font_size: f32,
@@ -94,6 +97,9 @@ impl RawText {
     pub fn new(text: impl Into<String>, color: Color, font_size: f32) -> Self {
         RawText {
             bold: false,
+            italic: false,
+            underline: false,
+            strikethrough: false,
             text: text.into(),
             color,
             font_size,
@@ -109,6 +115,23 @@ impl RawText {
 
     pub fn bold(mut self, bold: bool) -> Self {
         self.bold = bold;
+        self
+    }
+
+    /// Synthesized by shearing the glyph raster (no italic face is
+    /// bundled), so it combines freely with [`RawText::bold`].
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.italic = italic;
+        self
+    }
+
+    pub fn underline(mut self, underline: bool) -> Self {
+        self.underline = underline;
+        self
+    }
+
+    pub fn strikethrough(mut self, strikethrough: bool) -> Self {
+        self.strikethrough = strikethrough;
         self
     }
 
@@ -141,6 +164,18 @@ impl Widget for RawText {
             self.font_size,
             self.align,
             self.bold,
+            self.italic,
+        );
+        super::draw_text_decorations(
+            painter,
+            rect,
+            &self.text,
+            self.font_size,
+            self.bold,
+            self.align,
+            self.color,
+            self.underline,
+            self.strikethrough,
         );
     }
 

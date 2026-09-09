@@ -101,6 +101,7 @@ impl Widget for AvatarFace {
                     self.size * 0.4,
                     TextAlign::Center,
                     true,
+                    false,
                 );
             }
         }

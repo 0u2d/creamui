@@ -1,0 +1,165 @@
+use super::*;
+use crate::raw::{RawLink, RawPre, RawQuote};
+
+/// A themed blockquote: an accent-colored bar along the left edge of an
+/// inset, italicized line — a [`RawQuote`] wrapping one [`RawText`] child.
+pub struct Quote {
+    inner: RawQuote,
+}
+
+impl Quote {
+    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+        let bar_width = 3.0;
+        let style = Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Auto,
+            },
+            padding: LayoutRect {
+                left: LengthPercentage::Length(bar_width + theme.spacing_medium),
+                right: LengthPercentage::Length(theme.spacing_small),
+                top: LengthPercentage::Length(theme.spacing_small),
+                bottom: LengthPercentage::Length(theme.spacing_small),
+            },
+            ..Default::default()
+        };
+        let content = RawText::new(text, theme.text_secondary, theme.typography.body)
+            .italic(true)
+            .align(TextAlign::Start);
+        Quote {
+            inner: RawQuote::new(style, theme.accent, bar_width).child(Box::new(content)),
+        }
+    }
+
+    /// Gives the quote a layout style for width, margin, flex/grid
+    /// placement, etc.
+    pub fn style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+}
+
+impl Widget for Quote {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn children(&mut self) -> Vec<BoxedWidget> {
+        self.inner.children()
+    }
+}
+
+/// A themed preformatted / code block: text on its own inset surface,
+/// whitespace and line breaks preserved. Set with CreamUI's bundled UI font
+/// rather than a genuine monospace face — none ships yet — so column
+/// alignment is only approximate.
+pub struct Pre {
+    inner: RawPre,
+}
+
+impl Pre {
+    pub fn new(theme: &Theme, text: impl Into<String>) -> Self {
+        let style = Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Percent(1.0),
+                height: Dimension::Auto,
+            },
+            ..Default::default()
+        };
+        Pre {
+            inner: RawPre::new(style, text, theme.text_primary, theme.typography.caption)
+                .background(theme.surface_elevated)
+                .corner_radius(theme.radius_medium)
+                .padding(theme.spacing_medium),
+        }
+    }
+
+    /// Gives the block a layout style for width, margin, flex/grid
+    /// placement, etc.
+    pub fn style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+}
+
+impl Widget for Pre {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn measure(&self) -> Option<creamui_core::MeasureFn> {
+        self.inner.measure()
+    }
+}
+
+/// A themed hyperlink: accent-colored, underlined text that brightens on
+/// hover — a [`RawLink`] with the theme's accent/hover colors filled in.
+pub struct Link {
+    inner: RawLink,
+}
+
+impl Link {
+    pub fn new(theme: &Theme, text: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+        let style = Style {
+            size: creamui_core::layout::Size {
+                width: Dimension::Auto,
+                height: Dimension::Length(theme.typography.body * 1.4),
+            },
+            ..Default::default()
+        };
+        Link {
+            inner: RawLink::new(style, text, theme.accent, theme.typography.body, on_click)
+                .hover_color(theme.accent_hover),
+        }
+    }
+
+    /// Gives the link a layout style for width, margin, flex/grid
+    /// placement, etc.
+    pub fn style(mut self, style: Style) -> Self {
+        self.inner.style = style;
+        self
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.inner.disabled = disabled;
+        self
+    }
+}
+
+impl Widget for Link {
+    fn style(&self) -> Style {
+        self.inner.style()
+    }
+
+    fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
+        self.inner.paint(painter, rect);
+    }
+
+    fn measure(&self) -> Option<creamui_core::MeasureFn> {
+        self.inner.measure()
+    }
+
+    fn focusable(&self) -> bool {
+        self.inner.focusable()
+    }
+
+    fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+        self.inner.on_key()
+    }
+
+    fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+        self.inner.on_click()
+    }
+
+    fn cursor_icon(&self) -> Option<CursorIcon> {
+        self.inner.cursor_icon()
+    }
+}
