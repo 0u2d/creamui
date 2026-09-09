@@ -13,9 +13,9 @@ use creamui_widgets::raw::{
     RawButton, RawCheckbox, RawScrollView, RawSlider, RawSwitch, RawView, TextSelection,
 };
 use creamui_widgets::themed::{
-    tab_styles, Button, Checkbox, ListBox, ListView, Overlay, Popover, ProgressBar, ProgressRing,
-    ScrollView, Select, Slider, TabColors, TabSizing, Table, Tabs, Text, TextArea, TextInput,
-    TreeNode, TreeView,
+    tab_styles, Button, Checkbox, Link, ListBox, ListView, Overlay, Popover, Pre, ProgressBar,
+    ProgressRing, ScrollView, Select, Slider, TabColors, TabSizing, Table, Tabs, Text, TextArea,
+    TextInput, TreeNode, TreeView,
 };
 use creamui_widgets::TableColumn;
 use creamui_widgets::{ScrollController, SelectController, TreeController};
@@ -56,6 +56,100 @@ impl Painter for RecordingPainter {
         self.texts.push(text.to_string());
         self.text_rects.push(rect);
     }
+}
+
+#[derive(Default)]
+struct FamilyPainter {
+    families: Vec<String>,
+}
+
+impl Painter for FamilyPainter {
+    fn hovered(&self, _: Rect) -> bool {
+        false
+    }
+
+    fn pressed(&self, _: Rect) -> bool {
+        false
+    }
+
+    fn fill_rect(&mut self, _: Rect, _: Color, _: f32) {}
+
+    fn stroke_rect(&mut self, _: Rect, _: Color, _: f32, _: f32) {}
+
+    fn fill_text(&mut self, _: Rect, _: &str, _: Color, _: f32, _: TextAlign) {}
+
+    fn fill_text_font(
+        &mut self,
+        _: Rect,
+        _: &str,
+        _: Color,
+        _: f32,
+        _: TextAlign,
+        family: Option<&str>,
+        _: bool,
+        _: bool,
+    ) {
+        self.families.push(family.unwrap_or_default().to_owned());
+    }
+
+    fn fill_text_selected_font(
+        &mut self,
+        _: Rect,
+        _: &str,
+        _: Color,
+        _: Color,
+        _: std::ops::Range<usize>,
+        _: f32,
+        _: TextAlign,
+        family: Option<&str>,
+    ) {
+        self.families.push(family.unwrap_or_default().to_owned());
+    }
+}
+
+#[test]
+fn themed_text_widgets_pass_overridden_font_families_to_painting() {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(Theme::light()));
+        let mut painter = FamilyPainter::default();
+        let rect = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 200.0,
+            height: 60.0,
+        };
+
+        TextInput::new("input", |_| {})
+            .selection(
+                TextSelection {
+                    anchor: 0,
+                    focus: 2,
+                },
+                |_| {},
+            )
+            .font_family("input-family")
+            .paint(&mut painter, rect);
+        TextArea::new("area", |_| {})
+            .selection(
+                TextSelection {
+                    anchor: 0,
+                    focus: 2,
+                },
+                |_| {},
+            )
+            .font_family("area-family")
+            .paint(&mut painter, rect);
+        Link::new("link", || {})
+            .font_family("link-family")
+            .paint(&mut painter, rect);
+        Pre::new("pre")
+            .font_family("pre-family")
+            .paint(&mut painter, rect);
+
+        for family in ["input-family", "area-family", "link-family", "pre-family"] {
+            assert!(painter.families.iter().any(|seen| seen == family));
+        }
+    });
 }
 
 #[test]

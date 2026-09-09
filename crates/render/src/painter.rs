@@ -478,6 +478,30 @@ impl Painter for SkiaPainter {
             false,
         );
     }
+
+    fn fill_text_selected_font(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        selected_color: Color,
+        selected: std::ops::Range<usize>,
+        font_size: f32,
+        align: TextAlign,
+        family: Option<&str>,
+    ) {
+        self.draw_text(
+            rect,
+            text,
+            color,
+            Some((selected, selected_color)),
+            font_size,
+            align,
+            family,
+            false,
+            false,
+        );
+    }
 }
 
 #[cfg(test)]

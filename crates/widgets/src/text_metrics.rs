@@ -11,8 +11,8 @@ use fontdue::layout::{CoordinateSystem, HorizontalAlign, Layout, LayoutSettings}
 use fontdue::Font;
 use std::rc::Rc;
 
-fn font() -> Rc<Font> {
-    creamui_fonts::resolve(DEFAULT_FAMILY, FontWeight::Regular)
+fn font(family: Option<&str>) -> Rc<Font> {
+    creamui_fonts::resolve(family.unwrap_or(DEFAULT_FAMILY), FontWeight::Regular)
 }
 
 /// A width large enough that single-line text never wraps against it, but
@@ -80,13 +80,20 @@ pub fn unbounded_width() -> f32 {
 /// single source line. Unlike repeatedly measuring every prefix, this builds
 /// one font layout, which keeps pointer selection responsive on long lines.
 pub fn byte_offset_at_x(text: &str, font_size: f32, x: f32) -> usize {
+    byte_offset_at_x_family(text, font_size, x, None)
+}
+
+pub fn byte_offset_at_x_family(text: &str, font_size: f32, x: f32, family: Option<&str>) -> usize {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(UNBOUNDED_WIDTH),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font().as_ref()], &TextStyle::new(text, font_size, 0));
+    layout.append(
+        &[font(family).as_ref()],
+        &TextStyle::new(text, font_size, 0),
+    );
     let mut offset = 0;
     for glyph in layout.glyphs() {
         if x < glyph.x + glyph.width as f32 / 2.0 {
@@ -116,14 +123,19 @@ pub struct LaidGlyph {
 /// Lays `text` out at `font_size`, wrapping at `max_width` and respecting
 /// embedded `\n`s exactly as the renderer will (same font, same fontdue
 /// settings), returning every glyph's position.
-pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
+pub fn layout_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    family: Option<&str>,
+) -> Vec<LaidGlyph> {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    let face = font();
+    let face = font(family);
     layout.append(&[face.as_ref()], &TextStyle::new(text, font_size, 0));
     let glyphs = layout.glyphs();
     let lines = layout.lines().cloned().unwrap_or_default();
@@ -153,22 +165,30 @@ pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
 /// pass this as a text block's height (instead of a taller container's
 /// full height) so the renderer's own vertical centering has nothing to
 /// center against and top-aligns instead, matching [`layout`]'s `y`s.
-pub fn content_height(text: &str, font_size: f32, max_width: f32) -> f32 {
+pub fn content_height_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    family: Option<&str>,
+) -> f32 {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font().as_ref()], &TextStyle::new(text, font_size, 0));
+    layout.append(
+        &[font(family).as_ref()],
+        &TextStyle::new(text, font_size, 0),
+    );
     layout.height()
 }
 
 /// The row height a lone, one-line layout at `font_size` gets — a fallback
 /// for [`caret_xy`] and empty documents, where no glyph/row exists yet to
 /// read a real one from.
-pub fn row_height(font_size: f32) -> f32 {
-    content_height("A", font_size, UNBOUNDED_WIDTH)
+pub fn row_height_family(font_size: f32, family: Option<&str>) -> f32 {
+    content_height_family("A", font_size, UNBOUNDED_WIDTH, family)
 }
 
 /// Where a caret at `byte_offset` should be drawn within a `layout`ed
@@ -193,8 +213,15 @@ pub fn caret_xy(
 /// The closest UTF-8 insertion boundary to point `(x, y)` in a `layout`ed,
 /// possibly-wrapped block — the wrap-aware counterpart to
 /// [`byte_offset_at_x`], picking a row by nearest `y` first.
-pub fn byte_offset_at_point(text: &str, font_size: f32, max_width: f32, x: f32, y: f32) -> usize {
-    let glyphs = layout(text, font_size, max_width);
+pub fn byte_offset_at_point_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    x: f32,
+    y: f32,
+    family: Option<&str>,
+) -> usize {
+    let glyphs = layout_family(text, font_size, max_width, family);
     let Some(row_y) = glyphs
         .iter()
         .map(|g| g.y)

@@ -181,6 +181,7 @@ impl Widget for RawText {
             rect,
             &self.text,
             self.font_size,
+            self.family.as_deref(),
             self.bold,
             self.align,
             self.color,

@@ -169,6 +169,32 @@ pub trait Painter {
         self.fill_text(rect, text, color, font_size, align);
     }
 
+    /// Like [`Painter::fill_text_selected`], resolving `family` through the
+    /// font registry before drawing.
+    #[allow(clippy::too_many_arguments)]
+    fn fill_text_selected_font(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: creamui_theme::Color,
+        selected_color: creamui_theme::Color,
+        selected: Range<usize>,
+        font_size: f32,
+        align: TextAlign,
+        family: Option<&str>,
+    ) {
+        let _ = family;
+        self.fill_text_selected(
+            rect,
+            text,
+            color,
+            selected_color,
+            selected,
+            font_size,
+            align,
+        );
+    }
+
     /// Restricts all subsequent drawing (until the matching [`Painter::pop_clip`])
     /// to `rect`, intersected with any already-active clip. Used by
     /// scrollable containers to hide content outside their own bounds.

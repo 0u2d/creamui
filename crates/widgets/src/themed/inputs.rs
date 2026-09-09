@@ -30,6 +30,7 @@ impl TextInput {
     ) -> Self {
         let theme = use_theme();
         let inner = RawTextInput::new(style, value, 14.0, theme.text_primary, on_change)
+            .font_family(theme.font_family)
             .background(theme.surface_elevated)
             .border(theme.border, theme.input_border_width)
             .corner_radius(theme.input_radius)
@@ -42,6 +43,12 @@ impl TextInput {
     pub fn placeholder(mut self, text: impl Into<String>) -> Self {
         let theme = use_theme();
         self.inner = self.inner.placeholder(text, theme.text_disabled);
+        self
+    }
+
+    /// Overrides the theme's default family stack for this input.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
         self
     }
 
@@ -173,6 +180,7 @@ impl TextArea {
         let theme = use_theme();
         Self {
             inner: RawTextArea::new(style, value, 14.0, theme.text_primary, on_change)
+                .font_family(theme.font_family)
                 .background(theme.surface_elevated)
                 .border(theme.border, theme.input_border_width)
                 .corner_radius(theme.textarea_radius)
@@ -183,6 +191,12 @@ impl TextArea {
     pub fn placeholder(mut self, text: impl Into<String>) -> Self {
         let theme = use_theme();
         self.inner = self.inner.placeholder(text, theme.text_disabled);
+        self
+    }
+
+    /// Overrides the theme's default family stack for this editor.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
         self
     }
 

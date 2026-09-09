@@ -55,9 +55,8 @@ impl Widget for Quote {
 }
 
 /// A themed preformatted / code block: text on its own inset surface,
-/// whitespace and line breaks preserved. Set with CreamUI's bundled UI font
-/// rather than a genuine monospace face — none ships yet — so column
-/// alignment is only approximate.
+/// whitespace and line breaks preserved. A monospace face is not bundled, so
+/// column alignment is only approximate unless the application selects one.
 pub struct Pre {
     inner: RawPre,
 }
@@ -74,6 +73,7 @@ impl Pre {
         };
         Pre {
             inner: RawPre::new(style, text, theme.text_primary, theme.typography.caption)
+                .font_family(theme.font_family)
                 .background(theme.surface_elevated)
                 .corner_radius(theme.radius_medium)
                 .padding(theme.spacing_medium),
@@ -84,6 +84,12 @@ impl Pre {
     /// placement, etc.
     pub fn style(mut self, style: Style) -> Self {
         self.inner.style = style;
+        self
+    }
+
+    /// Overrides the theme's default family stack for this code block.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
         self
     }
 }
@@ -120,6 +126,7 @@ impl Link {
         };
         Link {
             inner: RawLink::new(style, text, theme.accent, theme.typography.body, on_click)
+                .font_family(theme.font_family)
                 .hover_color(theme.accent_hover),
         }
     }
@@ -133,6 +140,12 @@ impl Link {
 
     pub fn disabled(mut self, disabled: bool) -> Self {
         self.inner.disabled = disabled;
+        self
+    }
+
+    /// Overrides the theme's default family stack for this link.
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.inner = self.inner.font_family(family);
         self
     }
 }

@@ -67,17 +67,18 @@ fn clipboard_read() -> Option<String> {
 }
 
 /// Draws an underline and/or strikethrough rule under/through a run of text
-/// painted with [`Painter::fill_text_weight`], shared by [`RawText`] and
+/// painted with [`Painter::fill_text_font`], shared by [`RawText`] and
 /// [`RawLink`] so both decorate exactly the same way. `rect`, `font_size`,
 /// `bold` and `align` must match the values the text itself was painted
 /// with — the rule's width and horizontal position are derived from
-/// [`crate::text_metrics::measure_weight`] using them, not from re-measuring
+/// [`crate::text_metrics::measure_family`] using them, not from re-measuring
 /// glyphs the painter already laid out.
 fn draw_text_decorations(
     painter: &mut dyn Painter,
     rect: Rect,
     text: &str,
     font_size: f32,
+    family: Option<&str>,
     bold: bool,
     align: TextAlign,
     color: Color,
@@ -87,7 +88,7 @@ fn draw_text_decorations(
     if !underline && !strikethrough {
         return;
     }
-    let (width, _) = crate::text_metrics::measure_weight(text, font_size, rect.width, bold);
+    let (width, _) = crate::text_metrics::measure_family(text, font_size, rect.width, family, bold);
     let x = match align {
         TextAlign::Start => rect.x,
         TextAlign::Center => rect.x + (rect.width - width) / 2.0,
