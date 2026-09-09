@@ -4,7 +4,7 @@ use creamui_image::{Image, ImageData, ImageFit};
 use creamui_macros::component;
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, ColorScheme, Theme};
+use creamui_theme::{use_theme, Color, ColorScheme, Theme};
 use creamui_widgets::layout::{column, fixed, full_width, padding, padding_xy, row};
 use creamui_widgets::{
     Avatar, AutoScrollController, Badge, Heading, Icon, RawButton, RawText, RawView,
@@ -796,11 +796,17 @@ fn main() {
     ];
 
     run(
-        WindowOptions { title: "CreamUI — Chat".into(), width: 1180, height: 760, ..Default::default() },
+        WindowOptions {
+            title: "CreamUI — Chat".into(),
+            width: 1180,
+            height: 760,
+            theme: apple_theme(),
+            ..Default::default()
+        },
         apple_theme().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
-            let theme = apple_theme();
+            let theme = use_theme();
 
             {
                 let now = Instant::now();

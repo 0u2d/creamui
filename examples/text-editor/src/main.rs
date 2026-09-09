@@ -11,7 +11,7 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{fixed, row};
 
 /// App-level semantic tokens. Numeric layout decisions live here rather than
@@ -28,8 +28,7 @@ struct EditorTokens {
 }
 
 impl EditorTokens {
-    fn dark() -> Self {
-        let theme = Theme::dark();
+    fn from_theme(theme: Theme) -> Self {
         Self {
             active_line: theme.surface_hover,
             theme,
@@ -45,8 +44,10 @@ impl EditorTokens {
     }
 }
 
+/// Only callable during `build_ui` (uses `use_theme()`) — see `main`'s
+/// `Theme::dark()` for the one call site before the window exists.
 fn tokens() -> EditorTokens {
-    EditorTokens::dark()
+    EditorTokens::from_theme(use_theme())
 }
 
 fn size(width: f32, height: f32) -> Style {
@@ -273,7 +274,6 @@ fn LineNumbers(value: String) -> BoxedWidget {
 }
 
 fn main() {
-    let editor_tokens = tokens();
     let document = Signal::new("# A small thought\n\nCreamUI makes desktop interfaces feel calm.\n\nStart writing here — this is a real multiline editor.\nThe line count, word count, and character count react to each change.\n\n## Notes\n\n- Press Return for a new line\n- Backspace edits normally\n- The UI tree is declarative JSX".to_owned());
     let saved = Signal::new(false);
     let cursor = Signal::new(document.get().len());
@@ -288,9 +288,10 @@ fn main() {
             title: "CreamUI — Text Editor".into(),
             width: 980,
             height: 680,
+            theme: Theme::dark(),
             ..Default::default()
         },
-        editor_tokens.theme.surface,
+        Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
             let tokens = tokens();

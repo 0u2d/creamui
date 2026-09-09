@@ -3,7 +3,7 @@ use creamui_core::{BoxedWidget, Size};
 use creamui_macros::jsx;
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::Theme;
+use creamui_theme::{use_theme, Theme};
 
 fn main() {
     let count = Signal::new(0_i32);
@@ -12,12 +12,13 @@ fn main() {
             title: "CreamUI — Hello World".into(),
             width: 480,
             height: 320,
+            theme: Theme::dark(),
             ..Default::default()
         },
         Theme::dark().surface,
         |_| {},
         move |size: Size| -> BoxedWidget {
-            let theme = Theme::dark();
+            let theme = use_theme();
             let click_count = count.clone();
             let style = Style {
                 size: creamui_core::layout::Size {

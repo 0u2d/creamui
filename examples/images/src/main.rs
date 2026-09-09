@@ -5,7 +5,7 @@ use creamui_core::layout::{Dimension, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_image::{Image, ImageData, ImageFit};
 use creamui_render::{run, WindowOptions};
-use creamui_theme::Theme;
+use creamui_theme::{use_theme, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{Heading, RawText, RawView, Surface, SurfaceRole, Text};
 
@@ -59,12 +59,13 @@ fn main() {
             title: "CreamUI — Images".into(),
             width: 1080,
             height: 560,
+            theme: Theme::dark(),
             ..Default::default()
         },
         Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
-            let theme = Theme::dark();
+            let theme = use_theme();
             let root = Style {
                 size: creamui_core::layout::Size {
                     width: Dimension::Length(viewport.width),

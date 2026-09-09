@@ -7,14 +7,19 @@
 //! — so picking a new accent color or toggling dark/light mode re-renders
 //! every panel with the new `Theme` immediately, the same reactive path any
 //! other `Signal` change takes.
+//!
+//! The derived theme itself flows through `use_theme()`: an effect set up
+//! in `on_window_ready` watches `dark_mode`/`accent_index` and pushes the
+//! recomputed `Theme` via `WindowHandle::set_theme`, so every panel below
+//! reads it with `use_theme()` instead of recomputing it locally.
 
 use creamui_core::layout::{AlignItems, Dimension, JustifyContent, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_image::{Image, ImageData, ImageFit};
 use creamui_macros::{component, jsx};
-use creamui_reactive::Signal;
-use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, SelectionStyle, Theme};
+use creamui_reactive::{create_effect, Effect, Signal};
+use creamui_render::{run, WindowHandle, WindowOptions};
+use creamui_theme::{use_theme, Color, SelectionStyle, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
     tab_styles, AlertDialog, Button, ButtonSize, ButtonState, ColorPicker, ColorPickerController,
@@ -24,6 +29,8 @@ use creamui_widgets::{
     SidebarItem, Switch, Tab, TabColors, TabController, TabSizing, Table, TableColumn, Tabs, Text,
     TextController, TextInput, TextSize, TreeController, TreeNode, TreeView, View,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 use creamui_widgets::{Choice, Icon, NavigationItem, Surface, SurfaceRole, Symbol};
 
 /// Sidebar categories in display order.
@@ -1479,17 +1486,33 @@ pub fn launch() {
     let table_scroll_demo = ScrollController::default();
     let table_selected = Signal::new(0usize);
 
+    // Kept alive for the window's whole lifetime (`launch` doesn't return
+    // until `run` does) so the effect it holds keeps reacting; dropping an
+    // `Effect` unsubscribes it.
+    let theme_sync: Rc<RefCell<Option<Effect>>> = Rc::new(RefCell::new(None));
+
     run(
         WindowOptions {
             title: "CreamUI — Showcase".into(),
             width: 1080,
             height: 740,
+            theme: build_theme(dark_mode.peek(), ACCENTS[accent_index.peek()].1),
             ..Default::default()
         },
         Theme::dark().surface,
-        |_| {},
+        {
+            let dark_mode = dark_mode.clone();
+            let accent_index = accent_index.clone();
+            move |handle: WindowHandle| {
+                let dark_mode = dark_mode.clone();
+                let accent_index = accent_index.clone();
+                *theme_sync.borrow_mut() = Some(create_effect(move || {
+                    handle.set_theme(build_theme(dark_mode.get(), ACCENTS[accent_index.get()].1));
+                }));
+            }
+        },
         move |viewport: Size| -> BoxedWidget {
-            let theme = build_theme(dark_mode.get(), ACCENTS[accent_index.get()].1);
+            let theme = use_theme();
 
             let root_style = Style {
                 size: creamui_core::layout::Size {

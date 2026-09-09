@@ -6,7 +6,7 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::jsx;
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
     ColorPickerController, DateTime, DateTimeController, FilePicker, RawColorPicker,
@@ -36,12 +36,13 @@ fn main() {
             title: "CreamUI — Pickers".into(),
             width: 760,
             height: 620,
+            theme: Theme::dark(),
             ..Default::default()
         },
         Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
-            let theme = Theme::dark();
+            let theme = use_theme();
             let selected_color = color.get();
             let selected_raw_color = raw_color.get();
             let raw_value = raw_date.get();

@@ -254,21 +254,24 @@ type SharedWindow = Rc<RefCell<Option<Arc<Window>>>>;
 /// resumes, so this can't be available any earlier). All methods are no-ops
 /// if called after the window has closed.
 #[derive(Clone)]
-pub struct WindowHandle(SharedWindow);
+pub struct WindowHandle {
+    window: SharedWindow,
+    theme: ThemeProvider,
+}
 
 impl WindowHandle {
     /// Requests a new logical-pixel window size. The actual resize (and any
     /// resulting `Resized` event) happens asynchronously, same as a user
     /// dragging the window border.
     pub fn resize(&self, width: u32, height: u32) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             let _ = window.request_inner_size(winit::dpi::LogicalSize::new(width, height));
         }
     }
 
     /// Moves the window's top-left corner to a logical-pixel screen position.
     pub fn set_position(&self, x: i32, y: i32) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             window.set_outer_position(winit::dpi::LogicalPosition::new(x, y));
         }
     }
@@ -276,13 +279,24 @@ impl WindowHandle {
     /// Pins (or unpins) the window above all others — the standard
     /// desktop-shell/widget-overlay behavior.
     pub fn set_always_on_top(&self, enabled: bool) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             window.set_window_level(if enabled {
                 WindowLevel::AlwaysOnTop
             } else {
                 WindowLevel::Normal
             });
         }
+    }
+
+    /// Reads the window's current theme.
+    pub fn theme(&self) -> Theme {
+        self.theme.get()
+    }
+
+    /// Replaces the window's theme. `use_theme()` reflects it on the next
+    /// rebuild, which this schedules immediately.
+    pub fn set_theme(&self, theme: Theme) {
+        self.theme.set(theme);
     }
 }
 
@@ -302,6 +316,7 @@ struct WindowSpec {
     scale_factor: Signal<f64>,
     frame: Rc<RefCell<FrameState>>,
     shared_window: SharedWindow,
+    theme_provider: ThemeProvider,
     focused: Rc<Cell<Option<usize>>>,
     caret_visible: Rc<Cell<bool>>,
 }
@@ -838,7 +853,10 @@ impl ApplicationHandler for AppHandler {
             log::debug!("creamui-render: first frame presented: {:?}", t0.elapsed());
 
             *spec.shared_window.borrow_mut() = Some(window.clone());
-            (spec.on_window_ready)(WindowHandle(spec.shared_window.clone()));
+            (spec.on_window_ready)(WindowHandle {
+                window: spec.shared_window.clone(),
+                theme: spec.theme_provider.clone(),
+            });
 
             let window_id = window.id();
             self.windows.insert(
@@ -1261,6 +1279,7 @@ fn build_window_spec(
         scale_factor,
         frame,
         shared_window,
+        theme_provider,
         focused,
         caret_visible,
     }

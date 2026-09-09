@@ -21,7 +21,7 @@ use creamui_core::layout::{AlignItems, Dimension, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, padding, row};
 use creamui_widgets::{RawScrollView, RawText, RawView, ScrollController, ScrollView, View};
 
@@ -138,7 +138,6 @@ fn Card(theme: Theme, chip: Color, label: String, list: BoxedWidget) -> BoxedWid
 }
 
 fn main() {
-    let theme = Theme::dark();
     let themed_scroll = ScrollController::default();
     let custom_scroll = ScrollController::default();
     let wheel_only_scroll = ScrollController::default();
@@ -148,11 +147,13 @@ fn main() {
             title: "CreamUI — Scroll".into(),
             width: 900,
             height: 460,
+            theme: Theme::dark(),
             ..Default::default()
         },
-        theme.surface,
+        Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
+            let theme = use_theme();
             let root_style = padding(
                 Style {
                     size: creamui_core::layout::Size {

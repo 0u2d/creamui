@@ -18,7 +18,7 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::raw::TabIndicatorSide;
 use creamui_widgets::{
@@ -266,7 +266,6 @@ fn Showcase(theme: Theme, chip: Color, label: String, children: Vec<BoxedWidget>
 }
 
 fn main() {
-    let theme = Theme::dark();
     let themed_active = Signal::new(0usize);
     let custom_active = Signal::new(1usize);
     run(
@@ -274,11 +273,13 @@ fn main() {
             title: "CreamUI — Sidebar".into(),
             width: 1040,
             height: 520,
+            theme: Theme::dark(),
             ..Default::default()
         },
-        theme.surface,
+        Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
+            let theme = use_theme();
             let root_style = padding(
                 Style {
                     size: creamui_core::layout::Size {
