@@ -965,6 +965,7 @@ fn window_options_from_c(options: CWindowOptions) -> creamui_render::WindowOptio
             creamui_render::RenderBackend::Gpu
         },
         theme: Theme::default(),
+        benchmark: creamui_render::BenchmarkMode::default(),
     }
 }
 

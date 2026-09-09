@@ -5,6 +5,7 @@
 //! MVP's rendering code simple while still presenting through the GPU.
 
 mod backend;
+mod benchmark;
 #[cfg(not(target_arch = "wasm32"))]
 mod cpu;
 mod font;
@@ -16,5 +17,6 @@ mod web;
 mod window;
 
 pub use backend::RenderBackend;
+pub use benchmark::{BenchmarkMode, DEBUG_FONT_FAMILY};
 pub use painter::SkiaPainter;
 pub use window::{run, AppBuilder, PanicDetails, WindowHandle, WindowOptions};

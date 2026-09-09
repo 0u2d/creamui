@@ -17,6 +17,7 @@
 //! and presents it.
 
 use crate::backend::RenderBackend;
+use crate::benchmark::{self, BenchmarkMode, DebugPosition, FrameStats, ProcessStats};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::cpu::CpuState;
 #[cfg(not(target_arch = "wasm32"))]
@@ -110,6 +111,10 @@ pub struct WindowOptions {
     pub backend: RenderBackend,
     /// Made available to `use_theme()` while this window's `build_ui` runs.
     pub theme: Theme,
+    /// Live FPS/CPU/RAM/frame-time stats, off by default. Force-overridden
+    /// at launch with `CUI_ENABLE_BENCHMARK=1|true|on|title|off` regardless
+    /// of what's set here — see [`BenchmarkMode::resolve`].
+    pub benchmark: BenchmarkMode,
 }
 
 impl Default for WindowOptions {
@@ -122,6 +127,7 @@ impl Default for WindowOptions {
             decorations: true,
             transparent: false,
             backend: RenderBackend::default(),
+            benchmark: BenchmarkMode::default(),
             theme: Theme::default(),
         }
     }
@@ -216,6 +222,70 @@ struct FrameState {
     painter: SkiaPainter,
     renderer: Renderer,
     scene: Option<Scene>,
+    benchmark: Option<BenchmarkState>,
+}
+
+/// Live stats and display state for a window's benchmark overlay/title.
+/// Only allocated when [`BenchmarkMode::resolve`] resolves to something
+/// other than `Off`.
+struct BenchmarkState {
+    mode: BenchmarkMode,
+    frame_stats: FrameStats,
+    process_stats: ProcessStats,
+    position: DebugPosition,
+}
+
+/// Records `paint_duration` and refreshes the overlay/title, if this
+/// window's benchmark state is active. Called after a full `render()` pass
+/// (layout + paint), the only path that measures a real paint duration.
+fn record_and_show_benchmark(
+    frame: &mut FrameState,
+    viewport: Size,
+    paint_duration: Duration,
+    base_title: &str,
+    window: Option<&Window>,
+) {
+    let FrameState { painter, benchmark, .. } = frame;
+    let Some(bench) = benchmark.as_mut() else {
+        return;
+    };
+    bench.frame_stats.record_frame(paint_duration);
+    bench.process_stats.maybe_sample();
+    match bench.mode {
+        BenchmarkMode::Overlay => benchmark::draw_overlay(
+            painter,
+            viewport,
+            bench.position,
+            &bench.frame_stats,
+            &bench.process_stats,
+        ),
+        BenchmarkMode::Title => {
+            if let Some(window) = window {
+                let title = benchmark::format_title(base_title, &bench.frame_stats, &bench.process_stats);
+                window.set_title(&title);
+            }
+        }
+        BenchmarkMode::Off => {}
+    }
+}
+
+/// Re-draws the overlay from already-recorded stats (no new sample) — for
+/// paint-only passes (`repaint_scene`) that clear and repaint the pixmap
+/// without a full `render()`, and would otherwise erase it.
+fn redraw_benchmark_overlay(frame: &mut FrameState, viewport: Size) {
+    let FrameState { painter, benchmark, .. } = frame;
+    let Some(bench) = benchmark.as_ref() else {
+        return;
+    };
+    if bench.mode == BenchmarkMode::Overlay {
+        benchmark::draw_overlay(
+            painter,
+            viewport,
+            bench.position,
+            &bench.frame_stats,
+            &bench.process_stats,
+        );
+    }
 }
 
 /// Whichever backend is actually composing frames for a window, picked once
@@ -684,6 +754,22 @@ impl WindowState {
                 if event.state != ElementState::Pressed {
                     return;
                 }
+                if event.logical_key == WinitKey::Named(NamedKey::F3) {
+                    let cycled = {
+                        let mut frame = self.frame.borrow_mut();
+                        frame.benchmark.as_mut().map(|bench| {
+                            let overlay = bench.mode == BenchmarkMode::Overlay;
+                            if overlay {
+                                bench.position = bench.position.cycle();
+                            }
+                            overlay
+                        })
+                    };
+                    if cycled == Some(true) {
+                        (self.repaint_light)();
+                    }
+                    return;
+                }
                 let Some(key) = translate_key(&event.logical_key) else {
                     return;
                 };
@@ -1082,16 +1168,24 @@ fn build_window_spec(
         on_window_ready,
         build_ui,
     } = spec;
+    let base_title = options.title.clone();
 
     let viewport = Signal::new(Size {
         width: options.width as f32,
         height: options.height as f32,
     });
     let scale_factor = Signal::new(1.0f64);
+    let benchmark_mode = BenchmarkMode::resolve(options.benchmark);
     let frame = Rc::new(RefCell::new(FrameState {
         painter: SkiaPainter::new(options.width, options.height),
         renderer: Renderer::new(),
         scene: None,
+        benchmark: (benchmark_mode != BenchmarkMode::Off).then(|| BenchmarkState {
+            mode: benchmark_mode,
+            frame_stats: FrameStats::new(),
+            process_stats: ProcessStats::new(),
+            position: DebugPosition::default(),
+        }),
     }));
     let shared_window: SharedWindow = Rc::new(RefCell::new(None));
     let theme_provider = ThemeProvider::new(options.theme);
@@ -1136,6 +1230,7 @@ fn build_window_spec(
         let caret_visible = caret_visible.clone();
         let dirty = dirty.clone();
         let pending_root = pending_root.clone();
+        let base_title = base_title.clone();
         move || {
             dirty.set(false);
             // Widgets are laid out in logical pixels; the painter (and the
@@ -1159,6 +1254,7 @@ fn build_window_spec(
             painter.set_scale(scale as f32);
             painter.resize(physical_width, physical_height);
             painter.clear(clear_color);
+            let paint_started = Instant::now();
             let scene = renderer.render_focused(
                 root,
                 logical_size,
@@ -1166,7 +1262,15 @@ fn build_window_spec(
                 focused.get(),
                 caret_visible.get(),
             );
+            let paint_duration = paint_started.elapsed();
             frame.scene = Some(scene);
+            record_and_show_benchmark(
+                &mut frame,
+                logical_size,
+                paint_duration,
+                &base_title,
+                window.borrow().as_deref(),
+            );
 
             // Debug aid: dump each painted frame to a PNG on disk, e.g. for
             // headless verification where no on-screen compositor is available.
@@ -1207,6 +1311,7 @@ fn build_window_spec(
             {
                 frame.scene = Some(scene);
             }
+            redraw_benchmark_overlay(&mut frame, logical_size);
             drop(frame);
             if let Some(window) = window.borrow().as_ref() {
                 window.request_redraw();
