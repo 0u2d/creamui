@@ -413,8 +413,8 @@ struct WindowState {
     viewport: Signal<Size>,
     scale_factor: Signal<f64>,
     frame: Rc<RefCell<FrameState>>,
-    window: Arc<Window>,
-    presenter: Presenter,
+    window: SharedWindow,
+    presenter: Option<Presenter>,
     pointer_pos: Point,
     modifiers: ModifiersState,
     /// Index into the current `Scene`'s focusables, if any widget has
@@ -461,7 +461,10 @@ struct WindowState {
 
 impl WindowState {
     fn viewport_from_window(&self) -> Size {
-        let physical = self.window.inner_size();
+        let Some(window) = self.window.borrow().as_ref().cloned() else {
+            return self.viewport.peek();
+        };
+        let physical = window.inner_size();
         let scale = self.scale_factor.peek();
         Size {
             width: (physical.width as f64 / scale) as f32,
@@ -489,6 +492,36 @@ impl WindowState {
         if let Some(viewport) = self.pending_viewport.take() {
             self.viewport.set(viewport);
             (self.repaint)();
+        }
+    }
+
+    fn handle_key_input(&mut self, key: KeyInput) {
+        if key.key == Key::Tab {
+            let next = self
+                .frame
+                .borrow()
+                .scene
+                .as_ref()
+                .and_then(|scene| scene.next_focus(self.focused.get(), key.modifiers.shift));
+            self.focused.set(next);
+            (self.repaint_light)();
+            return;
+        }
+        let Some(index) = self.focused.get() else {
+            return;
+        };
+
+        let handler = self
+            .frame
+            .borrow()
+            .scene
+            .as_ref()
+            .and_then(|scene| scene.on_key_at(index).cloned());
+        if let Some(handler) = handler {
+            self.caret_visible.set(true);
+            self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
+            handler(key);
+            (self.render)();
         }
     }
 
@@ -530,8 +563,9 @@ impl WindowState {
                 };
                 if hovered_cursor != self.current_cursor {
                     self.current_cursor = hovered_cursor;
-                    self.window
-                        .set_cursor(translate_cursor_icon(hovered_cursor));
+                    if let Some(window) = self.window.borrow().as_ref() {
+                        window.set_cursor(translate_cursor_icon(hovered_cursor));
+                    }
                 }
 
                 let next_hover = self
@@ -702,41 +736,13 @@ impl WindowState {
                 let Some(key) = translate_key(&event.logical_key) else {
                     return;
                 };
-                if key == Key::Tab {
-                    let next = self.frame.borrow().scene.as_ref().and_then(|scene| {
-                        scene.next_focus(self.focused.get(), self.modifiers.shift_key())
-                    });
-                    self.focused.set(next);
-                    (self.repaint_light)();
-                    return;
-                }
-                let Some(index) = self.focused.get() else {
-                    return;
-                };
-
-                let handler = self
-                    .frame
-                    .borrow()
-                    .scene
-                    .as_ref()
-                    .and_then(|scene| scene.on_key_at(index).cloned());
-                if let Some(handler) = handler {
-                    // Keep the caret solid through the keystroke rather than
-                    // possibly toggling off right as the text changes.
-                    self.caret_visible.set(true);
-                    self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
-                    handler(KeyInput {
-                        key,
-                        modifiers: Modifiers {
-                            ctrl: self.modifiers.control_key(),
-                            shift: self.modifiers.shift_key(),
-                        },
-                    });
-                    // Rebuild now, not on the next debounced redraw: a
-                    // queued second keystroke would otherwise still see
-                    // `handler`'s stale pre-edit snapshot.
-                    (self.render)();
-                }
+                self.handle_key_input(KeyInput {
+                    key,
+                    modifiers: Modifiers {
+                        ctrl: self.modifiers.control_key(),
+                        shift: self.modifiers.shift_key(),
+                    },
+                });
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => {
@@ -751,8 +757,9 @@ impl WindowState {
                 }
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
-                self.presenter
-                    .present(pixmap.data(), pixmap.width(), pixmap.height());
+                if let Some(presenter) = self.presenter.as_mut() {
+                    presenter.present(pixmap.data(), pixmap.width(), pixmap.height());
+                }
                 if !self.first_present_logged {
                     self.first_present_logged = true;
                     log::debug!(
@@ -880,8 +887,8 @@ impl ApplicationHandler for AppHandler {
                     viewport: spec.viewport,
                     scale_factor: spec.scale_factor,
                     frame: spec.frame,
-                    window,
-                    presenter,
+                    window: spec.shared_window.clone(),
+                    presenter: Some(presenter),
                     pointer_pos: Point::default(),
                     modifiers: ModifiersState::default(),
                     focused: spec.focused,
@@ -936,7 +943,9 @@ impl ApplicationHandler for AppHandler {
                 if now >= state.next_resize_render {
                     state.resize_pending = false;
                     state.dirty.set(true);
-                    state.window.request_redraw();
+                    if let Some(window) = state.window.borrow().as_ref() {
+                        window.request_redraw();
+                    }
                 } else {
                     next_wake = Some(next_wake.map_or(state.next_resize_render, |t| {
                         t.min(state.next_resize_render)
@@ -1319,6 +1328,106 @@ fn build_window_spec(
 mod tests {
     use super::*;
     use std::cell::Cell;
+    use winit::event::DeviceId;
+
+    struct WindowEventHarness {
+        state: WindowState,
+    }
+
+    impl WindowEventHarness {
+        fn new(build_ui: impl Fn(Size) -> BoxedWidget + 'static) -> Self {
+            let spec = build_window_spec(
+                0,
+                PendingWindow {
+                    options: WindowOptions {
+                        width: 100,
+                        height: 100,
+                        ..WindowOptions::default()
+                    },
+                    clear_color: Color::rgba(0, 0, 0, 255),
+                    on_window_ready: Box::new(|_| {}),
+                    build_ui: Box::new(build_ui),
+                },
+                None,
+                false,
+            );
+            WindowEventHarness {
+                state: WindowState {
+                    viewport: spec.viewport,
+                    scale_factor: spec.scale_factor,
+                    frame: spec.frame,
+                    window: spec.shared_window,
+                    presenter: None,
+                    pointer_pos: Point::default(),
+                    modifiers: ModifiersState::default(),
+                    focused: spec.focused,
+                    caret_visible: spec.caret_visible,
+                    next_blink: Instant::now() + CARET_BLINK_INTERVAL,
+                    next_animation: Instant::now(),
+                    next_resize_render: Instant::now(),
+                    resize_pending: false,
+                    pending_viewport: None,
+                    current_cursor: CursorIcon::Default,
+                    hovered: None,
+                    dragging: None,
+                    repaint: spec.repaint,
+                    repaint_scene: spec.repaint_scene,
+                    repaint_light: spec.repaint_light,
+                    render: spec.render,
+                    dirty: spec.dirty,
+                    scene_dirty: spec.scene_dirty,
+                    _effect: spec._effect,
+                    t_run: Instant::now(),
+                    first_present_logged: false,
+                },
+            }
+        }
+
+        fn send(&mut self, event: WindowEvent) {
+            self.state.handle_window_event(event);
+        }
+
+        fn key(&mut self, input: KeyInput) {
+            self.state.handle_key_input(input);
+        }
+    }
+
+    struct InteractiveWidget {
+        clicks: Signal<usize>,
+        keys: Signal<String>,
+    }
+
+    impl creamui_core::Widget for InteractiveWidget {
+        fn style(&self) -> creamui_core::layout::Style {
+            creamui_core::layout::Style {
+                size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Length(100.0),
+                    height: creamui_core::layout::Dimension::Length(100.0),
+                },
+                ..Default::default()
+            }
+        }
+
+        fn paint(&self, _: &mut dyn creamui_core::Painter, _: creamui_core::Rect) {}
+
+        fn focusable(&self) -> bool {
+            true
+        }
+
+        fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+            let clicks = self.clicks.clone();
+            Some(Rc::new(move || clicks.update(|count| *count += 1)))
+        }
+
+        fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+            let keys = self.keys.clone();
+            Some(Rc::new(move |input| {
+                if let Key::Char(character) = input.key {
+                    keys.update(|text| text.push(character));
+                }
+            }))
+        }
+    }
 
     fn window_size() -> Size {
         Size {
@@ -1362,5 +1471,38 @@ mod tests {
             move |_| drop(message),
             |_| Box::new(BlankWidget),
         );
+    }
+
+    #[test]
+    fn headless_harness_delivers_clicks_and_keys() {
+        let clicks = Signal::new(0);
+        let keys = Signal::new(String::new());
+        let mut harness = WindowEventHarness::new({
+            let clicks = clicks.clone();
+            let keys = keys.clone();
+            move |_| {
+                Box::new(InteractiveWidget {
+                    clicks: clicks.clone(),
+                    keys: keys.clone(),
+                })
+            }
+        });
+
+        harness.send(WindowEvent::CursorMoved {
+            device_id: DeviceId::dummy(),
+            position: winit::dpi::PhysicalPosition::new(20.0, 20.0),
+        });
+        harness.send(WindowEvent::MouseInput {
+            device_id: DeviceId::dummy(),
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+        });
+        harness.key(KeyInput {
+            key: Key::Char('x'),
+            modifiers: Modifiers::default(),
+        });
+
+        assert_eq!(clicks.get(), 1);
+        assert_eq!(keys.get(), "x");
     }
 }
