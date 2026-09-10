@@ -21,9 +21,7 @@ use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::raw::TabIndicatorSide;
-use creamui_widgets::{
-    Card, RawSidebar, RawTab, RawText, RawView, Sidebar, SidebarItem, TabColors,
-};
+use creamui_widgets::{Card, RawSidebar, RawTab, RawText, Sidebar, SidebarItem, TabColors};
 
 struct Section {
     label: &'static str,
@@ -105,11 +103,11 @@ fn SidebarNav(active: Signal<usize>) -> BoxedWidget {
         },
         theme.spacing_medium,
     );
-    Box::new(
-        RawView::new(outer_style)
-            .background(theme.surface)
-            .child(Box::new(sidebar)),
-    )
+    Box::new(jsx! {
+        <RawView style={outer_style} background={theme.surface}>
+            {Box::new(sidebar) as BoxedWidget}
+        </RawView>
+    })
 }
 
 /// A fully custom, un-themed sidebar built directly from `RawSidebar`/
@@ -253,18 +251,19 @@ fn Showcase(chip: Color, label: String, children: Vec<BoxedWidget>) -> BoxedWidg
         },
         theme.spacing_large,
     );
-    let header = Box::new(jsx! {
+    let header: BoxedWidget = Box::new(jsx! {
         <RawView style={header_style}>
             <RawView style={chip_style} background={chip} corner_radius={2.0} />
             <RawText color={theme.text_disabled} font_size={12.0} align={TextAlign::Start} style={label_style}>{label}</RawText>
         </RawView>
     });
-    let card = Card::new(card_style).with_children(children);
-    Box::new(
-        RawView::new(outer_style)
-            .child(header)
-            .child(Box::new(card)),
-    )
+    let card: BoxedWidget = Box::new(Card::new(card_style).with_children(children));
+    Box::new(jsx! {
+        <RawView style={outer_style}>
+            {header}
+            {card}
+        </RawView>
+    })
 }
 
 fn main() {

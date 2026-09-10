@@ -4,10 +4,11 @@
 use creamui_core::layout::{Dimension, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_image::{Image, ImageData, ImageFit};
+use creamui_macros::jsx;
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
-use creamui_widgets::{Heading, RawText, RawView, Surface, SurfaceRole, Text};
+use creamui_widgets::{RawText, Surface, SurfaceRole, TextSize};
 
 fn image_style(width: f32, height: f32) -> Style {
     Style {
@@ -40,9 +41,9 @@ fn image_card(title: &str, description: &str, image: Image) -> BoxedWidget {
                 .align(TextAlign::Start),
         ))
         .child(Box::new(image))
-        .child(Box::new(
-            Text::secondary(description).align(TextAlign::Start),
-        )),
+        .child(Box::new(jsx! {
+            <Text secondary={true} align={TextAlign::Start}>{description.to_owned()}</Text>
+        })),
     )
 }
 
@@ -73,39 +74,35 @@ fn main() {
                 },
                 ..column(theme.spacing_large)
             };
-            Box::new(
-                RawView::new(padding(root, 32.))
-                    .child(Box::new(Heading::xl("Images")))
-                    .child(Box::new(
-                        Text::secondary(
-                            "One decoded asset type, three file formats, and three independent shapes.",
-                        )
-                        .align(TextAlign::Start),
-                    ))
-                    .child(Box::new(
-                        RawView::new(row(theme.spacing_large))
-                            .child(image_card(
-                                "PNG · square",
-                                "Cover fit without clipping the corners.",
-                                Image::with_style(png.clone(), image_style(190., 190.))
-                                    .fit(ImageFit::Cover),
-                            ))
-                            .child(image_card(
-                                "JPEG · rounded",
-                                "A 4:3 crop with the active theme's radius.",
-                                Image::with_style(jpeg.clone(), image_style(230., 172.))
-                                    .fit(ImageFit::Cover)
-                                    .corner_radius(theme.card_radius),
-                            ))
-                            .child(image_card(
-                                "WebP · circle",
-                                "A square crop clipped into a complete circle.",
-                                Image::with_style(webp.clone(), image_style(190., 190.))
-                                    .fit(ImageFit::Cover)
-                                    .corner_radius(95.),
-                            )),
-                    )),
-            )
+            let png_card = image_card(
+                "PNG · square",
+                "Cover fit without clipping the corners.",
+                Image::with_style(png.clone(), image_style(190., 190.)).fit(ImageFit::Cover),
+            );
+            let jpeg_card = image_card(
+                "JPEG · rounded",
+                "A 4:3 crop with the active theme's radius.",
+                Image::with_style(jpeg.clone(), image_style(230., 172.))
+                    .fit(ImageFit::Cover)
+                    .corner_radius(theme.card_radius),
+            );
+            let webp_card = image_card(
+                "WebP · circle",
+                "A square crop clipped into a complete circle.",
+                Image::with_style(webp.clone(), image_style(190., 190.))
+                    .fit(ImageFit::Cover)
+                    .corner_radius(95.),
+            );
+
+            Box::new(jsx! {
+                <RawView style={padding(root, 32.)}>
+                    <Heading size={TextSize::Xl}>"Images"</Heading>
+                    <Text secondary={true} align={TextAlign::Start}>
+                        "One decoded asset type, three file formats, and three independent shapes."
+                    </Text>
+                    <RawView style={row(theme.spacing_large)} children={vec![png_card, jpeg_card, webp_card]} />
+                </RawView>
+            })
         },
     );
 }

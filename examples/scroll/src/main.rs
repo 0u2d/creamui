@@ -23,7 +23,7 @@ use creamui_macros::{component, jsx};
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, padding, row};
-use creamui_widgets::{Card, RawScrollView, RawText, RawView, ScrollController, ScrollView};
+use creamui_widgets::{Card, RawScrollView, ScrollController, ScrollView};
 
 /// A row of numbered list items, tall enough in aggregate to overflow every
 /// list in this example.
@@ -60,15 +60,13 @@ fn rows(theme: &Theme, text_color: Color) -> Vec<BoxedWidget> {
             } else {
                 theme.surface
             };
-            Box::new(
-                RawView::new(row_style(theme))
-                    .background(background)
-                    .child(Box::new(
-                        RawText::new(format!("Item {:02}", i + 1), text_color, 13.0)
-                            .align(TextAlign::Start)
-                            .layout_style(text_style.clone()),
-                    )),
-            ) as BoxedWidget
+            Box::new(jsx! {
+                <RawView style={row_style(theme)} background={background}>
+                    <RawText color={text_color} font_size={13.0} align={TextAlign::Start} style={text_style.clone()}>
+                        {format!("Item {:02}", i + 1)}
+                    </RawText>
+                </RawView>
+            }) as BoxedWidget
         })
         .collect()
 }
@@ -124,18 +122,19 @@ fn Card(chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
         },
         theme.spacing_large,
     );
-    let header = Box::new(jsx! {
+    let header: BoxedWidget = Box::new(jsx! {
         <RawView style={header_style}>
             <RawView style={chip_style} background={chip} corner_radius={2.0} />
             <Text align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
         </RawView>
     });
-    let card = Card::new(card_style).child(list);
-    Box::new(
-        RawView::new(outer_style)
-            .child(header)
-            .child(Box::new(card)),
-    )
+    let card: BoxedWidget = Box::new(Card::new(card_style).child(list));
+    Box::new(jsx! {
+        <RawView style={outer_style}>
+            {header}
+            {card}
+        </RawView>
+    })
 }
 
 fn main() {

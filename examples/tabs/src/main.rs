@@ -20,7 +20,7 @@ use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
-use creamui_widgets::{Card, RawTab, RawTabs, RawText, RawView, Tab, TabColors, Tabs};
+use creamui_widgets::{Card, RawTab, RawTabs, RawText, Tab, TabColors, Tabs};
 
 struct Section {
     label: &'static str,
@@ -223,18 +223,19 @@ fn Showcase(chip: Color, label: String, children: Vec<BoxedWidget>) -> BoxedWidg
         },
         theme.spacing_large,
     );
-    let header = Box::new(jsx! {
+    let header: BoxedWidget = Box::new(jsx! {
         <RawView style={header_style}>
             <RawView style={chip_style} background={chip} corner_radius={2.0} />
             <RawText color={theme.text_disabled} font_size={12.0} align={TextAlign::Start} style={label_style}>{label}</RawText>
         </RawView>
     });
-    let card = Card::new(card_style).with_children(children);
-    Box::new(
-        RawView::new(outer_style)
-            .child(header)
-            .child(Box::new(card)),
-    )
+    let card: BoxedWidget = Box::new(Card::new(card_style).with_children(children));
+    Box::new(jsx! {
+        <RawView style={outer_style}>
+            {header}
+            {card}
+        </RawView>
+    })
 }
 
 fn main() {

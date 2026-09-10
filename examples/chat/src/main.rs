@@ -3,15 +3,14 @@ use creamui_core::layout::{
 };
 use creamui_core::{BoxedWidget, Painter, Rect, Size, TextAlign, Widget};
 use creamui_image::{Image, ImageData, ImageFit};
-use creamui_macros::component;
+use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
 use creamui_theme::{use_theme, Color, ColorScheme, Theme};
 use creamui_widgets::layout::{column, fixed, full_width, padding, padding_xy, row};
 use creamui_widgets::{
-    AutoScrollController, Avatar, Badge, Heading, Icon, RawButton, RawText, RawView,
-    ScrollController, ScrollView, Symbol, Text, TextController, TextInput, TextSize,
-    TypingIndicator,
+    Avatar, AutoScrollController, Badge, Icon, RawText, ScrollController, ScrollView, Symbol,
+    TextController, TextInput, TextSize, TypingIndicator,
 };
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -54,17 +53,15 @@ fn tint(color: Color, alpha: u8) -> Color {
 
 fn hairline() -> BoxedWidget {
     let theme = use_theme();
-    Box::new(
-        RawView::new(Style {
-            size: LayoutSize {
-                width: Dimension::Percent(1.0),
-                height: Dimension::Length(1.0),
-            },
-            flex_shrink: 0.0,
-            ..Default::default()
-        })
-        .background(theme.border),
-    )
+    let style = Style {
+        size: LayoutSize {
+            width: Dimension::Percent(1.0),
+            height: Dimension::Length(1.0),
+        },
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    Box::new(jsx! { <RawView style={style} background={theme.border} /> })
 }
 
 #[derive(Clone)]
@@ -394,21 +391,18 @@ fn icon_button(
     icon_color: Color,
     on_click: impl Fn() + 'static,
 ) -> BoxedWidget {
-    Box::new(
-        RawButton::new(
-            Style {
-                size: fixed(size, size),
-                justify_content: Some(JustifyContent::Center),
-                align_items: Some(AlignItems::Center),
-                flex_shrink: 0.0,
-                ..Default::default()
-            },
-            on_click,
-        )
-        .background(background)
-        .corner_radius(size / 2.0)
-        .child(Box::new(Icon::new(symbol, icon_color).size(size * 0.46))),
-    )
+    let style = Style {
+        size: fixed(size, size),
+        justify_content: Some(JustifyContent::Center),
+        align_items: Some(AlignItems::Center),
+        flex_shrink: 0.0,
+        ..Default::default()
+    };
+    Box::new(jsx! {
+        <RawButton style={style} background={background} corner_radius={size / 2.0} on_click={on_click}>
+            {Box::new(Icon::new(symbol, icon_color).size(size * 0.46)) as BoxedWidget}
+        </RawButton>
+    })
 }
 
 fn line_style(height: f32, grow: bool) -> Style {
@@ -528,35 +522,30 @@ fn ContactRow(conversation: Conversation, active: bool, on_select: Rc<dyn Fn()>)
         ..row(6.0)
     };
 
-    let name_text = RawText::new(conversation.contact.name.clone(), theme.text_primary, 13.5)
-        .bold(true)
-        .align(TextAlign::Start)
-        .layout_style(line_style(16.0, true));
-    let time_text =
-        RawText::new(time_label, theme.text_disabled, 10.5).layout_style(line_style(16.0, false));
-    let preview_text = RawText::new(preview, preview_color, 12.0)
-        .align(TextAlign::Start)
-        .layout_style(line_style(16.0, true));
+    let name_text: BoxedWidget = Box::new(
+        RawText::new(conversation.contact.name.clone(), theme.text_primary, 13.5)
+            .bold(true)
+            .align(TextAlign::Start)
+            .layout_style(line_style(16.0, true)),
+    );
+    let avatar: BoxedWidget = Box::new(contact_avatar(&conversation.contact, 44.0));
+    let badge: BoxedWidget = Box::new(Badge::count(unread));
 
-    Box::new(
-        RawButton::new(row_style, move || on_select())
-            .background(background)
-            .corner_radius(theme.radius_medium)
-            .child(Box::new(contact_avatar(&conversation.contact, 44.0)))
-            .child(Box::new(
-                RawView::new(text_column_style)
-                    .child(Box::new(
-                        RawView::new(name_row_style)
-                            .child(Box::new(name_text))
-                            .child(Box::new(time_text)),
-                    ))
-                    .child(Box::new(
-                        RawView::new(preview_row_style)
-                            .child(Box::new(preview_text))
-                            .child(Box::new(Badge::count(unread))),
-                    )),
-            )),
-    )
+    Box::new(jsx! {
+        <RawButton style={row_style} background={background} corner_radius={theme.radius_medium} on_click={move || on_select()}>
+            {avatar}
+            <RawView style={text_column_style}>
+                <RawView style={name_row_style}>
+                    {name_text}
+                    <RawText color={theme.text_disabled} font_size={10.5} style={line_style(16.0, false)}>{time_label}</RawText>
+                </RawView>
+                <RawView style={preview_row_style}>
+                    <RawText color={preview_color} font_size={12.0} align={TextAlign::Start} style={line_style(16.0, true)}>{preview}</RawText>
+                    {badge}
+                </RawView>
+            </RawView>
+        </RawButton>
+    })
 }
 
 #[component]
@@ -601,21 +590,11 @@ fn ContactSidebar(
         }));
     }
     if rows.is_empty() {
-        rows.push(Box::new(
-            RawView::new(padding(
-                Style {
-                    size: LayoutSize {
-                        width: Dimension::Percent(1.0),
-                        height: Dimension::Length(60.0),
-                    },
-                    ..Default::default()
-                },
-                14.0,
-            ))
-            .child(Box::new(
-                Text::secondary("No conversations match.").align(TextAlign::Start),
-            )),
-        ));
+        rows.push(Box::new(jsx! {
+            <RawView style={padding(Style { size: LayoutSize { width: Dimension::Percent(1.0), height: Dimension::Length(60.0) }, ..Default::default() }, 14.0)}>
+                <Text secondary={true} align={TextAlign::Start}>"No conversations match."</Text>
+            </RawView>
+        }));
     }
 
     let sidebar_style = Style {
@@ -634,20 +613,20 @@ fn ContactSidebar(
         },
         ..Default::default()
     });
-    let search_input =
-        TextInput::controlled_with_style(search_style, &filter).placeholder("Search people…");
-    let list = ScrollView::new(list_style, 0.0, |_| {}).with_children(rows);
+    let header: BoxedWidget = Box::new(jsx! {
+        <RawView style={header_style}>
+            <Heading size={TextSize::Lg}>"Chats"</Heading>
+            <TextInput controller={&filter} style={search_style} placeholder={"Search people…"} />
+        </RawView>
+    });
+    let list: BoxedWidget = Box::new(ScrollView::new(list_style, 0.0, |_| {}).with_children(rows));
 
-    Box::new(
-        RawView::new(sidebar_style)
-            .background(theme.surface)
-            .child(Box::new(
-                RawView::new(header_style)
-                    .child(Box::new(Heading::sized(TextSize::Lg, "Chats")))
-                    .child(Box::new(search_input)),
-            ))
-            .child(Box::new(list)),
-    )
+    Box::new(jsx! {
+        <RawView style={sidebar_style} background={theme.surface}>
+            {header}
+            {list}
+        </RawView>
+    })
 }
 
 #[component]
@@ -686,44 +665,12 @@ fn ConversationHeader(conversation: Conversation) -> BoxedWidget {
         ..row(12.0)
     };
 
-    let bar = RawView::new(header_style)
-        .background(theme.surface_elevated)
-        .child(Box::new(
-            RawView::new(identity_style)
-                .child(Box::new(contact_avatar(&conversation.contact, 40.0)))
-                .child(Box::new(
-                    RawView::new(column(2.0))
-                        .child(Box::new(
-                            RawText::new(
-                                conversation.contact.name.clone(),
-                                theme.text_primary,
-                                14.0,
-                            )
-                            .bold(true)
-                            .align(TextAlign::Start),
-                        ))
-                        .child(Box::new(
-                            RawText::new(status, status_color, 11.5).align(TextAlign::Start),
-                        )),
-                )),
-        ))
-        .child(Box::new(
-            RawView::new(row(8.0))
-                .child(icon_button(
-                    Symbol::Search,
-                    30.0,
-                    theme.surface_hover,
-                    theme.text_secondary,
-                    || {},
-                ))
-                .child(icon_button(
-                    Symbol::Controls,
-                    30.0,
-                    theme.surface_hover,
-                    theme.text_secondary,
-                    || {},
-                )),
-        ));
+    let name_text: BoxedWidget = Box::new(
+        RawText::new(conversation.contact.name.clone(), theme.text_primary, 14.0)
+            .bold(true)
+            .align(TextAlign::Start),
+    );
+    let avatar: BoxedWidget = Box::new(contact_avatar(&conversation.contact, 40.0));
 
     let wrapper_style = Style {
         size: LayoutSize {
@@ -733,11 +680,24 @@ fn ConversationHeader(conversation: Conversation) -> BoxedWidget {
         flex_shrink: 0.0,
         ..column(0.0)
     };
-    Box::new(
-        RawView::new(wrapper_style)
-            .child(Box::new(bar))
-            .child(hairline()),
-    )
+    Box::new(jsx! {
+        <RawView style={wrapper_style}>
+            <RawView style={header_style} background={theme.surface_elevated}>
+                <RawView style={identity_style}>
+                    {avatar}
+                    <RawView style={column(2.0)}>
+                        {name_text}
+                        <RawText color={status_color} font_size={11.5} align={TextAlign::Start}>{status}</RawText>
+                    </RawView>
+                </RawView>
+                <RawView style={row(8.0)}>
+                    {icon_button(Symbol::Search, 30.0, theme.surface_hover, theme.text_secondary, || {})}
+                    {icon_button(Symbol::Controls, 30.0, theme.surface_hover, theme.text_secondary, || {})}
+                </RawView>
+            </RawView>
+            {hairline()}
+        </RawView>
+    })
 }
 
 fn attachment_widget(attachment: &Attachment) -> BoxedWidget {
@@ -747,31 +707,26 @@ fn attachment_widget(attachment: &Attachment) -> BoxedWidget {
             let aspect = data.width() as f32 / data.height() as f32;
             let width = 220.0f32;
             let height = (width / aspect).clamp(120.0, 260.0);
-            Box::new(
-                Image::with_style(data.clone(), box_style(width, height))
-                    .fit(ImageFit::Cover)
-                    .corner_radius(theme.radius_medium),
-            )
+            Box::new(jsx! {
+                <Image data={data.clone()} style={box_style(width, height)} fit={ImageFit::Cover} corner_radius={theme.radius_medium} />
+            })
         }
-        Attachment::File(name) => Box::new(
-            RawView::new(padding(
+        Attachment::File(name) => {
+            let style = padding(
                 Style {
                     align_items: Some(AlignItems::Center),
                     ..row(8.0)
                 },
                 8.0,
-            ))
-            .background(theme.surface_elevated)
-            .corner_radius(theme.radius_small)
-            .child(Box::new(
-                Icon::new(Symbol::Attachment, theme.text_secondary).size(16.0),
-            ))
-            .child(Box::new(RawText::new(
-                name.clone(),
-                theme.text_primary,
-                12.0,
-            ))),
-        ),
+            );
+            let icon: BoxedWidget = Box::new(Icon::new(Symbol::Attachment, theme.text_secondary).size(16.0));
+            Box::new(jsx! {
+                <RawView style={style} background={theme.surface_elevated} corner_radius={theme.radius_small}>
+                    {icon}
+                    <RawText color={theme.text_primary} font_size={12.0}>{name.clone()}</RawText>
+                </RawView>
+            })
+        }
     }
 }
 
@@ -881,28 +836,21 @@ fn message_bubble(message: &ChatMessage) -> BoxedWidget {
         ..row(4.0)
     };
 
-    let mut bubble = RawView::new(bubble_style)
-        .background(bubble_background)
-        .corner_radius(theme.card_radius);
-
+    let mut bubble_children: Vec<BoxedWidget> = Vec::new();
     if let Some(attachment) = &message.attachment {
-        bubble = bubble.child(attachment_widget(attachment));
+        bubble_children.push(attachment_widget(attachment));
     }
     if !message.text.is_empty() {
-        bubble = bubble.child(Box::new(
-            RawText::new(message.text.clone(), text_color, 13.5)
-                .align(TextAlign::Start)
-                .layout_style(text_style),
-        ));
+        bubble_children.push(Box::new(jsx! {
+            <RawText color={text_color} font_size={13.5} align={TextAlign::Start} style={text_style}>{message.text.clone()}</RawText>
+        }));
     }
 
-    let mut footer = RawView::new(footer_style).child(Box::new(RawText::new(
-        message.time.clone(),
-        footer_color,
-        10.0,
-    )));
+    let mut footer_children: Vec<BoxedWidget> = vec![Box::new(jsx! {
+        <RawText color={footer_color} font_size={10.0}>{message.time.clone()}</RawText>
+    })];
     if message.mine {
-        footer = footer.child(Box::new(ReadReceipt {
+        footer_children.push(Box::new(ReadReceipt {
             color: if message.read {
                 theme.selection_text
             } else {
@@ -911,9 +859,13 @@ fn message_bubble(message: &ChatMessage) -> BoxedWidget {
             double: message.read,
         }));
     }
-    bubble = bubble.child(Box::new(footer));
+    bubble_children.push(Box::new(jsx! { <RawView style={footer_style} children={footer_children} /> }));
 
-    Box::new(RawView::new(row_style).child(Box::new(bubble)))
+    Box::new(jsx! {
+        <RawView style={row_style}>
+            <RawView style={bubble_style} background={bubble_background} corner_radius={theme.card_radius} children={bubble_children} />
+        </RawView>
+    })
 }
 
 #[component]
@@ -952,14 +904,13 @@ fn MessageList(conversation: Conversation, scroll: ScrollController) -> BoxedWid
             },
             12.0,
         );
-        view = view.child(Box::new(
-            RawView::new(typing_row_style).child(Box::new(
-                RawView::new(bubble_style)
-                    .background(theme.surface_hover)
-                    .corner_radius(theme.card_radius)
-                    .child(Box::new(TypingIndicator::new())),
-            )),
-        ));
+        view = view.child(Box::new(jsx! {
+            <RawView style={typing_row_style}>
+                <RawView style={bubble_style} background={theme.surface_hover} corner_radius={theme.card_radius}>
+                    {Box::new(TypingIndicator::new()) as BoxedWidget}
+                </RawView>
+            </RawView>
+        }));
     }
     // Explicit min_size:0 keeps this wrapper shrinkable once messages overflow —
     // otherwise its automatic min-height floors at the unclipped content height
@@ -979,11 +930,12 @@ fn MessageList(conversation: Conversation, scroll: ScrollController) -> BoxedWid
         },
         16.0,
     );
-    Box::new(
-        RawView::new(outer_style)
-            .background(theme.surface_elevated)
-            .child(Box::new(view)),
-    )
+    let view: BoxedWidget = Box::new(view);
+    Box::new(jsx! {
+        <RawView style={outer_style} background={theme.surface_elevated}>
+            {view}
+        </RawView>
+    })
 }
 
 // Sized to sit inside the composer's one-row bar rather than a second row
@@ -1003,16 +955,12 @@ fn inline_attachment_chip(attachment: &Attachment, on_remove: impl Fn() + 'stati
         4.0,
         4.0,
     );
-    let mut chip = RawView::new(chip_style)
-        .background(theme.surface_hover)
-        .corner_radius(theme.radius_large);
+    let mut chip_children: Vec<BoxedWidget> = Vec::new();
     match attachment {
         Attachment::Image(data) => {
-            chip = chip.child(Box::new(
-                Image::with_style(data.clone(), box_style(32.0, 32.0))
-                    .fit(ImageFit::Cover)
-                    .corner_radius(theme.radius_large),
-            ));
+            chip_children.push(Box::new(jsx! {
+                <Image data={data.clone()} style={box_style(32.0, 32.0)} fit={ImageFit::Cover} corner_radius={theme.radius_large} />
+            }));
         }
         Attachment::File(name) => {
             let short: String = if name.chars().count() > 12 {
@@ -1020,20 +968,22 @@ fn inline_attachment_chip(attachment: &Attachment, on_remove: impl Fn() + 'stati
             } else {
                 name.clone()
             };
-            chip = chip.child(Box::new(
-                Icon::new(Symbol::Attachment, theme.text_secondary).size(14.0),
-            ));
-            chip = chip.child(Box::new(RawText::new(short, theme.text_primary, 11.0)));
+            chip_children.push(Box::new(Icon::new(Symbol::Attachment, theme.text_secondary).size(14.0)));
+            chip_children.push(Box::new(jsx! {
+                <RawText color={theme.text_primary} font_size={11.0}>{short}</RawText>
+            }));
         }
     }
-    chip = chip.child(icon_button(
+    chip_children.push(icon_button(
         Symbol::Close,
         18.0,
         Color::rgba(0, 0, 0, 0),
         theme.text_disabled,
         on_remove,
     ));
-    Box::new(chip)
+    Box::new(jsx! {
+        <RawView style={chip_style} background={theme.surface_hover} corner_radius={theme.radius_large} children={chip_children} />
+    })
 }
 
 #[component]
@@ -1066,28 +1016,28 @@ fn Composer(
         ..Default::default()
     };
 
-    let mut bar = RawView::new(bar_style)
-        .background(theme.surface_elevated)
-        .child(icon_button(
-            Symbol::Attachment,
-            36.0,
-            theme.surface_hover,
-            theme.text_secondary,
-            move || on_attach(),
-        ));
+    let mut bar_children: Vec<BoxedWidget> = vec![icon_button(
+        Symbol::Attachment,
+        36.0,
+        theme.surface_hover,
+        theme.text_secondary,
+        move || on_attach(),
+    )];
 
     if let Some(attachment) = pending_attachment.get() {
         let clear = pending_attachment.clone();
-        bar = bar.child(inline_attachment_chip(&attachment, move || clear.set(None)));
+        bar_children.push(inline_attachment_chip(&attachment, move || clear.set(None)));
     }
 
     let submit = on_send.clone();
-    let input = TextInput::controlled_with_style(input_style, &composer)
-        .placeholder("Message")
-        .background(theme.surface_hover)
-        .on_submit(move || submit());
-    bar = bar.child(Box::new(input));
-    bar = bar.child(icon_button(
+    let input: BoxedWidget = Box::new(
+        TextInput::controlled_with_style(input_style, &composer)
+            .placeholder("Message")
+            .background(theme.surface_hover)
+            .on_submit(move || submit()),
+    );
+    bar_children.push(input);
+    bar_children.push(icon_button(
         Symbol::Send,
         36.0,
         theme.accent,
@@ -1103,11 +1053,12 @@ fn Composer(
         flex_shrink: 0.0,
         ..column(0.0)
     };
-    Box::new(
-        RawView::new(wrapper_style)
-            .child(hairline())
-            .child(Box::new(bar)),
-    )
+    Box::new(jsx! {
+        <RawView style={wrapper_style}>
+            {hairline()}
+            <RawView style={bar_style} background={theme.surface_elevated} children={bar_children} />
+        </RawView>
+    })
 }
 
 fn main() {
@@ -1275,18 +1226,17 @@ fn main() {
                 ..column(0.0)
             };
 
-            Box::new(
-                RawView::new(root_style)
-                    .background(theme.surface)
-                    .child(sidebar)
-                    .child(Box::new(
-                        RawView::new(main_column_style)
-                            .child(header)
-                            .child(message_list)
-                            .child(composer_bar),
-                    ))
-                    .child(Box::new(Heartbeat)),
-            )
+            Box::new(jsx! {
+                <RawView style={root_style} background={theme.surface}>
+                    {sidebar}
+                    <RawView style={main_column_style}>
+                        {header}
+                        {message_list}
+                        {composer_bar}
+                    </RawView>
+                    {Box::new(Heartbeat) as BoxedWidget}
+                </RawView>
+            })
         },
     );
 }

@@ -25,11 +25,11 @@ fn popup_style(width: f32, top: f32, gap: f32, padding_amount: f32) -> Style {
     )
 }
 
-fn popup_button(label: impl Into<String>, on_click: impl Fn() + 'static) -> RawButton {
+fn popup_button(label: impl Into<String>, width: f32, on_click: impl Fn() + 'static) -> RawButton {
     let theme = use_theme();
     RawButton::new(
         Style {
-            size: fixed(32., 28.),
+            size: fixed(width, 28.),
             align_items: Some(AlignItems::Center),
             justify_content: Some(JustifyContent::Center),
             flex_shrink: 0.,
@@ -40,7 +40,9 @@ fn popup_button(label: impl Into<String>, on_click: impl Fn() + 'static) -> RawB
     .background(theme.surface_hover)
     .corner_radius(theme.menu_item_radius)
     .border(theme.border, 1.)
-    .child(Box::new(RawText::new(label, theme.text_primary, 12.)))
+    .child(Box::new(
+        RawText::new(label, theme.text_primary, 12.).align(TextAlign::Center),
+    ))
 }
 
 fn month_shift(value: DateTime, amount: i32) -> DateTime {
@@ -164,7 +166,7 @@ impl DateTimePicker {
             justify_content: Some(JustifyContent::SpaceBetween),
             ..row(self.theme.spacing_small)
         })
-        .child(Box::new(popup_button("‹", move || {
+        .child(Box::new(popup_button("‹", 32., move || {
             previous.set(month_shift(previous.peek(), -1))
         })))
         .child(Box::new(
@@ -175,7 +177,7 @@ impl DateTimePicker {
             )
             .bold(true),
         ))
-        .child(Box::new(popup_button("›", move || {
+        .child(Box::new(popup_button("›", 32., move || {
             next.set(month_shift(next.peek(), 1))
         })));
         let mut grid = RawView::new(column(3.));
@@ -263,7 +265,7 @@ impl DateTimePicker {
             align_items: Some(AlignItems::Center),
             ..row(self.theme.spacing_small)
         })
-        .child(Box::new(popup_button("−", move || {
+        .child(Box::new(popup_button("−", 32., move || {
             hour_down.set(hour_down.peek().add_minutes(-60))
         })))
         .child(Box::new(
@@ -274,11 +276,11 @@ impl DateTimePicker {
                 },
             ),
         ))
-        .child(Box::new(popup_button("+", move || {
+        .child(Box::new(popup_button("+", 32., move || {
             hour_up.set(hour_up.peek().add_minutes(60))
         })))
         .child(Box::new(RawText::new(":", self.theme.text_secondary, 18.)))
-        .child(Box::new(popup_button("−", move || {
+        .child(Box::new(popup_button("−", 32., move || {
             minute_down.set(minute_down.peek().add_minutes(-step))
         })))
         .child(Box::new(
@@ -288,7 +290,7 @@ impl DateTimePicker {
                     ..Default::default()
                 }),
         ))
-        .child(Box::new(popup_button("+", move || {
+        .child(Box::new(popup_button("+", 32., move || {
             minute_up.set(minute_up.peek().add_minutes(step))
         })));
         Box::new(
@@ -387,13 +389,17 @@ impl Widget for DateTimePicker {
                 Style {
                     size: fixed(72., 28.),
                     align_self: Some(creamui_core::layout::AlignSelf::End),
+                    align_items: Some(AlignItems::Center),
+                    justify_content: Some(JustifyContent::Center),
                     ..Default::default()
                 },
                 move || close.set_open(false),
             )
             .background(theme.accent)
             .corner_radius(theme.menu_item_radius)
-            .child(Box::new(RawText::new("Done", theme.selection_text, 12.)));
+            .child(Box::new(
+                RawText::new("Done", theme.selection_text, 12.).align(TextAlign::Center),
+            ));
             content = content.child(Box::new(done));
             vec![Box::new(
                 Popover::new(popup_style(
@@ -713,7 +719,7 @@ impl Widget for ColorPicker {
                     ..Default::default()
                 }),
             ))
-            .child(Box::new(popup_button("Done", move || {
+            .child(Box::new(popup_button("Done", 64., move || {
                 close.set_open(false)
             })));
             vec![Box::new(

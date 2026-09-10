@@ -69,25 +69,15 @@ fn ToolbarMenu(label: String, id: i32, active: Signal<i32>) -> BoxedWidget {
     };
     // Top-level menus are deliberately text-only. A menu bar is navigation,
     // not a row of contained buttons; the popup supplies the active affordance.
-    Box::new(
-        creamui_widgets::RawButton::new(
-            size(
-                tokens.menu_trigger_width,
-                tokens.menu_height - tokens.theme.spacing_small,
-            ),
-            move || {
-                click_active.set(if click_active.get() == id { 0 } else { id });
-            },
-        )
-        .child(Box::new(
-            creamui_widgets::RawText::new(label, text_color, 13.0)
-                .align(TextAlign::Start)
-                .layout_style(size(
-                    tokens.menu_trigger_width,
-                    tokens.menu_height - tokens.theme.spacing_small,
-                )),
-        )),
-    )
+    let trigger_style = size(
+        tokens.menu_trigger_width,
+        tokens.menu_height - tokens.theme.spacing_small,
+    );
+    Box::new(jsx! {
+        <RawButton style={trigger_style.clone()} on_click={move || { click_active.set(if click_active.get() == id { 0 } else { id }); }}>
+            <RawText color={text_color} font_size={13.0} align={TextAlign::Start} style={trigger_style}>{label}</RawText>
+        </RawButton>
+    })
 }
 
 #[component]
