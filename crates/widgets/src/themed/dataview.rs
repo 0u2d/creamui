@@ -93,17 +93,17 @@ pub struct TreeView {
 
 impl TreeView {
     pub fn new(
-        theme: &Theme,
         style: Style,
         scroll: ScrollController,
         controller: TreeController,
         nodes: &[TreeNode],
     ) -> Self {
+        let theme = use_theme();
         let selected = controller.selected();
         let mut rows = Vec::new();
         flatten(nodes, 0, &controller, selected, &mut rows);
         Self {
-            theme: *theme,
+            theme,
             style,
             scroll,
             controller,
@@ -288,7 +288,8 @@ pub struct ListView {
 }
 
 impl ListView {
-    pub fn new(theme: &Theme, style: Style, scroll: ScrollController) -> Self {
+    pub fn new(style: Style, scroll: ScrollController) -> Self {
+        let theme = use_theme();
         let inner = RawListView::new(style, scroll)
             .background(theme.surface_elevated)
             .corner_radius(theme.input_radius)
@@ -331,12 +332,8 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(
-        theme: &Theme,
-        style: Style,
-        scroll: ScrollController,
-        columns: Vec<TableColumn>,
-    ) -> Self {
+    pub fn new(style: Style, scroll: ScrollController, columns: Vec<TableColumn>) -> Self {
+        let theme = use_theme();
         let selected_tint = Color::rgba(theme.accent.r, theme.accent.g, theme.accent.b, 60);
         let inner = RawTable::new(style, scroll, columns)
             .header_background(theme.surface_elevated)

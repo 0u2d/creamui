@@ -5,7 +5,7 @@ use creamui_core::layout::{AlignItems, Style};
 use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use std::rc::Rc;
 
 #[derive(Clone, Copy, Debug)]
@@ -22,6 +22,14 @@ pub enum Symbol {
     Folder,
     Grid,
     Sliders,
+    /// A paper-plane / "send message" arrow.
+    Send,
+    /// A paperclip, used for attaching a file.
+    Attachment,
+    /// A generic picture placeholder (frame + horizon + sun).
+    Image,
+    /// An "×" dismiss/remove glyph.
+    Close,
 }
 
 /// A small, consistent line icon. Paths use a 24-unit optical grid.
@@ -123,6 +131,37 @@ impl Icon {
                     .collect();
                 line(&points);
             }
+            Symbol::Send => line(&[(21., 12.), (3., 4.), (11., 12.), (3., 20.), (21., 12.)]),
+            Symbol::Attachment => {
+                let points: Vec<_> = (0..=16)
+                    .map(|i| {
+                        let a = std::f32::consts::PI * 0.9
+                            + std::f32::consts::PI * 1.2 * i as f32 / 16.;
+                        (14. + 4.5 * a.cos(), 9. + 4.5 * a.sin())
+                    })
+                    .collect();
+                line(&points);
+                line(&[
+                    (points.last().unwrap().0, points.last().unwrap().1),
+                    (9., 19.),
+                ]);
+                line(&[(points[0].0, points[0].1), (13., 19.)]);
+            }
+            Symbol::Close => {
+                line(&[(6., 6.), (18., 18.)]);
+                line(&[(18., 6.), (6., 18.)]);
+            }
+            Symbol::Image => {
+                line(&[(3., 4.), (21., 4.), (21., 20.), (3., 20.), (3., 4.)]);
+                let sun: Vec<_> = (0..=12)
+                    .map(|i| {
+                        let a = i as f32 / 12. * std::f32::consts::TAU;
+                        (8. + 2. * a.cos(), 9. + 2. * a.sin())
+                    })
+                    .collect();
+                line(&sun);
+                line(&[(3., 16.), (9., 11.), (14., 15.), (17., 12.), (21., 17.)]);
+            }
             Symbol::Sun | Symbol::Appearance => {
                 let points: Vec<_> = (0..=32)
                     .map(|i| {
@@ -170,9 +209,10 @@ pub struct Surface {
     children: Vec<BoxedWidget>,
 }
 impl Surface {
-    pub fn new(theme: &Theme, role: SurfaceRole, style: Style) -> Self {
+    pub fn new(role: SurfaceRole, style: Style) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             role,
             style,
             children: vec![],
@@ -235,14 +275,14 @@ pub struct NavigationItem {
 }
 impl NavigationItem {
     pub fn new(
-        theme: &Theme,
         symbol: Symbol,
         label: impl Into<String>,
         active: bool,
         click: impl Fn() + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             symbol,
             label: label.into(),
             active,
@@ -322,6 +362,7 @@ impl Widget for NavigationItem {
             t.typography.body,
             TextAlign::Start,
             self.active,
+            false,
         );
     }
     fn on_click(&self) -> Option<Rc<dyn Fn()>> {
@@ -349,12 +390,8 @@ pub struct Choice {
     inner: crate::RawButton,
 }
 impl Choice {
-    pub fn new(
-        theme: &Theme,
-        label: impl Into<String>,
-        selected: bool,
-        click: impl Fn() + 'static,
-    ) -> Self {
+    pub fn new(label: impl Into<String>, selected: bool, click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         let style = padding(
             Style {
                 min_size: crate::layout::fixed(72., 30.),

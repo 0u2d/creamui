@@ -16,6 +16,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install Linux system dependencies
+        run: sudo apt-get update && sudo apt-get install --no-install-recommends -y libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt

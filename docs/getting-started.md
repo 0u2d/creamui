@@ -27,9 +27,9 @@ PNG is enabled by default. JPEG and WebP stay opt-in to keep application builds 
 run(options, Theme::default().surface, |_| {}, move |viewport| {
     let theme = Theme::default();
     Box::new(jsx! {
-        <View theme={&theme} style={my_layout(viewport)}>
-            <Text theme={&theme}>"Welcome"</Text>
-        </View>
+        <Block style={my_layout(viewport)}>
+            <Text>"Welcome"</Text>
+        </Block>
     })
 });
 ```
@@ -48,14 +48,55 @@ jsx! {
 
 ## Choose a layout
 
-`creamui::widgets::layout` provides compact builders for the common cases:
+`creamui::widgets::layout` has a semantic flex API for layout containers:
 
-- `row(gap)` and `column(gap)` for flex layouts.
-- `grid(columns, gap)` for equal-width grid tracks.
-- `fixed(width, height)` for explicit sizes.
-- `padding`, `margin`, `fill`, and `centered` for common adjustments.
+```rust
+use creamui::widgets::layout::{Align, Flex, Justify, Wrap};
 
-For advanced layouts, use the re-exported Taffy types through `creamui::core::layout`.
+let toolbar = Flex::row()
+    .gap(12.0)
+    .align(Align::Center)
+    .justify(Justify::Between);
+
+let cards = Flex::row()
+    .gap_x(16.0)
+    .gap_y(12.0)
+    .wrap(Wrap::Wrap);
+```
+
+For two-dimensional layout, use `Grid` and position only the items that need
+an explicit cell or span:
+
+```rust
+use creamui::widgets::layout::{Grid, GridItem, Track};
+
+let dashboard = Grid::new()
+    .template_columns([Track::px(240.0), Track::fr(1.0), Track::fr(1.0)])
+    .gap(16.0)
+    .child(Box::new(GridItem::new().at(1, 1).column_span(2)));
+```
+
+The same container is available in JSX when the `jsx` feature is enabled:
+
+```rust
+use creamui::core::layout::FlexDirection;
+
+jsx! {
+    <Flex direction={FlexDirection::Column} gap={12.0}
+        align={Align::Center} justify={Justify::Center}>
+        <Text>"Centered content"</Text>
+    </Flex>
+}
+```
+
+`Flex::row()` and `Flex::column()` are unstyled `div`-like containers. They
+support `gap`, axis alignment, `justify`, wrapping, padding, fixed/fill sizes,
+and item behavior (`grow`, `shrink`, `basis`, `align_self`). For the same
+chainable properties on any `Style`, import `StyleExt` and start with
+`Style::default().flex_row()`, `.flex_column()`, or `.grid()`.
+
+For advanced layout properties, use the re-exported Taffy types through
+`creamui::core::layout`.
 
 ## Next steps
 

@@ -1,28 +1,18 @@
 //! Text measurement backing [`crate::raw::RawText`]'s `taffy` measure
 //! function (see `creamui_core::Widget::measure`).
 //!
-//! This embeds the exact same bundled font file as `creamui-render`'s
-//! renderer (see its `font` module) purely to measure glyph layout, without
-//! rasterizing anything — the actual rendering still happens in the
-//! backend. Since both crates embed identical bytes and run the same
-//! `fontdue` version, a size computed here matches what the renderer will
-//! actually lay out at paint time.
+//! Resolves faces through `creamui-fonts`'s registry — the same one
+//! `creamui-render`'s renderer resolves at paint time — purely to measure
+//! glyph layout, without rasterizing anything.
 
+use creamui_fonts::{FontWeight, DEFAULT_FAMILY};
 use fontdue::layout::TextStyle;
 use fontdue::layout::{CoordinateSystem, HorizontalAlign, Layout, LayoutSettings};
 use fontdue::Font;
-use std::sync::OnceLock;
+use std::rc::Rc;
 
-/// CreamUI's bundled default font (DejaVu Sans) — identical bytes to
-/// `creamui-render`'s copy; see `assets/fonts/DejaVuSans-LICENSE.txt`.
-const FONT_BYTES: &[u8] = include_bytes!("../assets/DejaVuSans.ttf");
-
-fn font() -> &'static Font {
-    static FONT: OnceLock<Font> = OnceLock::new();
-    FONT.get_or_init(|| {
-        Font::from_bytes(FONT_BYTES, fontdue::FontSettings::default())
-            .expect("bundled font bytes are a valid, fixed asset checked in at build time")
-    })
+fn font(family: Option<&str>) -> Rc<Font> {
+    creamui_fonts::resolve(family.unwrap_or(DEFAULT_FAMILY), FontWeight::Regular)
 }
 
 /// A width large enough that single-line text never wraps against it, but
@@ -45,32 +35,43 @@ pub fn measure(text: &str, font_size: f32, max_width: f32) -> (f32, f32) {
 }
 
 pub fn measure_weight(text: &str, font_size: f32, max_width: f32, bold: bool) -> (f32, f32) {
-    static BOLD: OnceLock<Font> = OnceLock::new();
-    let face = if bold {
-        BOLD.get_or_init(|| {
-            Font::from_bytes(
-                include_bytes!("../assets/DejaVuSans-Bold.ttf") as &[u8],
-                fontdue::FontSettings::default(),
-            )
-            .expect("bundled bold font")
-        })
+    measure_family(text, font_size, max_width, None, bold)
+}
+
+/// Like [`measure_weight`], resolving `family` (a CSS-style stack) against
+/// the font registry instead of the bundled default. `None` behaves exactly
+/// like [`measure_weight`].
+pub fn measure_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    family: Option<&str>,
+    bold: bool,
+) -> (f32, f32) {
+    let weight = if bold {
+        FontWeight::Bold
     } else {
-        font()
+        FontWeight::Regular
     };
+    let face = creamui_fonts::resolve(family.unwrap_or(DEFAULT_FAMILY), weight);
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[face], &TextStyle::new(text, font_size, 0));
+    layout.append(&[face.as_ref()], &TextStyle::new(text, font_size, 0));
 
     let width = layout
         .lines()
         .and_then(|lines| lines.first())
         .map(|line| (max_width - line.padding).max(0.0))
         .unwrap_or(0.0);
-    let height = font_size * 1.4;
+    // fontdue's own wrapped height, not a single-line guess: at a narrow
+    // `max_width` this text may wrap onto several lines, and reporting only
+    // one line's height here starves the box of the room the extra lines
+    // actually need, overlapping whatever comes after it.
+    let height = layout.height().max(font_size * 1.4);
     (width.max(1.0), height)
 }
 
@@ -83,13 +84,20 @@ pub fn unbounded_width() -> f32 {
 /// single source line. Unlike repeatedly measuring every prefix, this builds
 /// one font layout, which keeps pointer selection responsive on long lines.
 pub fn byte_offset_at_x(text: &str, font_size: f32, x: f32) -> usize {
+    byte_offset_at_x_family(text, font_size, x, None)
+}
+
+pub fn byte_offset_at_x_family(text: &str, font_size: f32, x: f32, family: Option<&str>) -> usize {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(UNBOUNDED_WIDTH),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    layout.append(
+        &[font(family).as_ref()],
+        &TextStyle::new(text, font_size, 0),
+    );
     let mut offset = 0;
     for glyph in layout.glyphs() {
         if x < glyph.x + glyph.width as f32 / 2.0 {
@@ -119,14 +127,20 @@ pub struct LaidGlyph {
 /// Lays `text` out at `font_size`, wrapping at `max_width` and respecting
 /// embedded `\n`s exactly as the renderer will (same font, same fontdue
 /// settings), returning every glyph's position.
-pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
+pub fn layout_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    family: Option<&str>,
+) -> Vec<LaidGlyph> {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    let face = font(family);
+    layout.append(&[face.as_ref()], &TextStyle::new(text, font_size, 0));
     let glyphs = layout.glyphs();
     let lines = layout.lines().cloned().unwrap_or_default();
     let mut result = Vec::with_capacity(glyphs.len());
@@ -141,7 +155,7 @@ pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
                 x: g.x,
                 y: row_top,
                 row_height: line.max_new_line_size,
-                advance: font()
+                advance: face
                     .metrics_indexed(g.key.glyph_index, g.key.px)
                     .advance_width,
                 ch: g.parent,
@@ -155,22 +169,30 @@ pub fn layout(text: &str, font_size: f32, max_width: f32) -> Vec<LaidGlyph> {
 /// pass this as a text block's height (instead of a taller container's
 /// full height) so the renderer's own vertical centering has nothing to
 /// center against and top-aligns instead, matching [`layout`]'s `y`s.
-pub fn content_height(text: &str, font_size: f32, max_width: f32) -> f32 {
+pub fn content_height_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    family: Option<&str>,
+) -> f32 {
     let mut layout = Layout::new(CoordinateSystem::PositiveYDown);
     layout.reset(&LayoutSettings {
         max_width: Some(max_width),
         horizontal_align: HorizontalAlign::Left,
         ..LayoutSettings::default()
     });
-    layout.append(&[font()], &TextStyle::new(text, font_size, 0));
+    layout.append(
+        &[font(family).as_ref()],
+        &TextStyle::new(text, font_size, 0),
+    );
     layout.height()
 }
 
 /// The row height a lone, one-line layout at `font_size` gets — a fallback
 /// for [`caret_xy`] and empty documents, where no glyph/row exists yet to
 /// read a real one from.
-pub fn row_height(font_size: f32) -> f32 {
-    content_height("A", font_size, UNBOUNDED_WIDTH)
+pub fn row_height_family(font_size: f32, family: Option<&str>) -> f32 {
+    content_height_family("A", font_size, UNBOUNDED_WIDTH, family)
 }
 
 /// Where a caret at `byte_offset` should be drawn within a `layout`ed
@@ -195,8 +217,15 @@ pub fn caret_xy(
 /// The closest UTF-8 insertion boundary to point `(x, y)` in a `layout`ed,
 /// possibly-wrapped block — the wrap-aware counterpart to
 /// [`byte_offset_at_x`], picking a row by nearest `y` first.
-pub fn byte_offset_at_point(text: &str, font_size: f32, max_width: f32, x: f32, y: f32) -> usize {
-    let glyphs = layout(text, font_size, max_width);
+pub fn byte_offset_at_point_family(
+    text: &str,
+    font_size: f32,
+    max_width: f32,
+    x: f32,
+    y: f32,
+    family: Option<&str>,
+) -> usize {
+    let glyphs = layout_family(text, font_size, max_width, family);
     let Some(row_y) = glyphs
         .iter()
         .map(|g| g.y)

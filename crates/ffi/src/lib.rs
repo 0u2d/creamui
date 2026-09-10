@@ -10,7 +10,7 @@
 //!
 //! All entry points are `extern "C"` and `#[no_mangle]`. Pointers returned
 //! by `_new` functions are owned by the caller and must eventually be
-//! passed to exactly one consuming call: [`creamui_view_add_child`] /
+//! passed to exactly one consuming call: [`creamui_block_add_child`] /
 //! [`creamui_scroll_view_add_child`] (which take ownership of the child) or
 //! [`creamui_run`] (which takes ownership of the root), or else freed with
 //! [`creamui_widget_free`].
@@ -273,6 +273,19 @@ fn theme_from_c(t: CTheme) -> Theme {
     Theme::default().with_colors(colors)
 }
 
+/// Runs `f` inside a context scope providing `theme`, so the themed widget
+/// constructors it calls (which read `use_theme()`, not an explicit
+/// parameter) resolve it correctly. C callers construct one widget per call
+/// rather than a whole tree inside `build_ui`, so each such FFI function
+/// opens its own short-lived scope instead of relying on one already being
+/// active.
+fn with_theme_scope<R>(theme: Theme, f: impl FnOnce() -> R) -> R {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(creamui_theme::ThemeProvider::new(theme));
+        f()
+    })
+}
+
 /// Returns the bundled default dark theme's tokens.
 #[no_mangle]
 pub extern "C" fn creamui_theme_dark() -> CTheme {
@@ -399,7 +412,7 @@ fn style_from_c(s: CStyle) -> Style {
 }
 
 enum WidgetKind {
-    View(RawView),
+    Block(RawView),
     Text(RawText),
     ThemedText(ThemedText),
     ThemedButton(ThemedButton),
@@ -413,7 +426,7 @@ enum WidgetKind {
 impl WidgetKind {
     fn into_boxed(self) -> BoxedWidget {
         match self {
-            WidgetKind::View(w) => Box::new(w),
+            WidgetKind::Block(w) => Box::new(w),
             WidgetKind::Text(w) => Box::new(w),
             WidgetKind::ThemedText(w) => Box::new(w),
             WidgetKind::ThemedButton(w) => Box::new(w),
@@ -443,85 +456,81 @@ pub extern "C" fn creamui_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char
 }
 
-/// Creates a plain container widget that stacks children top-to-bottom,
-/// centered, filling its parent. For full layout control (arbitrary flex
-/// direction, sizing, padding, etc.) use [`creamui_view_new_styled`]
-/// instead.
+/// Creates a semantic block container that fills its parent.
 #[no_mangle]
-pub extern "C" fn creamui_view_new() -> *mut CWidget {
+pub extern "C" fn creamui_block_new() -> *mut CWidget {
     let style = Style {
-        display: creamui_core::layout::Display::Flex,
-        flex_direction: FlexDirection::Column,
-        justify_content: Some(JustifyContent::Center),
-        align_items: Some(AlignItems::Center),
+        display: creamui_core::layout::Display::Block,
         size: LayoutSize {
             width: Dimension::Percent(1.0),
             height: Dimension::Percent(1.0),
         },
         ..Default::default()
     };
-    let widget = CWidget(WidgetKind::View(RawView::new(style)));
+    let widget = CWidget(WidgetKind::Block(RawView::new(style)));
     Box::into_raw(Box::new(widget))
 }
 
 /// Creates a plain container widget with a caller-supplied [`CStyle`],
 /// giving full control over flex direction, sizing, padding, margin, gap,
 /// and flex-grow/shrink/basis — the same style surface `creamui_widgets`'
-/// `View`/`RawView` expose natively.
+/// `Block` exposes natively. The container always uses block layout.
 #[no_mangle]
-pub extern "C" fn creamui_view_new_styled(style: CStyle) -> *mut CWidget {
-    let widget = CWidget(WidgetKind::View(RawView::new(style_from_c(style))));
+pub extern "C" fn creamui_block_new_styled(style: CStyle) -> *mut CWidget {
+    let mut style = style_from_c(style);
+    style.display = creamui_core::layout::Display::Block;
+    let widget = CWidget(WidgetKind::Block(RawView::new(style)));
     Box::into_raw(Box::new(widget))
 }
 
-/// Sets a view's background color. `view` must be a live pointer from
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] that has not yet been
+/// Sets a block's background color. `block` must be a live pointer from
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] that has not yet been
 /// consumed.
 ///
 /// # Safety
-/// `view` must be a valid, non-null pointer returned by
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] and not yet passed to
-/// [`creamui_view_add_child`], [`creamui_run`], or [`creamui_widget_free`].
+/// `block` must be a valid, non-null pointer returned by
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] and not yet passed to
+/// [`creamui_block_add_child`], [`creamui_run`], or [`creamui_widget_free`].
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_set_background(view: *mut CWidget, color: CColor) {
-    if view.is_null() {
+pub unsafe extern "C" fn creamui_block_set_background(block: *mut CWidget, color: CColor) {
+    if block.is_null() {
         return;
     }
-    if let WidgetKind::View(v) = &mut (*view).0 {
+    if let WidgetKind::Block(v) = &mut (*block).0 {
         v.background = Some(color_from_c(color));
     }
 }
 
-/// Sets a view's corner radius, in logical pixels.
+/// Sets a block's corner radius, in logical pixels.
 ///
 /// # Safety
-/// Same contract as [`creamui_view_set_background`].
+/// Same contract as [`creamui_block_set_background`].
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_set_corner_radius(view: *mut CWidget, radius: f32) {
-    if view.is_null() {
+pub unsafe extern "C" fn creamui_block_set_corner_radius(block: *mut CWidget, radius: f32) {
+    if block.is_null() {
         return;
     }
-    if let WidgetKind::View(v) = &mut (*view).0 {
+    if let WidgetKind::Block(v) = &mut (*block).0 {
         v.corner_radius = radius;
     }
 }
 
-/// Attaches `child` to `view`, taking ownership of `child` (it must not be
+/// Attaches `child` to `block`, taking ownership of `child` (it must not be
 /// used or freed again after this call). Works for both
-/// [`creamui_view_new`]/[`creamui_view_new_styled`] and
+/// [`creamui_block_new`]/[`creamui_block_new_styled`] and
 /// [`creamui_scroll_view_new`] parents.
 ///
 /// # Safety
-/// `view` and `child` must be valid, non-null, not-yet-consumed pointers
+/// `block` and `child` must be valid, non-null, not-yet-consumed pointers
 /// from this crate's `_new` functions, and must not alias each other.
 #[no_mangle]
-pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut CWidget) {
-    if view.is_null() || child.is_null() {
+pub unsafe extern "C" fn creamui_block_add_child(block: *mut CWidget, child: *mut CWidget) {
+    if block.is_null() || child.is_null() {
         return;
     }
     let child = *Box::from_raw(child);
-    match &mut (*view).0 {
-        WidgetKind::View(v) => v.children.push(child.0.into_boxed()),
+    match &mut (*block).0 {
+        WidgetKind::Block(v) => v.children.push(child.0.into_boxed()),
         WidgetKind::ThemedScrollView(v) => push_scroll_view_child(v, child.0.into_boxed()),
         _ => {}
     }
@@ -529,13 +538,13 @@ pub unsafe extern "C" fn creamui_view_add_child(view: *mut CWidget, child: *mut 
 
 /// `ThemedScrollView`'s children live behind a consuming builder method
 /// (`.child()`), not a public field — this takes ownership out of the `&mut`
-/// reference via a throwaway placeholder so both `creamui_view_add_child`
+/// reference via a throwaway placeholder so both `creamui_block_add_child`
 /// and [`creamui_scroll_view_add_child`] can share this one code path.
 fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
-    let taken = std::mem::replace(
-        view,
-        ThemedScrollView::new(&Theme::dark(), Style::default(), 0.0, |_| {}),
-    );
+    let placeholder = with_theme_scope(Theme::dark(), || {
+        ThemedScrollView::new(Style::default(), 0.0, |_| {})
+    });
+    let taken = std::mem::replace(view, placeholder);
     *view = taken.child(child);
 }
 
@@ -543,7 +552,7 @@ fn push_scroll_view_child(view: &mut ThemedScrollView, child: BoxedWidget) {
 /// taking ownership of `child`.
 ///
 /// # Safety
-/// Same contract as [`creamui_view_add_child`]; `view` must specifically be
+/// Same contract as [`creamui_block_add_child`]; `view` must specifically be
 /// a not-yet-consumed pointer from [`creamui_scroll_view_new`].
 #[no_mangle]
 pub unsafe extern "C" fn creamui_scroll_view_add_child(view: *mut CWidget, child: *mut CWidget) {
@@ -588,7 +597,9 @@ pub unsafe extern "C" fn creamui_themed_text_new(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(ThemedText::new(&theme, text)));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::new(text)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -604,7 +615,9 @@ pub unsafe extern "C" fn creamui_themed_text_secondary_new(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(ThemedText::secondary(&theme, text)));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::secondary(text)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -621,9 +634,9 @@ pub unsafe extern "C" fn creamui_themed_text_new_sized(
 ) -> *mut CWidget {
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
-    let widget = CWidget(WidgetKind::ThemedText(
-        ThemedText::new(&theme, text).font_size(font_size),
-    ));
+    let widget = CWidget(WidgetKind::ThemedText(with_theme_scope(theme, || {
+        ThemedText::new(text).font_size(font_size)
+    })));
     Box::into_raw(Box::new(widget))
 }
 
@@ -649,8 +662,10 @@ pub unsafe extern "C" fn creamui_button_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let button = ThemedButton::new(&theme, text, move || {
-        on_click(userdata.0);
+    let button = with_theme_scope(theme, || {
+        ThemedButton::new(text, move || {
+            on_click(userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedButton(button))))
 }
@@ -675,8 +690,10 @@ pub unsafe extern "C" fn creamui_checkbox_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let checkbox = ThemedCheckbox::new(&theme, checked != 0, move || {
-        on_click(userdata.0);
+    let checkbox = with_theme_scope(theme, || {
+        ThemedCheckbox::new(checked != 0, move || {
+            on_click(userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedCheckbox(checkbox))))
 }
@@ -704,19 +721,16 @@ pub unsafe extern "C" fn creamui_text_input_new(
 
     let value = cstr_to_string(value);
     let theme_owned: Theme = theme_from_c(theme);
-    let inner = ThemedTextInput::with_style(
-        &theme_owned,
-        style_from_c(style),
-        value,
-        move |next: String| {
+    let inner = with_theme_scope(theme_owned, || {
+        ThemedTextInput::with_style(style_from_c(style), value, move |next: String| {
             // CString::new fails only on interior NULs, which a text input's
             // keystroke-built value can never contain (Key::Char never yields
             // '\0'), so this is infallible in practice.
             if let Ok(c_next) = CString::new(next) {
                 on_change(c_next.as_ptr(), userdata.0);
             }
-        },
-    );
+        })
+    });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextInput(inner))))
 }
 
@@ -739,8 +753,10 @@ pub unsafe extern "C" fn creamui_text_input_set_placeholder(
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextInput(w) = &mut (*input).0 {
-        let taken = std::mem::replace(w, ThemedTextInput::new(&theme, String::new(), |_| {}));
-        *w = taken.placeholder(&theme, text);
+        with_theme_scope(theme, || {
+            let taken = std::mem::replace(w, ThemedTextInput::new(String::new(), |_| {}));
+            *w = taken.placeholder(text);
+        });
     }
 }
 
@@ -759,16 +775,13 @@ pub unsafe extern "C" fn creamui_text_area_new(
     let userdata = SendPtr(userdata);
     let value = cstr_to_string(value);
     let theme_owned: Theme = theme_from_c(theme);
-    let area = ThemedTextArea::with_style(
-        &theme_owned,
-        style_from_c(style),
-        value,
-        move |next: String| {
+    let area = with_theme_scope(theme_owned, || {
+        ThemedTextArea::with_style(style_from_c(style), value, move |next: String| {
             if let Ok(c_next) = CString::new(next) {
                 on_change(c_next.as_ptr(), userdata.0);
             }
-        },
-    );
+        })
+    });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedTextArea(area))))
 }
 
@@ -786,8 +799,10 @@ pub unsafe extern "C" fn creamui_text_area_set_placeholder(
     let text = cstr_to_string(text);
     let theme: Theme = theme_from_c(theme);
     if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
-        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
-        *w = taken.placeholder(&theme, text);
+        with_theme_scope(theme, || {
+            let taken = std::mem::replace(w, ThemedTextArea::new(String::new(), |_| {}));
+            *w = taken.placeholder(text);
+        });
     }
 }
 
@@ -808,8 +823,9 @@ pub unsafe extern "C" fn creamui_text_area_set_selection_colors(
         return;
     }
     if let WidgetKind::ThemedTextArea(w) = &mut (*input).0 {
-        let theme = Theme::dark();
-        let taken = std::mem::replace(w, ThemedTextArea::new(&theme, String::new(), |_| {}));
+        let placeholder =
+            with_theme_scope(Theme::dark(), || ThemedTextArea::new(String::new(), |_| {}));
+        let taken = std::mem::replace(w, placeholder);
         *w = taken
             .selection_background(color_from_c(background))
             .selection_text_color(color_from_c(text));
@@ -836,8 +852,10 @@ pub unsafe extern "C" fn creamui_slider_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let slider = ThemedSlider::with_style(&theme, style_from_c(style), value, move |next| {
-        on_change(next, userdata.0);
+    let slider = with_theme_scope(theme, || {
+        ThemedSlider::with_style(style_from_c(style), value, move |next| {
+            on_change(next, userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedSlider(slider))))
 }
@@ -864,14 +882,16 @@ pub unsafe extern "C" fn creamui_scroll_view_new(
     let userdata = SendPtr(userdata);
 
     let theme: Theme = theme_from_c(theme);
-    let scroll_view = ThemedScrollView::new(&theme, style_from_c(style), scroll_y, move |delta| {
-        on_scroll(delta, userdata.0);
+    let scroll_view = with_theme_scope(theme, || {
+        ThemedScrollView::new(style_from_c(style), scroll_y, move |delta| {
+            on_scroll(delta, userdata.0);
+        })
     });
     Box::into_raw(Box::new(CWidget(WidgetKind::ThemedScrollView(scroll_view))))
 }
 
 /// Frees a widget subtree that was never attached via
-/// [`creamui_view_add_child`], [`creamui_scroll_view_add_child`], or
+/// [`creamui_block_add_child`], [`creamui_scroll_view_add_child`], or
 /// [`creamui_run`].
 ///
 /// # Safety
@@ -964,16 +984,17 @@ fn window_options_from_c(options: CWindowOptions) -> creamui_render::WindowOptio
         } else {
             creamui_render::RenderBackend::Gpu
         },
+        theme: Theme::default(),
     }
 }
 
-/// Wraps a nullable [`CWindowReadyFn`] into the `Fn(WindowHandle)` closure
+/// Wraps a nullable [`CWindowReadyFn`] into the `FnOnce(WindowHandle)` closure
 /// `creamui_render::run`/`AppBuilder::window` expect, shared by
 /// [`creamui_run`] and [`creamui_app_builder_add_window`].
 fn window_ready_callback(
     on_window_ready: Option<CWindowReadyFn>,
     userdata: *mut c_void,
-) -> impl Fn(WindowHandle) {
+) -> impl FnOnce(WindowHandle) {
     struct SendPtr(*mut c_void);
     unsafe impl Send for SendPtr {}
     let ready_userdata = SendPtr(userdata);

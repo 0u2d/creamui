@@ -1,8 +1,7 @@
 //! Themed widgets: opinionated, styled wrappers around the headless widgets
-//! in [`crate::raw`]. Each one reads its appearance from a
-//! [`creamui_theme::Theme`] passed in at construction time — either a fixed
-//! value, or `creamui_theme::ThemeProvider::get()`'s result each render, to
-//! support runtime theme switching.
+//! in [`crate::raw`]. Each one reads its appearance via `use_theme()` at
+//! construction time — see `creamui_reactive::with_context_scope` — so it
+//! always reflects the window's current theme, including runtime switches.
 //!
 //! These are meant to be copied and adapted: a themed `Button` is nothing
 //! more than a [`crate::raw::RawButton`] with theme-derived style baked in,
@@ -18,7 +17,7 @@ use creamui_core::layout::{
     AlignItems, Dimension, JustifyContent, LengthPercentage, Rect as LayoutRect, Style,
 };
 use creamui_core::{BoxedWidget, CursorIcon, KeyInput, Painter, Point, Rect, TextAlign, Widget};
-use creamui_theme::{Color, SelectionStyle, Theme};
+use creamui_theme::{use_theme, Color, SelectionStyle, Theme};
 use std::rc::Rc;
 
 fn centered_box_style(padding: f32) -> Style {
@@ -35,6 +34,7 @@ fn centered_box_style(padding: f32) -> Style {
     }
 }
 
+mod avatar;
 mod button;
 mod controls;
 mod dataview;
@@ -46,7 +46,9 @@ mod scroll;
 mod selection;
 mod surfaces;
 mod text;
+mod typography;
 
+pub use avatar::*;
 pub use button::*;
 pub use controls::*;
 pub use dataview::*;
@@ -58,3 +60,4 @@ pub use scroll::*;
 pub use selection::*;
 pub use surfaces::*;
 pub use text::*;
+pub use typography::*;

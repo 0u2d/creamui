@@ -1,6 +1,6 @@
 use super::*;
-/// A themed surface container ("card") with background and rounded corners.
-pub struct View {
+/// A themed surface with the standard card background and rounded corners.
+pub struct Card {
     inner: RawView,
 }
 
@@ -20,7 +20,8 @@ pub struct MenuColors {
 }
 
 impl MenuColors {
-    pub fn dark(theme: &Theme) -> Self {
+    pub fn dark() -> Self {
+        let theme = use_theme();
         Self {
             bar: theme.surface,
             popup: theme.surface_hover,
@@ -149,9 +150,10 @@ impl Widget for MenuItem {
     }
 }
 
-impl View {
-    pub fn new(theme: &Theme, style: Style) -> Self {
-        View {
+impl Card {
+    pub fn new(style: Style) -> Self {
+        let theme = use_theme();
+        Card {
             inner: RawView::new(style)
                 .background(theme.surface_elevated)
                 .corner_radius(theme.card_radius),
@@ -169,7 +171,7 @@ impl View {
     }
 }
 
-impl Widget for View {
+impl Widget for Card {
     fn style(&self) -> Style {
         self.inner.style()
     }

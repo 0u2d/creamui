@@ -83,23 +83,38 @@ impl Widget for RawView {
 /// Unstyled text with no color or size opinion beyond what's passed in.
 pub struct RawText {
     pub bold: bool,
+    pub italic: bool,
+    pub underline: bool,
+    pub strikethrough: bool,
     pub text: String,
     pub color: Color,
     pub font_size: f32,
     pub align: TextAlign,
     pub style: Style,
+    /// CSS-style family stack (e.g. `"Inter, sans-serif"`) resolved against
+    /// the font registry. `None` uses the bundled default.
+    pub family: Option<String>,
 }
 
 impl RawText {
     pub fn new(text: impl Into<String>, color: Color, font_size: f32) -> Self {
         RawText {
             bold: false,
+            italic: false,
+            underline: false,
+            strikethrough: false,
             text: text.into(),
             color,
             font_size,
             align: TextAlign::Center,
             style: Style::default(),
+            family: None,
         }
+    }
+
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.family = Some(family.into());
+        self
     }
 
     pub fn color(mut self, color: Color) -> Self {
@@ -109,6 +124,23 @@ impl RawText {
 
     pub fn bold(mut self, bold: bool) -> Self {
         self.bold = bold;
+        self
+    }
+
+    /// Synthesized by shearing the glyph raster (no italic face is
+    /// bundled), so it combines freely with [`RawText::bold`].
+    pub fn italic(mut self, italic: bool) -> Self {
+        self.italic = italic;
+        self
+    }
+
+    pub fn underline(mut self, underline: bool) -> Self {
+        self.underline = underline;
+        self
+    }
+
+    pub fn strikethrough(mut self, strikethrough: bool) -> Self {
+        self.strikethrough = strikethrough;
         self
     }
 
@@ -134,13 +166,27 @@ impl Widget for RawText {
     }
 
     fn paint(&self, painter: &mut dyn Painter, rect: Rect) {
-        painter.fill_text_weight(
+        painter.fill_text_font(
             rect,
             &self.text,
             self.color,
             self.font_size,
             self.align,
+            self.family.as_deref(),
             self.bold,
+            self.italic,
+        );
+        super::draw_text_decorations(
+            painter,
+            rect,
+            &self.text,
+            self.font_size,
+            self.family.as_deref(),
+            self.bold,
+            self.align,
+            self.color,
+            self.underline,
+            self.strikethrough,
         );
     }
 
@@ -148,14 +194,20 @@ impl Widget for RawText {
         let text = self.text.clone();
         let font_size = self.font_size;
         let bold = self.bold;
+        let family = self.family.clone();
         Some(Box::new(move |known_dimensions, available_space| {
             let max_width = match (known_dimensions.width, available_space.width) {
                 (Some(w), _) => w,
                 (None, creamui_core::layout::AvailableSpace::Definite(w)) => w,
                 (None, _) => crate::text_metrics::unbounded_width(),
             };
-            let (natural_width, natural_height) =
-                crate::text_metrics::measure_weight(&text, font_size, max_width, bold);
+            let (natural_width, natural_height) = crate::text_metrics::measure_family(
+                &text,
+                font_size,
+                max_width,
+                family.as_deref(),
+                bold,
+            );
             creamui_core::layout::Size {
                 width: known_dimensions.width.unwrap_or(natural_width),
                 height: known_dimensions.height.unwrap_or(natural_height),

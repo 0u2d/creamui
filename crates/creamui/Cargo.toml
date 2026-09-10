@@ -20,17 +20,20 @@ jsx = ["dep:creamui-jsx", "dep:creamui-macros"]
 abi = ["dep:creamui-abi"]
 dynamic = ["abi", "jsx", "dep:creamui-dynamic"]
 ffi = ["abi", "dep:creamui_ffi"]
-full = ["image-jpeg", "image-webp", "jsx", "dynamic", "ffi"]
+devtools = ["dep:creamui-devtools"]
+full = ["image-jpeg", "image-webp", "jsx", "dynamic", "ffi", "devtools"]
 
 [dependencies]
 creamui-core = { workspace = true }
 creamui-reactive = { workspace = true }
 creamui-render = { workspace = true }
+creamui-devtools = { workspace = true, optional = true }
 creamui-theme = { workspace = true }
+creamui-fonts = { workspace = true }
 creamui-widgets = { workspace = true }
 creamui-image = { workspace = true, optional = true }
 creamui-jsx = { workspace = true, optional = true }
 creamui-macros = { workspace = true, optional = true }
 creamui-abi = { workspace = true, optional = true }
 creamui-dynamic = { workspace = true, optional = true }
-creamui_ffi = { package = "creamui-ffi", version = "0.1.0", path = "../ffi", optional = true }
+creamui_ffi = { package = "creamui-ffi", version = "0.1.1", path = "../ffi", optional = true }

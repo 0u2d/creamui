@@ -20,6 +20,7 @@ use creamui_reactive::Signal;
 use std::cell::Cell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::time::Instant;
 
 type ChangeGuard = dyn Fn(&str, &str) -> Option<String>;
 
@@ -370,6 +371,109 @@ impl ScrollController {
 impl Default for ScrollController {
     fn default() -> Self {
         Self::new(0.0)
+    }
+}
+
+/// A [`ScrollController`] that eases toward the bottom while pinned, and
+/// unpins on manual scroll away from it. Call `tick()` once per rebuild.
+#[derive(Clone)]
+pub struct AutoScrollController {
+    scroll: ScrollController,
+    pinned: Rc<Cell<bool>>,
+    last_written: Rc<Cell<f32>>,
+    last_tick: Rc<Cell<Option<Instant>>>,
+    pin_threshold: f32,
+    ease_rate: f32,
+}
+
+impl AutoScrollController {
+    pub fn new() -> Self {
+        Self {
+            scroll: ScrollController::default(),
+            pinned: Rc::new(Cell::new(true)),
+            last_written: Rc::new(Cell::new(0.0)),
+            last_tick: Rc::new(Cell::new(None)),
+            pin_threshold: 24.0,
+            ease_rate: 12.0,
+        }
+    }
+
+    /// How close to the true bottom (in pixels) counts as "at the bottom"
+    /// for re-pinning after a manual scroll. Default `24.0`.
+    pub fn pin_threshold(mut self, px: f32) -> Self {
+        self.pin_threshold = px.max(0.0);
+        self
+    }
+
+    /// Higher tracks the target offset faster; lower feels slower/softer.
+    /// Default `12.0`.
+    pub fn ease_rate(mut self, rate: f32) -> Self {
+        self.ease_rate = rate.max(0.0);
+        self
+    }
+
+    /// The underlying controller to hand to `ScrollView::controlled`.
+    pub fn scroll(&self) -> ScrollController {
+        self.scroll.clone()
+    }
+
+    pub fn is_pinned(&self) -> bool {
+        self.pinned.get()
+    }
+
+    /// Advances the follow animation. Call once per rebuild.
+    pub fn tick(&self) {
+        let current = self.scroll.offset();
+        let max = self.scroll.max_offset();
+        if !max.is_finite() {
+            return;
+        }
+        if (current - self.last_written.get()).abs() > 0.5 {
+            self.pinned.set(current >= max - self.pin_threshold);
+        }
+
+        let now = Instant::now();
+        let dt = match self.last_tick.replace(Some(now)) {
+            Some(previous) => (now - previous).as_secs_f32(),
+            None => 0.0,
+        };
+
+        if self.pinned.get() {
+            let next = if (max - current).abs() < 0.5 {
+                max
+            } else {
+                current + (max - current) * (1.0 - (-dt * self.ease_rate).exp())
+            };
+            self.scroll.set(next);
+            self.last_written.set(next);
+        } else {
+            self.last_written.set(current);
+        }
+    }
+
+    /// Pins and jumps to the bottom immediately, no ease.
+    pub fn snap_to_bottom(&self) {
+        self.pinned.set(true);
+        let max = self.scroll.max_offset();
+        if max.is_finite() {
+            self.scroll.set(max);
+            self.last_written.set(max);
+        }
+        self.last_tick.set(None);
+    }
+
+    /// Jumps to 0 and re-pins, for content whose `max_offset` isn't measured yet.
+    pub fn reset(&self) {
+        self.pinned.set(true);
+        self.scroll.set(0.0);
+        self.last_written.set(0.0);
+        self.last_tick.set(None);
+    }
+}
+
+impl Default for AutoScrollController {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

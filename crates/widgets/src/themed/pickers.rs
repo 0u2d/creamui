@@ -25,14 +25,11 @@ fn popup_style(width: f32, top: f32, gap: f32, padding_amount: f32) -> Style {
     )
 }
 
-fn popup_button(
-    theme: &Theme,
-    label: impl Into<String>,
-    on_click: impl Fn() + 'static,
-) -> RawButton {
+fn popup_button(label: impl Into<String>, width: f32, on_click: impl Fn() + 'static) -> RawButton {
+    let theme = use_theme();
     RawButton::new(
         Style {
-            size: fixed(32., 28.),
+            size: fixed(width, 28.),
             align_items: Some(AlignItems::Center),
             justify_content: Some(JustifyContent::Center),
             flex_shrink: 0.,
@@ -43,7 +40,9 @@ fn popup_button(
     .background(theme.surface_hover)
     .corner_radius(theme.menu_item_radius)
     .border(theme.border, 1.)
-    .child(Box::new(RawText::new(label, theme.text_primary, 12.)))
+    .child(Box::new(
+        RawText::new(label, theme.text_primary, 12.).align(TextAlign::Center),
+    ))
 }
 
 fn month_shift(value: DateTime, amount: i32) -> DateTime {
@@ -106,16 +105,13 @@ impl DateTimePicker {
             ..Default::default()
         }
     }
-    pub fn controlled(theme: &Theme, controller: &crate::DateTimeController) -> Self {
-        Self::controlled_with_style(theme, Self::default_style(), controller)
+    pub fn controlled(controller: &crate::DateTimeController) -> Self {
+        Self::controlled_with_style(Self::default_style(), controller)
     }
-    pub fn controlled_with_style(
-        theme: &Theme,
-        style: Style,
-        controller: &crate::DateTimeController,
-    ) -> Self {
+    pub fn controlled_with_style(style: Style, controller: &crate::DateTimeController) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             controller: controller.clone(),
             style,
             show_date: true,
@@ -170,7 +166,7 @@ impl DateTimePicker {
             justify_content: Some(JustifyContent::SpaceBetween),
             ..row(self.theme.spacing_small)
         })
-        .child(Box::new(popup_button(&self.theme, "‹", move || {
+        .child(Box::new(popup_button("‹", 32., move || {
             previous.set(month_shift(previous.peek(), -1))
         })))
         .child(Box::new(
@@ -181,7 +177,7 @@ impl DateTimePicker {
             )
             .bold(true),
         ))
-        .child(Box::new(popup_button(&self.theme, "›", move || {
+        .child(Box::new(popup_button("›", 32., move || {
             next.set(month_shift(next.peek(), 1))
         })));
         let mut grid = RawView::new(column(3.));
@@ -269,7 +265,7 @@ impl DateTimePicker {
             align_items: Some(AlignItems::Center),
             ..row(self.theme.spacing_small)
         })
-        .child(Box::new(popup_button(&self.theme, "−", move || {
+        .child(Box::new(popup_button("−", 32., move || {
             hour_down.set(hour_down.peek().add_minutes(-60))
         })))
         .child(Box::new(
@@ -280,11 +276,11 @@ impl DateTimePicker {
                 },
             ),
         ))
-        .child(Box::new(popup_button(&self.theme, "+", move || {
+        .child(Box::new(popup_button("+", 32., move || {
             hour_up.set(hour_up.peek().add_minutes(60))
         })))
         .child(Box::new(RawText::new(":", self.theme.text_secondary, 18.)))
-        .child(Box::new(popup_button(&self.theme, "−", move || {
+        .child(Box::new(popup_button("−", 32., move || {
             minute_down.set(minute_down.peek().add_minutes(-step))
         })))
         .child(Box::new(
@@ -294,7 +290,7 @@ impl DateTimePicker {
                     ..Default::default()
                 }),
         ))
-        .child(Box::new(popup_button(&self.theme, "+", move || {
+        .child(Box::new(popup_button("+", 32., move || {
             minute_up.set(minute_up.peek().add_minutes(step))
         })));
         Box::new(
@@ -378,43 +374,43 @@ impl Widget for DateTimePicker {
         if !self.controller.is_open() || self.disabled {
             return Vec::new();
         }
-        let value = self.controller.value();
-        let mut content = RawView::new(column(self.theme.spacing_medium));
-        if self.show_date {
-            content = content.child(self.calendar(value));
-        }
-        if self.show_time {
-            content = content.child(self.time_controls(value));
-        }
-        let close = self.controller.clone();
-        let done = RawButton::new(
-            Style {
-                size: fixed(72., 28.),
-                align_self: Some(creamui_core::layout::AlignSelf::End),
-                ..Default::default()
-            },
-            move || close.set_open(false),
-        )
-        .background(self.theme.accent)
-        .corner_radius(self.theme.menu_item_radius)
-        .child(Box::new(RawText::new(
-            "Done",
-            self.theme.selection_text,
-            12.,
-        )));
-        content = content.child(Box::new(done));
-        vec![Box::new(
-            Popover::new(
-                &self.theme,
-                popup_style(
+        let theme = self.theme;
+        {
+            let value = self.controller.value();
+            let mut content = RawView::new(column(theme.spacing_medium));
+            if self.show_date {
+                content = content.child(self.calendar(value));
+            }
+            if self.show_time {
+                content = content.child(self.time_controls(value));
+            }
+            let close = self.controller.clone();
+            let done = RawButton::new(
+                Style {
+                    size: fixed(72., 28.),
+                    align_self: Some(creamui_core::layout::AlignSelf::End),
+                    align_items: Some(AlignItems::Center),
+                    justify_content: Some(JustifyContent::Center),
+                    ..Default::default()
+                },
+                move || close.set_open(false),
+            )
+            .background(theme.accent)
+            .corner_radius(theme.menu_item_radius)
+            .child(Box::new(
+                RawText::new("Done", theme.selection_text, 12.).align(TextAlign::Center),
+            ));
+            content = content.child(Box::new(done));
+            vec![Box::new(
+                Popover::new(popup_style(
                     self.popup_width,
                     44.,
-                    self.theme.spacing_medium,
-                    self.theme.spacing_medium,
-                ),
-            )
-            .child(Box::new(content)),
-        )]
+                    theme.spacing_medium,
+                    theme.spacing_medium,
+                ))
+                .child(Box::new(content)),
+            ) as BoxedWidget]
+        }
     }
     fn focusable(&self) -> bool {
         !self.disabled
@@ -452,18 +448,14 @@ pub struct DateInput {
     inner: DateTimePicker,
 }
 impl DateInput {
-    pub fn controlled(theme: &Theme, controller: &crate::DateTimeController) -> Self {
+    pub fn controlled(controller: &crate::DateTimeController) -> Self {
         Self {
-            inner: DateTimePicker::controlled(theme, controller).date_only(),
+            inner: DateTimePicker::controlled(controller).date_only(),
         }
     }
-    pub fn controlled_with_style(
-        theme: &Theme,
-        style: Style,
-        controller: &crate::DateTimeController,
-    ) -> Self {
+    pub fn controlled_with_style(style: Style, controller: &crate::DateTimeController) -> Self {
         Self {
-            inner: DateTimePicker::controlled_with_style(theme, style, controller).date_only(),
+            inner: DateTimePicker::controlled_with_style(style, controller).date_only(),
         }
     }
     pub fn minute_step(mut self, step: u8) -> Self {
@@ -511,18 +503,14 @@ pub struct TimeInput {
     inner: DateTimePicker,
 }
 impl TimeInput {
-    pub fn controlled(theme: &Theme, controller: &crate::DateTimeController) -> Self {
+    pub fn controlled(controller: &crate::DateTimeController) -> Self {
         Self {
-            inner: DateTimePicker::controlled(theme, controller).time_only(),
+            inner: DateTimePicker::controlled(controller).time_only(),
         }
     }
-    pub fn controlled_with_style(
-        theme: &Theme,
-        style: Style,
-        controller: &crate::DateTimeController,
-    ) -> Self {
+    pub fn controlled_with_style(style: Style, controller: &crate::DateTimeController) -> Self {
         Self {
-            inner: DateTimePicker::controlled_with_style(theme, style, controller).time_only(),
+            inner: DateTimePicker::controlled_with_style(style, controller).time_only(),
         }
     }
     pub fn minute_step(mut self, step: u8) -> Self {
@@ -585,22 +573,21 @@ impl ColorPicker {
         }
     }
     pub fn controlled(
-        theme: &Theme,
         value: Color,
         controller: &crate::ColorPickerController,
         on_change: impl Fn(Color) + 'static,
     ) -> Self {
-        Self::controlled_with_style(theme, Self::default_style(), value, controller, on_change)
+        Self::controlled_with_style(Self::default_style(), value, controller, on_change)
     }
     pub fn controlled_with_style(
-        theme: &Theme,
         style: Style,
         value: Color,
         controller: &crate::ColorPickerController,
         on_change: impl Fn(Color) + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             value,
             controller: controller.clone(),
             style,
@@ -688,66 +675,67 @@ impl Widget for ColorPicker {
         if !self.controller.is_open() || self.disabled {
             return Vec::new();
         }
+        let theme = self.theme;
+        let popup_width = self.popup_width;
         let change = self.on_change.clone();
         let close = self.controller.clone();
         let value = self.value;
-        let picker = RawColorPicker::new(
-            Style {
-                size: fixed(self.popup_width - self.theme.spacing_medium * 2., 188.),
-                ..Default::default()
-            },
-            value,
-            self.theme.border_strong,
-            self.theme.accent,
-            move |next| change(next),
-        )
-        .background(self.theme.surface_elevated)
-        .border(self.theme.border_strong, self.theme.input_border_width)
-        .corner_radius(self.theme.input_radius)
-        .focus_color(self.theme.accent);
-        let summary = RawView::new(Style {
-            align_items: Some(AlignItems::Center),
-            justify_content: Some(JustifyContent::SpaceBetween),
-            ..row(self.theme.spacing_small)
-        })
-        .child(Box::new(
-            RawView::new(Style {
-                size: fixed(28., 28.),
-                ..Default::default()
+        {
+            let picker = RawColorPicker::new(
+                Style {
+                    size: fixed(popup_width - theme.spacing_medium * 2., 188.),
+                    ..Default::default()
+                },
+                value,
+                theme.border_strong,
+                theme.accent,
+                move |next| change(next),
+            )
+            .background(theme.surface_elevated)
+            .border(theme.border_strong, theme.input_border_width)
+            .corner_radius(theme.input_radius)
+            .focus_color(theme.accent);
+            let summary = RawView::new(Style {
+                align_items: Some(AlignItems::Center),
+                justify_content: Some(JustifyContent::SpaceBetween),
+                ..row(theme.spacing_small)
             })
-            .background(value)
-            .corner_radius(8.),
-        ))
-        .child(Box::new(
-            RawText::new(
-                format!("#{:02X}{:02X}{:02X}", value.r, value.g, value.b),
-                self.theme.text_primary,
-                13.,
-            )
-            .layout_style(Style {
-                flex_grow: 1.,
-                ..Default::default()
-            }),
-        ))
-        .child(Box::new(popup_button(&self.theme, "Done", move || {
-            close.set_open(false)
-        })));
-        vec![Box::new(
-            Popover::new(
-                &self.theme,
-                popup_style(
-                    self.popup_width,
-                    44.,
-                    self.theme.spacing_medium,
-                    self.theme.spacing_medium,
-                ),
-            )
             .child(Box::new(
-                RawView::new(column(self.theme.spacing_medium))
-                    .child(Box::new(picker))
-                    .child(Box::new(summary)),
-            )),
-        )]
+                RawView::new(Style {
+                    size: fixed(28., 28.),
+                    ..Default::default()
+                })
+                .background(value)
+                .corner_radius(8.),
+            ))
+            .child(Box::new(
+                RawText::new(
+                    format!("#{:02X}{:02X}{:02X}", value.r, value.g, value.b),
+                    theme.text_primary,
+                    13.,
+                )
+                .layout_style(Style {
+                    flex_grow: 1.,
+                    ..Default::default()
+                }),
+            ))
+            .child(Box::new(popup_button("Done", 64., move || {
+                close.set_open(false)
+            })));
+            vec![Box::new(
+                Popover::new(popup_style(
+                    popup_width,
+                    44.,
+                    theme.spacing_medium,
+                    theme.spacing_medium,
+                ))
+                .child(Box::new(
+                    RawView::new(column(theme.spacing_medium))
+                        .child(Box::new(picker))
+                        .child(Box::new(summary)),
+                )),
+            ) as BoxedWidget]
+        }
     }
     fn focusable(&self) -> bool {
         !self.disabled
@@ -799,21 +787,17 @@ impl FilePicker {
             ..Default::default()
         }
     }
-    pub fn new(
-        theme: &Theme,
-        value: impl Into<String>,
-        on_change: impl Fn(PathBuf) + 'static,
-    ) -> Self {
-        Self::with_style(theme, Self::default_style(), value, on_change)
+    pub fn new(value: impl Into<String>, on_change: impl Fn(PathBuf) + 'static) -> Self {
+        Self::with_style(Self::default_style(), value, on_change)
     }
     pub fn with_style(
-        theme: &Theme,
         style: Style,
         value: impl Into<String>,
         on_change: impl Fn(PathBuf) + 'static,
     ) -> Self {
+        let theme = use_theme();
         Self {
-            theme: *theme,
+            theme,
             style,
             value: value.into(),
             placeholder: "Choose a file…".into(),
@@ -857,12 +841,22 @@ impl FilePicker {
             self.theme.text_disabled,
             self.theme.border,
             move || {
-                let mut dialog = rfd::FileDialog::new().set_title(&title);
-                for (name, extensions) in &filters {
-                    dialog = dialog.add_filter(name, extensions);
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let mut dialog = rfd::FileDialog::new().set_title(&title);
+                    for (name, extensions) in &filters {
+                        dialog = dialog.add_filter(name, extensions);
+                    }
+                    if let Some(path) = dialog.pick_file() {
+                        callback(path);
+                    }
                 }
-                if let Some(path) = dialog.pick_file() {
-                    callback(path);
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // Browsers cannot expose a native path synchronously.
+                    // The control remains visible so the showcase documents
+                    // it, but selecting local files needs an async web host.
+                    let _ = (&callback, &title, &filters);
                 }
             },
         )

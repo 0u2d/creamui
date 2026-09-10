@@ -33,25 +33,25 @@ impl Widget {
         self.ptr
     }
 
-    /// Sets a view's background color. No-op on any widget kind other than
-    /// one created by [`view`]/[`view_styled`].
+    /// Sets a block's background color. No-op on any widget kind other than
+    /// one created by [`block`]/[`block_styled`].
     pub fn background(self, color: Color) -> Self {
-        unsafe { (self.rt.sym.view_set_background)(self.ptr, color) };
+        unsafe { (self.rt.sym.block_set_background)(self.ptr, color) };
         self
     }
 
-    /// Sets a view's corner radius, in logical pixels. Same widget-kind
+    /// Sets a block's corner radius, in logical pixels. Same widget-kind
     /// restriction as [`Widget::background`].
     pub fn corner_radius(self, radius: f32) -> Self {
-        unsafe { (self.rt.sym.view_set_corner_radius)(self.ptr, radius) };
+        unsafe { (self.rt.sym.block_set_corner_radius)(self.ptr, radius) };
         self
     }
 
     /// Attaches `child`, taking ownership of it. Works for widgets created
-    /// by [`view`]/[`view_styled`]/[`scroll_view`].
+    /// by [`block`]/[`block_styled`]/[`scroll_view`].
     pub fn child(self, child: Widget) -> Self {
         let child_ptr = child.into_raw();
-        unsafe { (self.rt.sym.view_add_child)(self.ptr, child_ptr) };
+        unsafe { (self.rt.sym.block_add_child)(self.ptr, child_ptr) };
         self
     }
 
@@ -86,15 +86,14 @@ impl Drop for Widget {
     }
 }
 
-/// A plain container that stacks children top-to-bottom, centered, filling
-/// its parent. For full layout control, use [`view_styled`].
-pub fn view(ctx: &Context) -> Widget {
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.view_new)() })
+/// A semantic block container. For full layout control, use [`block_styled`].
+pub fn block(ctx: &Context) -> Widget {
+    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.block_new)() })
 }
 
-/// A plain container with full flex-layout control.
-pub fn view_styled(ctx: &Context, style: Style) -> Widget {
-    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.view_new_styled)(style) })
+/// A block container with caller-supplied layout properties.
+pub fn block_styled(ctx: &Context, style: Style) -> Widget {
+    Widget::new(&ctx.rt, unsafe { (ctx.rt.sym.block_new_styled)(style) })
 }
 
 /// An unthemed, single-line text label with an explicit color and size.

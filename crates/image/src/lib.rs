@@ -48,8 +48,10 @@ impl ImageData {
 
     /// Creates image data from straight-alpha RGBA8 pixels.
     pub fn from_rgba(width: u32, height: u32, mut pixels: Vec<u8>) -> Result<Self, ImageError> {
-        let expected = width as usize * height as usize * 4;
-        if width == 0 || height == 0 || pixels.len() != expected {
+        let expected = (width as usize)
+            .checked_mul(height as usize)
+            .and_then(|pixels| pixels.checked_mul(4));
+        if width == 0 || height == 0 || expected != Some(pixels.len()) {
             return Err(ImageError::InvalidPixels {
                 width,
                 height,
@@ -248,5 +250,11 @@ mod tests {
         let (rect, width, height) = painter.image.unwrap();
         assert_eq!((width, height), (4, 2));
         assert_eq!((rect.width, rect.height), (100., 50.));
+    }
+
+    #[test]
+    fn rejects_image_sizes_that_overflow_rgba_buffer_length() {
+        let result = ImageData::from_rgba(u32::MAX, u32::MAX, Vec::new());
+        assert!(matches!(result, Err(ImageError::InvalidPixels { .. })));
     }
 }

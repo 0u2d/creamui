@@ -6,11 +6,11 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::jsx;
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, fixed, padding, row};
 use creamui_widgets::{
     ColorPickerController, DateTime, DateTimeController, FilePicker, RawColorPicker,
-    RawDateTimePicker, RawFilePicker, RawText, RawView, Text,
+    RawDateTimePicker, RawFilePicker, RawText,
 };
 
 fn heading(theme: &Theme, text: &str) -> BoxedWidget {
@@ -36,12 +36,13 @@ fn main() {
             title: "CreamUI — Pickers".into(),
             width: 760,
             height: 620,
+            theme: Theme::dark(),
             ..Default::default()
         },
         Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
-            let theme = Theme::dark();
+            let theme = use_theme();
             let selected_color = color.get();
             let selected_raw_color = raw_color.get();
             let raw_value = raw_date.get();
@@ -73,55 +74,59 @@ fn main() {
                 ..column(18.)
             };
 
-            Box::new(
-                RawView::new(padding(root_style, 28.))
-                    .child(heading(&theme, "Pickers"))
-                    .child(Box::new(
-                        RawView::new(row(56.))
-                            .child(Box::new(jsx! {
-                                <RawView style={column(10.)}>
-                                    <RawText color={theme.text_primary} font_size={theme.typography.section} align={TextAlign::Start}>"Themed · JSX"</RawText>
-                                    <DateInput theme={&theme} controller={&date} popup_width={316.} />
-                                    <TimeInput theme={&theme} controller={&time} minute_step={15} popup_width={250.} />
-                                    <ColorPicker theme={&theme} controller={&color_picker} value={selected_color} on_change={move |next| color_set.set(next)} popup_width={292.} />
-                                    {Box::new(
-                                        FilePicker::new(&theme, file_name, move |path| file_set.set(path.display().to_string()))
-                                            .title("Select an image")
-                                            .filter("Images", ["png", "jpg", "jpeg", "webp"]),
-                                    ) as BoxedWidget}
-                                </RawView>
-                            }))
-                            .child(Box::new(
-                                RawView::new(column(10.))
-                                    .child(heading(&theme, "Raw / headless"))
-                                    .child(Box::new(
-                                        RawDateTimePicker::new(raw_date_style, raw_value, theme.text_primary, theme.border, move |next| date_set.set(next))
-                                            .background(theme.surface_elevated)
-                                            .hover_background(theme.surface_hover)
-                                            .border(theme.accent, 1.)
-                                            .corner_radius(2.)
-                                            .focus_color(theme.accent),
-                                    ))
-                                    .child(Box::new(
-                                        RawColorPicker::new(raw_color_style, selected_raw_color, theme.border, theme.text_primary, move |next| raw_color_set.set(next))
-                                            .background(theme.surface_elevated)
-                                            .corner_radius(2.)
-                                            .focus_color(theme.accent),
-                                    ))
-                                    .child(Box::new(
-                                        RawFilePicker::new(raw_file_style, raw_file_label, theme.text_primary, theme.text_disabled, theme.border, move || raw_file_set.set("Raw picker activated — connect your asset source".into()))
-                                            .background(theme.surface_elevated)
-                                            .hover_background(theme.surface_hover)
-                                            .corner_radius(2.)
-                                            .focus_color(theme.accent),
-                                    )),
-                            )),
-                    ))
-                    .child(Box::new(
-                        Text::secondary(&theme, "Date/time: upper/lower halves increment or decrement. Color: drag in the field or hue strip. FilePicker uses the platform dialog; RawFilePicker only reports activation.")
-                            .align(TextAlign::Start),
-                    )),
-            )
+            let themed_column: BoxedWidget = Box::new(jsx! {
+                <RawView style={column(10.)}>
+                    <RawText color={theme.text_primary} font_size={theme.typography.section} align={TextAlign::Start}>"Themed · JSX"</RawText>
+                    <DateInput controller={&date} popup_width={316.} />
+                    <TimeInput controller={&time} minute_step={15} popup_width={250.} />
+                    <ColorPicker controller={&color_picker} value={selected_color} on_change={move |next| color_set.set(next)} popup_width={292.} />
+                    {Box::new(
+                        FilePicker::new(file_name, move |path| file_set.set(path.display().to_string()))
+                            .title("Select an image")
+                            .filter("Images", ["png", "jpg", "jpeg", "webp"]),
+                    ) as BoxedWidget}
+                </RawView>
+            });
+
+            let raw_date_picker: BoxedWidget = Box::new(
+                RawDateTimePicker::new(raw_date_style, raw_value, theme.text_primary, theme.border, move |next| date_set.set(next))
+                    .background(theme.surface_elevated)
+                    .hover_background(theme.surface_hover)
+                    .border(theme.accent, 1.)
+                    .corner_radius(2.)
+                    .focus_color(theme.accent),
+            );
+            let raw_color_picker: BoxedWidget = Box::new(
+                RawColorPicker::new(raw_color_style, selected_raw_color, theme.border, theme.text_primary, move |next| raw_color_set.set(next))
+                    .background(theme.surface_elevated)
+                    .corner_radius(2.)
+                    .focus_color(theme.accent),
+            );
+            let raw_file_picker: BoxedWidget = Box::new(
+                RawFilePicker::new(raw_file_style, raw_file_label, theme.text_primary, theme.text_disabled, theme.border, move || raw_file_set.set("Raw picker activated — connect your asset source".into()))
+                    .background(theme.surface_elevated)
+                    .hover_background(theme.surface_hover)
+                    .corner_radius(2.)
+                    .focus_color(theme.accent),
+            );
+            let raw_column: BoxedWidget = Box::new(jsx! {
+                <RawView style={column(10.)}>
+                    {heading(&theme, "Raw / headless")}
+                    {raw_date_picker}
+                    {raw_color_picker}
+                    {raw_file_picker}
+                </RawView>
+            });
+
+            Box::new(jsx! {
+                <RawView style={padding(root_style, 28.)}>
+                    {heading(&theme, "Pickers")}
+                    <RawView style={row(56.)} children={vec![themed_column, raw_column]} />
+                    <Text secondary={true} align={TextAlign::Start}>
+                        "Date/time: upper/lower halves increment or decrement. Color: drag in the field or hue strip. FilePicker uses the platform dialog; RawFilePicker only reports activation."
+                    </Text>
+                </RawView>
+            })
         },
     );
 }

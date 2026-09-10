@@ -4,13 +4,91 @@
 //! intentionally small (no schedulers, no async) since it only needs to
 //! drive synchronous UI re-renders on the main thread.
 
+use std::any::{Any, TypeId};
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 thread_local! {
     static EFFECT_STACK: RefCell<Vec<Rc<EffectState>>> = const { RefCell::new(Vec::new()) };
     static BATCH_DEPTH: Cell<usize> = const { Cell::new(0) };
     static PENDING_EFFECTS: RefCell<Vec<Rc<EffectState>>> = const { RefCell::new(Vec::new()) };
+    static CONTEXT_STACK: RefCell<Vec<RefCell<HashMap<TypeId, Rc<dyn Any>>>>> =
+        const { RefCell::new(Vec::new()) };
+}
+
+/// Opens a context scope for the duration of `f`. [`provide_context`] and
+/// [`use_context`] only work while a scope is active; nested scopes see
+/// their own values first, then fall back to the enclosing scope's. Pops
+/// via a drop guard, so a panic inside `f` still leaves the stack balanced.
+pub fn with_context_scope<R>(f: impl FnOnce() -> R) -> R {
+    CONTEXT_STACK.with(|stack| stack.borrow_mut().push(RefCell::new(HashMap::new())));
+    struct PopGuard;
+    impl Drop for PopGuard {
+        fn drop(&mut self) {
+            CONTEXT_STACK.with(|stack| {
+                stack.borrow_mut().pop();
+            });
+        }
+    }
+    let _guard = PopGuard;
+    f()
+}
+
+/// Whether a [`with_context_scope`] is currently active on this thread.
+pub fn in_context_scope() -> bool {
+    CONTEXT_STACK.with(|stack| !stack.borrow().is_empty())
+}
+
+/// Panics if no [`with_context_scope`] is active. For hooks that don't fetch
+/// a typed context value but still require one to be open.
+pub fn require_context_scope(hook_name: &str) {
+    if !in_context_scope() {
+        panic!(
+            "{hook_name}() called outside a context scope — hooks only work while a window is \
+             building its widget tree (inside `run`/`AppBuilder`'s `build_ui`)."
+        );
+    }
+}
+
+/// Makes `value` available to [`use_context`]/[`try_use_context`] for the
+/// rest of the current [`with_context_scope`]. Panics outside a scope.
+pub fn provide_context<T: 'static>(value: T) {
+    CONTEXT_STACK.with(|stack| {
+        let stack = stack.borrow();
+        let frame = stack
+            .last()
+            .expect("provide_context() called outside a context scope — see with_context_scope");
+        frame.borrow_mut().insert(TypeId::of::<T>(), Rc::new(value));
+    });
+}
+
+/// Reads the nearest [`provide_context`]d value of type `T`, searching from
+/// the innermost active scope outward. `None` if nothing of that type was
+/// provided (including when called outside any scope).
+pub fn try_use_context<T: Clone + 'static>() -> Option<T> {
+    CONTEXT_STACK.with(|stack| {
+        stack.borrow().iter().rev().find_map(|frame| {
+            frame.borrow().get(&TypeId::of::<T>()).map(|value| {
+                value
+                    .downcast_ref::<T>()
+                    .expect("creamui-reactive: context TypeId collision")
+                    .clone()
+            })
+        })
+    })
+}
+
+/// Like [`try_use_context`], but panics instead of returning `None`.
+pub fn use_context<T: Clone + 'static>() -> T {
+    try_use_context().unwrap_or_else(|| {
+        panic!(
+            "use_context::<{}>() found nothing provided — either called outside a context scope, \
+             or no matching provide_context::<{}>() ran first.",
+            std::any::type_name::<T>(),
+            std::any::type_name::<T>()
+        )
+    })
 }
 
 struct EffectState {
@@ -282,6 +360,67 @@ mod tests {
         assert_eq!(runs.get(), 1);
         s.set(1);
         assert_eq!(runs.get(), 1, "peek must not subscribe the effect");
+    }
+
+    #[test]
+    fn use_context_reads_the_matching_provided_value() {
+        with_context_scope(|| {
+            provide_context(42_i32);
+            provide_context("hello".to_string());
+            assert_eq!(use_context::<i32>(), 42);
+            assert_eq!(use_context::<String>(), "hello");
+        });
+    }
+
+    #[test]
+    fn try_use_context_is_none_for_an_unprovided_type() {
+        with_context_scope(|| {
+            assert_eq!(try_use_context::<i32>(), None);
+        });
+    }
+
+    #[test]
+    fn try_use_context_is_none_outside_any_scope() {
+        assert_eq!(try_use_context::<i32>(), None);
+        assert!(!in_context_scope());
+    }
+
+    #[test]
+    #[should_panic(expected = "outside a context scope")]
+    fn provide_context_outside_a_scope_panics() {
+        provide_context(1_i32);
+    }
+
+    #[test]
+    #[should_panic(expected = "found nothing provided")]
+    fn use_context_without_a_provider_panics() {
+        with_context_scope(|| {
+            use_context::<i32>();
+        });
+    }
+
+    #[test]
+    fn nested_scope_shadows_then_restores_the_outer_value() {
+        with_context_scope(|| {
+            provide_context(1_i32);
+            with_context_scope(|| {
+                provide_context(2_i32);
+                assert_eq!(use_context::<i32>(), 2);
+            });
+            assert_eq!(use_context::<i32>(), 1);
+        });
+    }
+
+    #[test]
+    fn scope_pops_even_if_f_panics() {
+        let result = std::panic::catch_unwind(|| {
+            with_context_scope(|| {
+                provide_context(1_i32);
+                panic!("boom");
+            });
+        });
+        assert!(result.is_err());
+        assert!(!in_context_scope(), "scope must be popped after unwinding");
     }
 
     #[test]

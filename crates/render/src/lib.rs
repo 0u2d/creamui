@@ -5,12 +5,18 @@
 //! MVP's rendering code simple while still presenting through the GPU.
 
 mod backend;
+#[cfg(not(target_arch = "wasm32"))]
 mod cpu;
+mod devtools;
 mod font;
+#[cfg(not(target_arch = "wasm32"))]
 mod gpu;
 mod painter;
+#[cfg(target_arch = "wasm32")]
+mod web;
 mod window;
 
 pub use backend::RenderBackend;
+pub use devtools::{install_devtools, Devtools, WindowDevtools};
 pub use painter::SkiaPainter;
-pub use window::{run, AppBuilder, WindowHandle, WindowOptions};
+pub use window::{run, AppBuilder, PanicDetails, WindowHandle, WindowOptions};

@@ -69,13 +69,13 @@ impl Button {
     /// A complete native-control button: variant, size and state are all
     /// semantic, so apps don't have to hand-pick raw rectangles.
     pub fn styled(
-        theme: &Theme,
         variant: ButtonVariant,
         size: ButtonSize,
         label: impl Into<String>,
         state: ButtonState,
         on_click: impl Fn() + 'static,
     ) -> Self {
+        let theme = use_theme();
         let (background, border, foreground) = match variant {
             ButtonVariant::Primary => (theme.accent, theme.accent_hover, theme.selection_text),
             ButtonVariant::Secondary => (
@@ -131,7 +131,7 @@ impl Button {
         inner.focus_color = Some(theme.accent);
         let mut button = Self {
             inner,
-            theme: *theme,
+            theme,
             label,
             size,
             state,
@@ -145,24 +145,21 @@ impl Button {
 
     /// Sized primary button with built-in loading and success presentations.
     pub fn state(
-        theme: &Theme,
         size: ButtonSize,
         label: impl Into<String>,
         state: ButtonState,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        Self::styled(theme, ButtonVariant::Primary, size, label, state, on_click)
+        Self::styled(ButtonVariant::Primary, size, label, state, on_click)
     }
 
     /// A neutral, still-clickable button for secondary actions.
     pub fn secondary(
-        theme: &Theme,
         size: ButtonSize,
         label: impl Into<String>,
         on_click: impl Fn() + 'static,
     ) -> Self {
         Self::styled(
-            theme,
             ButtonVariant::Secondary,
             size,
             label,
@@ -170,9 +167,8 @@ impl Button {
             on_click,
         )
     }
-    pub fn new(theme: &Theme, label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(label: impl Into<String>, on_click: impl Fn() + 'static) -> Self {
         Self::styled(
-            theme,
             ButtonVariant::Primary,
             ButtonSize::Md,
             label,
@@ -186,12 +182,11 @@ impl Button {
     /// consistent while each button can choose its own size, margin, or flex
     /// placement.
     pub fn with_style(
-        theme: &Theme,
         style: Style,
         label: impl Into<String>,
         on_click: impl Fn() + 'static,
     ) -> Self {
-        let mut button = Self::new(theme, label, on_click);
+        let mut button = Self::new(label, on_click);
         button.inner.style = style;
         button
     }

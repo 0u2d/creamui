@@ -6,7 +6,8 @@ pub struct Checkbox {
 }
 
 impl Checkbox {
-    pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(checked: bool, on_click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         let mut inner =
             RawCheckbox::new(18.0, checked, theme.accent, theme.border_strong, on_click);
         inner = inner.corner_radius(theme.checkbox_radius);
@@ -50,7 +51,8 @@ pub struct Spinner {
     inner: RawSpinner,
 }
 impl Spinner {
-    pub fn new(theme: &Theme) -> Self {
+    pub fn new() -> Self {
+        let theme = use_theme();
         Self {
             inner: RawSpinner::new(theme.accent),
         }
@@ -83,7 +85,8 @@ pub struct Switch {
     inner: RawSwitch,
 }
 impl Switch {
-    pub fn new(theme: &Theme, checked: bool, on_click: impl Fn() + 'static) -> Self {
+    pub fn new(checked: bool, on_click: impl Fn() + 'static) -> Self {
+        let theme = use_theme();
         Self {
             inner: RawSwitch::new(
                 checked,

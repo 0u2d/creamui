@@ -5,11 +5,18 @@
 
 use crate::font::Font;
 use creamui_core::{Painter, Point, Rect, TextAlign};
+use creamui_fonts::FontWeight;
 use creamui_theme::Color;
 use fontdue::layout::HorizontalAlign;
+use std::collections::HashMap;
 use tiny_skia::{
     FilterQuality, Mask, Paint, PathBuilder, Pixmap, PixmapPaint, PixmapRef, Stroke, Transform,
 };
+
+#[cfg(not(target_arch = "wasm32"))]
+type PainterInstant = std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+type PainterInstant = web_time::Instant;
 
 /// Widgets are laid out and painted in logical (DPI-independent) pixels;
 /// `SkiaPainter` scales every coordinate by `scale` (the window's
@@ -20,10 +27,13 @@ pub struct SkiaPainter {
     pub pixmap: Pixmap,
     font: Font,
     bold_font: Font,
+    /// Resolved on first use per (family, bold), then kept for the
+    /// painter's lifetime so its glyph rasterization cache stays warm.
+    custom_fonts: HashMap<(String, bool), Font>,
     pub pointer: Option<Point>,
     pub press_origin: Option<Point>,
     pub animated: bool,
-    started: std::time::Instant,
+    started: PainterInstant,
     scale: f32,
     /// One [`Mask`] per active [`Painter::push_clip`], each already
     /// intersected with its parent so the top of the stack is always the
@@ -41,10 +51,11 @@ impl SkiaPainter {
             pixmap: Pixmap::new(width.max(1), height.max(1)).expect("non-zero pixmap size"),
             font: Font::load(),
             bold_font: Font::bold(),
+            custom_fonts: HashMap::new(),
             pointer: None,
             press_origin: None,
             animated: false,
-            started: std::time::Instant::now(),
+            started: PainterInstant::now(),
             scale: 1.0,
             clip_stack: Vec::new(),
             mask_pool: Vec::new(),
@@ -95,6 +106,32 @@ impl SkiaPainter {
             .fill(tiny_skia::Color::from_rgba(r, g, b, a).expect("valid color"));
     }
 
+    /// Resolves the [`Font`] wrapper for `family`/`bold`, creating and
+    /// caching one on first use. `None` uses the bundled default.
+    fn font_for(&mut self, family: Option<&str>, bold: bool) -> &mut Font {
+        match family {
+            None => {
+                if bold {
+                    &mut self.bold_font
+                } else {
+                    &mut self.font
+                }
+            }
+            Some(family) => self
+                .custom_fonts
+                .entry((family.to_string(), bold))
+                .or_insert_with(|| {
+                    let weight = if bold {
+                        FontWeight::Bold
+                    } else {
+                        FontWeight::Regular
+                    };
+                    Font::from_family(family, weight)
+                }),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
     fn draw_text(
         &mut self,
         rect: Rect,
@@ -103,22 +140,21 @@ impl SkiaPainter {
         selected: Option<(std::ops::Range<usize>, Color)>,
         font_size: f32,
         align: TextAlign,
+        family: Option<&str>,
         bold: bool,
+        italic: bool,
     ) {
         let horizontal_align = match align {
             TextAlign::Start => HorizontalAlign::Left,
             TextAlign::Center => HorizontalAlign::Center,
             TextAlign::End => HorizontalAlign::Right,
         };
-        let rect = scale_rect(rect, self.scale);
-        let font = if bold {
-            &mut self.bold_font
-        } else {
-            &mut self.font
-        };
+        let scale = self.scale;
+        let rect = scale_rect(rect, scale);
+        let font = self.font_for(family, bold);
         let glyphs = font.layout_text(
             text,
-            font_size * self.scale,
+            font_size * scale,
             rect.x,
             rect.y,
             rect.width,
@@ -129,6 +165,11 @@ impl SkiaPainter {
         let pixmap_height = self.pixmap.height() as i32;
         let clip_mask = self.clip_stack.last();
         let pixels = self.pixmap.pixels_mut();
+        // No italic face is bundled, so italics are synthesized by shearing
+        // each glyph's rows rightward the further they sit above its
+        // baseline (its own bottom row) — a cheap oblique that avoids
+        // shipping and layout-matching a second font file.
+        const ITALIC_SHEAR: f32 = 0.22;
         for glyph in glyphs {
             let glyph_color = selected
                 .as_ref()
@@ -140,8 +181,13 @@ impl SkiaPainter {
                 if py < 0 || py >= pixmap_height {
                     continue;
                 }
+                let shear = if italic {
+                    ((glyph.height as i32 - 1 - gy as i32) as f32 * ITALIC_SHEAR).round() as i32
+                } else {
+                    0
+                };
                 for gx in 0..glyph.width {
-                    let px = glyph.x + gx as i32;
+                    let px = glyph.x + gx as i32 + shear;
                     if px < 0 || px >= pixmap_width {
                         continue;
                     }
@@ -252,9 +298,29 @@ impl Painter for SkiaPainter {
         font_size: f32,
         align: TextAlign,
         bold: bool,
+        italic: bool,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, bold);
+        self.draw_text(
+            rect, text, color, None, font_size, align, None, bold, italic,
+        );
     }
+
+    fn fill_text_font(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        font_size: f32,
+        align: TextAlign,
+        family: Option<&str>,
+        bold: bool,
+        italic: bool,
+    ) {
+        self.draw_text(
+            rect, text, color, None, font_size, align, family, bold, italic,
+        );
+    }
+
     fn fill_rect(&mut self, rect: Rect, color: Color, corner_radius: f32) {
         let Some(path) =
             Self::rounded_rect_path(scale_rect(rect, self.scale), corner_radius * self.scale)
@@ -385,7 +451,9 @@ impl Painter for SkiaPainter {
         font_size: f32,
         align: TextAlign,
     ) {
-        self.draw_text(rect, text, color, None, font_size, align, false);
+        self.draw_text(
+            rect, text, color, None, font_size, align, None, false, false,
+        );
     }
 
     fn fill_text_selected(
@@ -405,6 +473,32 @@ impl Painter for SkiaPainter {
             Some((selected, selected_color)),
             font_size,
             align,
+            None,
+            false,
+            false,
+        );
+    }
+
+    fn fill_text_selected_font(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        color: Color,
+        selected_color: Color,
+        selected: std::ops::Range<usize>,
+        font_size: f32,
+        align: TextAlign,
+        family: Option<&str>,
+    ) {
+        self.draw_text(
+            rect,
+            text,
+            color,
+            Some((selected, selected_color)),
+            font_size,
+            align,
+            family,
+            false,
             false,
         );
     }
@@ -431,5 +525,43 @@ mod tests {
         );
         assert_eq!(painter.pixmap.pixel(3, 2).unwrap().red(), 255);
         assert_eq!(painter.pixmap.pixel(0, 0).unwrap().alpha(), 0);
+    }
+
+    #[test]
+    fn fill_text_font_caches_one_font_per_family_and_weight() {
+        let mut painter = SkiaPainter::new(64, 64);
+        let rect = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 64.0,
+            height: 64.0,
+        };
+        painter.fill_text_font(
+            rect,
+            "Hi",
+            Color::rgb(255, 255, 255),
+            12.0,
+            TextAlign::Start,
+            Some("Custom Family"),
+            false,
+            false,
+        );
+        painter.fill_text_font(
+            rect,
+            "Hi",
+            Color::rgb(255, 255, 255),
+            12.0,
+            TextAlign::Start,
+            Some("Custom Family"),
+            true,
+            false,
+        );
+        assert_eq!(painter.custom_fonts.len(), 2);
+        assert!(painter
+            .custom_fonts
+            .contains_key(&("Custom Family".to_string(), false)));
+        assert!(painter
+            .custom_fonts
+            .contains_key(&("Custom Family".to_string(), true)));
     }
 }

@@ -12,11 +12,11 @@ use std::os::raw::{c_char, c_int};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
-pub(crate) type ViewNewFn = unsafe extern "C" fn() -> *mut c_void;
-pub(crate) type ViewNewStyledFn = unsafe extern "C" fn(CStyle) -> *mut c_void;
-pub(crate) type ViewSetBackgroundFn = unsafe extern "C" fn(*mut c_void, CColor);
-pub(crate) type ViewSetCornerRadiusFn = unsafe extern "C" fn(*mut c_void, f32);
-pub(crate) type ViewAddChildFn = unsafe extern "C" fn(*mut c_void, *mut c_void);
+pub(crate) type BlockNewFn = unsafe extern "C" fn() -> *mut c_void;
+pub(crate) type BlockNewStyledFn = unsafe extern "C" fn(CStyle) -> *mut c_void;
+pub(crate) type BlockSetBackgroundFn = unsafe extern "C" fn(*mut c_void, CColor);
+pub(crate) type BlockSetCornerRadiusFn = unsafe extern "C" fn(*mut c_void, f32);
+pub(crate) type BlockAddChildFn = unsafe extern "C" fn(*mut c_void, *mut c_void);
 pub(crate) type ThemeFn = unsafe extern "C" fn() -> CTheme;
 pub(crate) type TextNewFn = unsafe extern "C" fn(*const c_char, CColor, f32) -> *mut c_void;
 pub(crate) type ThemedTextNewFn = unsafe extern "C" fn(CTheme, *const c_char) -> *mut c_void;
@@ -93,11 +93,11 @@ pub(crate) type AppBuilderRunFn = unsafe extern "C" fn(*mut c_void);
 /// [`Runtime`]'s safe methods and the free functions in [`crate::widget`]/
 /// [`crate::signal`] that take a [`Runtime`]/[`crate::Context`].
 pub(crate) struct Symbols {
-    pub(crate) view_new: ViewNewFn,
-    pub(crate) view_new_styled: ViewNewStyledFn,
-    pub(crate) view_set_background: ViewSetBackgroundFn,
-    pub(crate) view_set_corner_radius: ViewSetCornerRadiusFn,
-    pub(crate) view_add_child: ViewAddChildFn,
+    pub(crate) block_new: BlockNewFn,
+    pub(crate) block_new_styled: BlockNewStyledFn,
+    pub(crate) block_set_background: BlockSetBackgroundFn,
+    pub(crate) block_set_corner_radius: BlockSetCornerRadiusFn,
+    pub(crate) block_add_child: BlockAddChildFn,
     pub(crate) theme_dark: ThemeFn,
     pub(crate) theme_light: ThemeFn,
     pub(crate) text_new: TextNewFn,
@@ -170,11 +170,11 @@ impl Symbols {
         // exactly — this is the single place that contract is trusted.
         unsafe {
             Ok(Symbols {
-                view_new: resolve!(lib, "creamui_view_new"),
-                view_new_styled: resolve!(lib, "creamui_view_new_styled"),
-                view_set_background: resolve!(lib, "creamui_view_set_background"),
-                view_set_corner_radius: resolve!(lib, "creamui_view_set_corner_radius"),
-                view_add_child: resolve!(lib, "creamui_view_add_child"),
+                block_new: resolve!(lib, "creamui_block_new"),
+                block_new_styled: resolve!(lib, "creamui_block_new_styled"),
+                block_set_background: resolve!(lib, "creamui_block_set_background"),
+                block_set_corner_radius: resolve!(lib, "creamui_block_set_corner_radius"),
+                block_add_child: resolve!(lib, "creamui_block_add_child"),
                 theme_dark: resolve!(lib, "creamui_theme_dark"),
                 theme_light: resolve!(lib, "creamui_theme_light"),
                 text_new: resolve!(lib, "creamui_text_new"),

@@ -19,7 +19,7 @@
 //! engine at compile time as one talking to the C ABI by hand would be.
 //!
 //! ```no_run
-//! use creamui_dynamic::{button, themed_text, view_styled, Runtime, SignalI32, Style, WindowOptions};
+//! use creamui_dynamic::{block_styled, button, themed_text, Runtime, SignalI32, Style, WindowOptions};
 //!
 //! let rt = Runtime::load_default();
 //! let count = SignalI32::new(&rt, 0);
@@ -29,7 +29,7 @@
 //!     move |ctx: &creamui_dynamic::Context, size| {
 //!         let theme = ctx.runtime().theme_dark();
 //!         let count_for_click = count.clone();
-//!         view_styled(ctx, Style { width: creamui_dynamic::Dimension::length(size.width), ..Style::default() })
+//!         block_styled(ctx, Style { width: creamui_dynamic::Dimension::length(size.width), ..Style::default() })
 //!             .child(themed_text(ctx, theme, &format!("Clicked {} times", count.get())))
 //!             .child(button(ctx, theme, "Click me", move || count_for_click.set(count_for_click.get() + 1)))
 //!     }
@@ -54,7 +54,7 @@ pub use value::{
     JUSTIFY_START, JUSTIFY_STRETCH,
 };
 pub use widget::{
-    button, checkbox, scroll_view, slider, text, text_area, text_input, themed_text,
-    themed_text_secondary, themed_text_sized, view, view_styled, Widget,
+    block, block_styled, button, checkbox, scroll_view, slider, text, text_area, text_input,
+    themed_text, themed_text_secondary, themed_text_sized, Widget,
 };
 pub use window::{run, AppBuilder, Context, WindowHandle};

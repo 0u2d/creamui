@@ -17,19 +17,28 @@
 //! and presents it.
 
 use crate::backend::RenderBackend;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::cpu::CpuState;
+use crate::devtools::{devtools_for_new_window, WindowDevtools};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::gpu::GpuState;
 use crate::painter::SkiaPainter;
+#[cfg(target_arch = "wasm32")]
+use crate::web::WebState;
 use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Modifiers, Point, Renderer, Scene, Size,
 };
 use creamui_reactive::{create_effect, Effect, Signal};
-use creamui_theme::Color;
+use creamui_theme::{Color, Theme, ThemeProvider};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+#[cfg(target_arch = "wasm32")]
+use web_time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
@@ -100,6 +109,8 @@ pub struct WindowOptions {
     /// force-overridden at launch with `CUI_OVERRIDE_RENDER_BACKEND=gpu|cpu`
     /// regardless of what's set here — see [`RenderBackend::resolve`].
     pub backend: RenderBackend,
+    /// Made available to `use_theme()` while this window's `build_ui` runs.
+    pub theme: Theme,
 }
 
 impl Default for WindowOptions {
@@ -112,8 +123,92 @@ impl Default for WindowOptions {
             decorations: true,
             transparent: false,
             backend: RenderBackend::default(),
+            theme: Theme::default(),
         }
     }
+}
+
+/// Panic payload and source location captured by the panic hook installed
+/// in [`install_panic_dispatch`], passed to an [`AppBuilder::on_panic`]
+/// handler.
+pub struct PanicDetails {
+    pub message: String,
+    pub location: Option<String>,
+}
+
+type PanicHandler = Rc<dyn Fn(&PanicDetails)>;
+
+thread_local! {
+    static PANIC_HANDLER: RefCell<Option<PanicHandler>> = const { RefCell::new(None) };
+}
+
+/// Wraps the process's current panic hook with a dispatcher that checks
+/// `PANIC_HANDLER` first: if set, calls it with the panic's details instead
+/// of running the previous hook; otherwise runs the previous hook
+/// unchanged. Installed at most once per process via `Once`.
+fn install_panic_dispatch() {
+    static INSTALLED: std::sync::Once = std::sync::Once::new();
+    INSTALLED.call_once(|| {
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            let handled = PANIC_HANDLER.with(|cell| {
+                let handler = cell.borrow().clone();
+                match handler {
+                    Some(handler) => {
+                        handler(&PanicDetails {
+                            message: panic_payload_message(info.payload()),
+                            location: info.location().map(|l| l.to_string()),
+                        });
+                        true
+                    }
+                    None => false,
+                }
+            });
+            if !handled {
+                previous_hook(info);
+            }
+        }));
+    });
+}
+
+fn panic_payload_message(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "non-string panic payload".to_string()
+    }
+}
+
+/// Runs `build(size)`, catching a panic when a handler is registered via
+/// [`AppBuilder::on_panic`] and returning a blank widget in that case
+/// instead of unwinding past the caller. Runs `build` directly (no
+/// `catch_unwind` overhead) when no handler is registered.
+fn build_ui_with_recovery(build: &Rc<dyn Fn(Size) -> BoxedWidget>, size: Size) -> BoxedWidget {
+    let has_handler = PANIC_HANDLER.with(|cell| cell.borrow().is_some());
+    if !has_handler {
+        return build(size);
+    }
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| build(size))) {
+        Ok(widget) => widget,
+        Err(_) => Box::new(BlankWidget),
+    }
+}
+
+fn with_theme_scope<R>(theme: &ThemeProvider, f: impl FnOnce() -> R) -> R {
+    creamui_reactive::with_context_scope(|| {
+        creamui_reactive::provide_context(theme.clone());
+        f()
+    })
+}
+
+struct BlankWidget;
+impl creamui_core::Widget for BlankWidget {
+    fn style(&self) -> creamui_core::layout::Style {
+        creamui_core::layout::Style::default()
+    }
+    fn paint(&self, _painter: &mut dyn creamui_core::Painter, _rect: creamui_core::Rect) {}
 }
 
 /// Enables verbose logging when `CUI_DEBUG=1` is set in the environment,
@@ -129,21 +224,30 @@ struct FrameState {
     painter: SkiaPainter,
     renderer: Renderer,
     scene: Option<Scene>,
+    devtools: Option<Box<dyn WindowDevtools>>,
 }
 
 /// Whichever backend is actually composing frames for a window, picked once
 /// in `resumed` per [`WindowOptions::backend`] (as resolved by
 /// [`RenderBackend::resolve`]).
 enum Presenter {
+    #[cfg(not(target_arch = "wasm32"))]
     Gpu(GpuState),
+    #[cfg(not(target_arch = "wasm32"))]
     Cpu(CpuState),
+    #[cfg(target_arch = "wasm32")]
+    Web(WebState),
 }
 
 impl Presenter {
     fn present(&mut self, rgba: &[u8], width: u32, height: u32) {
         match self {
+            #[cfg(not(target_arch = "wasm32"))]
             Presenter::Gpu(gpu) => gpu.present(rgba, width, height),
+            #[cfg(not(target_arch = "wasm32"))]
             Presenter::Cpu(cpu) => cpu.present(rgba, width, height),
+            #[cfg(target_arch = "wasm32")]
+            Presenter::Web(web) => web.present(rgba, width, height),
         }
     }
 }
@@ -159,21 +263,24 @@ type SharedWindow = Rc<RefCell<Option<Arc<Window>>>>;
 /// resumes, so this can't be available any earlier). All methods are no-ops
 /// if called after the window has closed.
 #[derive(Clone)]
-pub struct WindowHandle(SharedWindow);
+pub struct WindowHandle {
+    window: SharedWindow,
+    theme: ThemeProvider,
+}
 
 impl WindowHandle {
     /// Requests a new logical-pixel window size. The actual resize (and any
     /// resulting `Resized` event) happens asynchronously, same as a user
     /// dragging the window border.
     pub fn resize(&self, width: u32, height: u32) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             let _ = window.request_inner_size(winit::dpi::LogicalSize::new(width, height));
         }
     }
 
     /// Moves the window's top-left corner to a logical-pixel screen position.
     pub fn set_position(&self, x: i32, y: i32) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             window.set_outer_position(winit::dpi::LogicalPosition::new(x, y));
         }
     }
@@ -181,7 +288,7 @@ impl WindowHandle {
     /// Pins (or unpins) the window above all others — the standard
     /// desktop-shell/widget-overlay behavior.
     pub fn set_always_on_top(&self, enabled: bool) {
-        if let Some(window) = self.0.borrow().as_ref() {
+        if let Some(window) = self.window.borrow().as_ref() {
             window.set_window_level(if enabled {
                 WindowLevel::AlwaysOnTop
             } else {
@@ -189,13 +296,24 @@ impl WindowHandle {
             });
         }
     }
+
+    /// Reads the window's current theme.
+    pub fn theme(&self) -> Theme {
+        self.theme.get()
+    }
+
+    /// Replaces the window's theme. `use_theme()` reflects it on the next
+    /// rebuild, which this schedules immediately.
+    pub fn set_theme(&self, theme: Theme) {
+        self.theme.set(theme);
+    }
 }
 
 /// One window's worth of setup, queued via [`AppBuilder::window`] and opened
 /// once [`AppBuilder::run`] starts the shared event loop.
 struct WindowSpec {
     options: WindowOptions,
-    on_window_ready: Box<dyn Fn(WindowHandle)>,
+    on_window_ready: Box<dyn FnOnce(WindowHandle)>,
     repaint: Rc<dyn Fn()>,
     repaint_scene: Rc<dyn Fn()>,
     repaint_light: Rc<dyn Fn()>,
@@ -207,6 +325,7 @@ struct WindowSpec {
     scale_factor: Signal<f64>,
     frame: Rc<RefCell<FrameState>>,
     shared_window: SharedWindow,
+    theme_provider: ThemeProvider,
     focused: Rc<Cell<Option<usize>>>,
     caret_visible: Rc<Cell<bool>>,
 }
@@ -237,6 +356,7 @@ struct WindowSpec {
 #[derive(Default)]
 pub struct AppBuilder {
     specs: Vec<PendingWindow>,
+    on_panic: Option<PanicHandler>,
 }
 
 /// Everything [`AppBuilder::window`] needs to defer construction to
@@ -246,13 +366,25 @@ pub struct AppBuilder {
 struct PendingWindow {
     options: WindowOptions,
     clear_color: Color,
-    on_window_ready: Box<dyn Fn(WindowHandle)>,
+    on_window_ready: Box<dyn FnOnce(WindowHandle)>,
     build_ui: Box<dyn Fn(Size) -> BoxedWidget>,
 }
 
 impl AppBuilder {
     pub fn new() -> Self {
-        AppBuilder { specs: Vec::new() }
+        AppBuilder {
+            specs: Vec::new(),
+            on_panic: None,
+        }
+    }
+
+    /// Registers a handler for panics raised inside `build_ui`. Without one,
+    /// a panic crashes the app as usual. With one, the panic is caught, the
+    /// handler runs instead of the default output, the frame is replaced
+    /// with a blank one, and the app keeps running.
+    pub fn on_panic(mut self, handler: impl Fn(&PanicDetails) + 'static) -> Self {
+        self.on_panic = Some(Rc::new(handler));
+        self
     }
 
     /// Queues a window to be opened when [`run`](AppBuilder::run) starts the
@@ -261,7 +393,7 @@ impl AppBuilder {
         mut self,
         options: WindowOptions,
         clear_color: Color,
-        on_window_ready: impl Fn(WindowHandle) + 'static,
+        on_window_ready: impl FnOnce(WindowHandle) + 'static,
         build_ui: impl Fn(Size) -> BoxedWidget + 'static,
     ) -> Self {
         self.specs.push(PendingWindow {
@@ -276,7 +408,7 @@ impl AppBuilder {
     /// Opens every queued window and runs one shared event loop until all of
     /// them have closed.
     pub fn run(self) {
-        run_windows(self.specs);
+        run_windows(self.specs, self.on_panic);
     }
 }
 
@@ -288,8 +420,8 @@ struct WindowState {
     viewport: Signal<Size>,
     scale_factor: Signal<f64>,
     frame: Rc<RefCell<FrameState>>,
-    window: Arc<Window>,
-    presenter: Presenter,
+    window: SharedWindow,
+    presenter: Option<Presenter>,
     pointer_pos: Point,
     modifiers: ModifiersState,
     /// Index into the current `Scene`'s focusables, if any widget has
@@ -336,7 +468,10 @@ struct WindowState {
 
 impl WindowState {
     fn viewport_from_window(&self) -> Size {
-        let physical = self.window.inner_size();
+        let Some(window) = self.window.borrow().as_ref().cloned() else {
+            return self.viewport.peek();
+        };
+        let physical = window.inner_size();
         let scale = self.scale_factor.peek();
         Size {
             width: (physical.width as f64 / scale) as f32,
@@ -364,6 +499,36 @@ impl WindowState {
         if let Some(viewport) = self.pending_viewport.take() {
             self.viewport.set(viewport);
             (self.repaint)();
+        }
+    }
+
+    fn handle_key_input(&mut self, key: KeyInput) {
+        if key.key == Key::Tab {
+            let next = self
+                .frame
+                .borrow()
+                .scene
+                .as_ref()
+                .and_then(|scene| scene.next_focus(self.focused.get(), key.modifiers.shift));
+            self.focused.set(next);
+            (self.repaint_light)();
+            return;
+        }
+        let Some(index) = self.focused.get() else {
+            return;
+        };
+
+        let handler = self
+            .frame
+            .borrow()
+            .scene
+            .as_ref()
+            .and_then(|scene| scene.on_key_at(index).cloned());
+        if let Some(handler) = handler {
+            self.caret_visible.set(true);
+            self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
+            handler(key);
+            (self.render)();
         }
     }
 
@@ -405,8 +570,9 @@ impl WindowState {
                 };
                 if hovered_cursor != self.current_cursor {
                     self.current_cursor = hovered_cursor;
-                    self.window
-                        .set_cursor(translate_cursor_icon(hovered_cursor));
+                    if let Some(window) = self.window.borrow().as_ref() {
+                        window.set_cursor(translate_cursor_icon(hovered_cursor));
+                    }
                 }
 
                 let next_hover = self
@@ -561,44 +727,29 @@ impl WindowState {
                 if event.state != ElementState::Pressed {
                     return;
                 }
+                if event.logical_key == WinitKey::Named(NamedKey::F3) {
+                    let toggled = {
+                        let mut frame = self.frame.borrow_mut();
+                        frame
+                            .devtools
+                            .as_mut()
+                            .is_some_and(|devtools| devtools.toggle())
+                    };
+                    if toggled {
+                        (self.repaint_light)();
+                    }
+                    return;
+                }
                 let Some(key) = translate_key(&event.logical_key) else {
                     return;
                 };
-                if key == Key::Tab {
-                    let next = self.frame.borrow().scene.as_ref().and_then(|scene| {
-                        scene.next_focus(self.focused.get(), self.modifiers.shift_key())
-                    });
-                    self.focused.set(next);
-                    (self.repaint_light)();
-                    return;
-                }
-                let Some(index) = self.focused.get() else {
-                    return;
-                };
-
-                let handler = self
-                    .frame
-                    .borrow()
-                    .scene
-                    .as_ref()
-                    .and_then(|scene| scene.on_key_at(index).cloned());
-                if let Some(handler) = handler {
-                    // Keep the caret solid through the keystroke rather than
-                    // possibly toggling off right as the text changes.
-                    self.caret_visible.set(true);
-                    self.next_blink = Instant::now() + CARET_BLINK_INTERVAL;
-                    handler(KeyInput {
-                        key,
-                        modifiers: Modifiers {
-                            ctrl: self.modifiers.control_key(),
-                            shift: self.modifiers.shift_key(),
-                        },
-                    });
-                    // Rebuild now, not on the next debounced redraw: a
-                    // queued second keystroke would otherwise still see
-                    // `handler`'s stale pre-edit snapshot.
-                    (self.render)();
-                }
+                self.handle_key_input(KeyInput {
+                    key,
+                    modifiers: Modifiers {
+                        ctrl: self.modifiers.control_key(),
+                        shift: self.modifiers.shift_key(),
+                    },
+                });
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
             WindowEvent::RedrawRequested => {
@@ -613,8 +764,9 @@ impl WindowState {
                 }
                 let frame = self.frame.borrow();
                 let pixmap = &frame.painter.pixmap;
-                self.presenter
-                    .present(pixmap.data(), pixmap.width(), pixmap.height());
+                if let Some(presenter) = self.presenter.as_mut() {
+                    presenter.present(pixmap.data(), pixmap.width(), pixmap.height());
+                }
                 if !self.first_present_logged {
                     self.first_present_logged = true;
                     log::debug!(
@@ -642,6 +794,7 @@ struct AppHandler {
     /// its ~100-200ms Windows loader/ICD cost and driver memory footprint
     /// are the whole reason multi-window-in-one-process is worth doing.
     /// `None` if no queued window resolved to the GPU backend.
+    #[cfg(not(target_arch = "wasm32"))]
     gpu_instance: Option<Rc<wgpu::Instance>>,
 }
 
@@ -658,6 +811,11 @@ impl ApplicationHandler for AppHandler {
                 .with_resizable(spec.options.resizable)
                 .with_decorations(spec.options.decorations)
                 .with_transparent(spec.options.transparent);
+            #[cfg(target_arch = "wasm32")]
+            let attrs = {
+                use winit::platform::web::WindowAttributesExtWebSys;
+                attrs.with_append(true)
+            };
 
             let window = Arc::new(
                 event_loop
@@ -694,6 +852,7 @@ impl ApplicationHandler for AppHandler {
             }
             (spec.repaint)();
 
+            #[cfg(not(target_arch = "wasm32"))]
             let mut presenter = match spec.options.backend {
                 RenderBackend::Gpu => {
                     let instance = self
@@ -704,6 +863,8 @@ impl ApplicationHandler for AppHandler {
                 }
                 RenderBackend::Cpu => Presenter::Cpu(CpuState::new(window.clone())),
             };
+            #[cfg(target_arch = "wasm32")]
+            let mut presenter = Presenter::Web(WebState::new(window.clone()));
             log::debug!(
                 "creamui-render: {:?} presenter ready: {:?}",
                 spec.options.backend,
@@ -721,7 +882,10 @@ impl ApplicationHandler for AppHandler {
             log::debug!("creamui-render: first frame presented: {:?}", t0.elapsed());
 
             *spec.shared_window.borrow_mut() = Some(window.clone());
-            (spec.on_window_ready)(WindowHandle(spec.shared_window.clone()));
+            (spec.on_window_ready)(WindowHandle {
+                window: spec.shared_window.clone(),
+                theme: spec.theme_provider.clone(),
+            });
 
             let window_id = window.id();
             self.windows.insert(
@@ -730,8 +894,8 @@ impl ApplicationHandler for AppHandler {
                     viewport: spec.viewport,
                     scale_factor: spec.scale_factor,
                     frame: spec.frame,
-                    window,
-                    presenter,
+                    window: spec.shared_window.clone(),
+                    presenter: Some(presenter),
                     pointer_pos: Point::default(),
                     modifiers: ModifiersState::default(),
                     focused: spec.focused,
@@ -786,7 +950,9 @@ impl ApplicationHandler for AppHandler {
                 if now >= state.next_resize_render {
                     state.resize_pending = false;
                     state.dirty.set(true);
-                    state.window.request_redraw();
+                    if let Some(window) = state.window.borrow().as_ref() {
+                        window.request_redraw();
+                    }
                 } else {
                     next_wake = Some(next_wake.map_or(state.next_resize_render, |t| {
                         t.min(state.next_resize_render)
@@ -834,7 +1000,7 @@ impl ApplicationHandler for AppHandler {
 pub fn run(
     options: WindowOptions,
     clear_color: Color,
-    on_window_ready: impl Fn(WindowHandle) + 'static,
+    on_window_ready: impl FnOnce(WindowHandle) + 'static,
     build_ui: impl Fn(Size) -> BoxedWidget + 'static,
 ) {
     AppBuilder::new()
@@ -842,11 +1008,16 @@ pub fn run(
         .run();
 }
 
-fn run_windows(specs: Vec<PendingWindow>) {
+fn run_windows(specs: Vec<PendingWindow>, on_panic: Option<PanicHandler>) {
     assert!(
         !specs.is_empty(),
         "creamui-render: AppBuilder::run() called with no windows queued"
     );
+
+    if let Some(handler) = on_panic {
+        install_panic_dispatch();
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = Some(handler));
+    }
 
     init_logging();
     let t_run = Instant::now();
@@ -857,9 +1028,17 @@ fn run_windows(specs: Vec<PendingWindow>) {
     // every later decision (whether to pay GPU init cost at all, which
     // presenter `resumed` builds for that window) uses the same value.
     let mut specs = specs;
+    #[cfg(not(target_arch = "wasm32"))]
     for spec in &mut specs {
         spec.options.backend = RenderBackend::resolve(spec.options.backend);
     }
+    #[cfg(target_arch = "wasm32")]
+    for spec in &mut specs {
+        // The web demo presents directly to its canvas; it has no desktop
+        // GPU/softbuffer choice, so keep the public option harmless here.
+        spec.options.backend = RenderBackend::Gpu;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
     let any_gpu = specs
         .iter()
         .any(|s| matches!(s.options.backend, RenderBackend::Gpu));
@@ -869,6 +1048,7 @@ fn run_windows(specs: Vec<PendingWindow>) {
     // off now so it overlaps with the initial UI builds below instead of
     // sitting on `resumed`'s critical path. One instance is shared by every
     // GPU-backend window; skipped entirely if none of them need it.
+    #[cfg(not(target_arch = "wasm32"))]
     let gpu_instance_handle = any_gpu.then(|| std::thread::spawn(GpuState::create_instance));
 
     let dump_frame_path = std::env::var("CUI_DUMP_FRAME").ok();
@@ -890,6 +1070,7 @@ fn run_windows(specs: Vec<PendingWindow>) {
     log::debug!("creamui-render: event loop created: {:?}", t_run.elapsed());
     event_loop.set_control_flow(ControlFlow::Wait);
 
+    #[cfg(not(target_arch = "wasm32"))]
     let gpu_instance = gpu_instance_handle.map(|handle| {
         let instance = handle
             .join()
@@ -898,14 +1079,23 @@ fn run_windows(specs: Vec<PendingWindow>) {
         Rc::new(instance)
     });
 
-    let mut handler = AppHandler {
+    let handler = AppHandler {
         pending,
         windows: HashMap::new(),
+        #[cfg(not(target_arch = "wasm32"))]
         gpu_instance,
     };
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut handler = handler;
+    #[cfg(not(target_arch = "wasm32"))]
     event_loop
         .run_app(&mut handler)
         .expect("event loop exited with an error");
+    #[cfg(target_arch = "wasm32")]
+    {
+        use winit::platform::web::EventLoopExtWebSys;
+        event_loop.spawn_app(handler);
+    }
 }
 
 /// Builds one window's pre-creation state (signals, frame buffer, reactive
@@ -933,8 +1123,10 @@ fn build_window_spec(
         painter: SkiaPainter::new(options.width, options.height),
         renderer: Renderer::new(),
         scene: None,
+        devtools: devtools_for_new_window(),
     }));
     let shared_window: SharedWindow = Rc::new(RefCell::new(None));
+    let theme_provider = ThemeProvider::new(options.theme);
     let build_ui: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::from(build_ui);
     let focused: Rc<Cell<Option<usize>>> = Rc::new(Cell::new(None));
     let caret_visible: Rc<Cell<bool>> = Rc::new(Cell::new(true));
@@ -967,50 +1159,63 @@ fn build_window_spec(
         let caret_visible = caret_visible.clone();
         let dirty = dirty.clone();
         let pending_root = pending_root.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            dirty.set(false);
-            // Widgets are laid out in logical pixels; the painter (and the
-            // presenter it feeds) is sized in physical pixels so HiDPI
-            // displays stay crisp — see `SkiaPainter`'s doc comment.
-            let logical_size = viewport.peek();
-            let scale = scale_factor.peek();
-            // `repaint` usually already built this; fall back for
-            // non-signal-driven redraws (animation ticks, caret blink).
-            let root = pending_root
-                .borrow_mut()
-                .take()
-                .unwrap_or_else(|| build_ui(logical_size));
+            with_theme_scope(&theme_provider, || {
+                dirty.set(false);
+                // Widgets are laid out in logical pixels; the painter (and the
+                // presenter it feeds) is sized in physical pixels so HiDPI
+                // displays stay crisp — see `SkiaPainter`'s doc comment.
+                let logical_size = viewport.peek();
+                let scale = scale_factor.peek();
+                // `repaint` usually already built this; fall back for
+                // non-signal-driven redraws (animation ticks, caret blink).
+                let root = pending_root
+                    .borrow_mut()
+                    .take()
+                    .unwrap_or_else(|| build_ui_with_recovery(&build_ui, logical_size));
 
-            let mut frame = frame.borrow_mut();
-            let FrameState {
-                painter, renderer, ..
-            } = &mut *frame;
-            let physical_width = (logical_size.width as f64 * scale).round() as u32;
-            let physical_height = (logical_size.height as f64 * scale).round() as u32;
-            painter.set_scale(scale as f32);
-            painter.resize(physical_width, physical_height);
-            painter.clear(clear_color);
-            let scene = renderer.render_focused(
-                root,
-                logical_size,
-                painter,
-                focused.get(),
-                caret_visible.get(),
-            );
-            frame.scene = Some(scene);
-
-            // Debug aid: dump each painted frame to a PNG on disk, e.g. for
-            // headless verification where no on-screen compositor is available.
-            if let Some(path) = &dump_frame_path {
-                if let Err(err) = frame.painter.pixmap.save_png(path) {
-                    log::warn!("creamui-render: failed to write CUI_DUMP_FRAME to {path}: {err}");
+                let mut frame = frame.borrow_mut();
+                let FrameState {
+                    painter, renderer, ..
+                } = &mut *frame;
+                let physical_width = (logical_size.width as f64 * scale).round() as u32;
+                let physical_height = (logical_size.height as f64 * scale).round() as u32;
+                painter.set_scale(scale as f32);
+                painter.resize(physical_width, physical_height);
+                painter.clear(clear_color);
+                let paint_started = Instant::now();
+                let scene = renderer.render_focused(
+                    root,
+                    logical_size,
+                    painter,
+                    focused.get(),
+                    caret_visible.get(),
+                );
+                let paint_duration = paint_started.elapsed();
+                frame.scene = Some(scene);
+                let FrameState {
+                    painter, devtools, ..
+                } = &mut *frame;
+                if let Some(devtools) = devtools.as_mut() {
+                    devtools.after_paint(painter, logical_size, paint_duration);
                 }
-            }
-            drop(frame);
 
-            if let Some(window) = window.borrow().as_ref() {
-                window.request_redraw();
-            }
+                // Debug aid: dump each painted frame to a PNG on disk, e.g. for
+                // headless verification where no on-screen compositor is available.
+                if let Some(path) = &dump_frame_path {
+                    if let Err(err) = frame.painter.pixmap.save_png(path) {
+                        log::warn!(
+                            "creamui-render: failed to write CUI_DUMP_FRAME to {path}: {err}"
+                        );
+                    }
+                }
+                drop(frame);
+
+                if let Some(window) = window.borrow().as_ref() {
+                    window.request_redraw();
+                }
+            })
         }
     });
 
@@ -1021,27 +1226,36 @@ fn build_window_spec(
         let window = shared_window.clone();
         let focused = focused.clone();
         let caret_visible = caret_visible.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            let logical_size = viewport.peek();
-            let scale = scale_factor.peek();
-            let mut frame = frame.borrow_mut();
-            let physical_width = (logical_size.width as f64 * scale).round() as u32;
-            let physical_height = (logical_size.height as f64 * scale).round() as u32;
-            frame.painter.set_scale(scale as f32);
-            frame.painter.resize(physical_width, physical_height);
-            frame.painter.clear(clear_color);
-            let FrameState {
-                painter, renderer, ..
-            } = &mut *frame;
-            if let Some(scene) =
-                renderer.repaint_focused(painter, focused.get(), caret_visible.get())
-            {
-                frame.scene = Some(scene);
-            }
-            drop(frame);
-            if let Some(window) = window.borrow().as_ref() {
-                window.request_redraw();
-            }
+            with_theme_scope(&theme_provider, || {
+                let logical_size = viewport.peek();
+                let scale = scale_factor.peek();
+                let mut frame = frame.borrow_mut();
+                let physical_width = (logical_size.width as f64 * scale).round() as u32;
+                let physical_height = (logical_size.height as f64 * scale).round() as u32;
+                frame.painter.set_scale(scale as f32);
+                frame.painter.resize(physical_width, physical_height);
+                frame.painter.clear(clear_color);
+                let FrameState {
+                    painter, renderer, ..
+                } = &mut *frame;
+                if let Some(scene) =
+                    renderer.repaint_focused(painter, focused.get(), caret_visible.get())
+                {
+                    frame.scene = Some(scene);
+                }
+                let FrameState {
+                    painter, devtools, ..
+                } = &mut *frame;
+                if let Some(devtools) = devtools.as_ref() {
+                    devtools.repaint_overlay(painter, logical_size);
+                }
+                drop(frame);
+                if let Some(window) = window.borrow().as_ref() {
+                    window.request_redraw();
+                }
+            })
         }
     });
 
@@ -1057,20 +1271,23 @@ fn build_window_spec(
         let render = render.clone();
         let window = shared_window.clone();
         let dirty = dirty.clone();
+        let theme_provider = theme_provider.clone();
         move || {
-            let logical_size = viewport.peek();
-            *pending_root.borrow_mut() = Some(build_ui(logical_size));
-            // The first reactive run happens before winit has created the
-            // window, so render immediately to provide its initial frame.
-            // Afterwards merely mark dirty and let RedrawRequested coalesce
-            // all input updates into one layout/paint pass.
-            if let Some(window) = window.borrow().as_ref() {
-                if !dirty.replace(true) {
-                    window.request_redraw();
+            with_theme_scope(&theme_provider, || {
+                let logical_size = viewport.peek();
+                *pending_root.borrow_mut() = Some(build_ui_with_recovery(&build_ui, logical_size));
+                // The first reactive run happens before winit has created the
+                // window, so render immediately to provide its initial frame.
+                // Afterwards merely mark dirty and let RedrawRequested coalesce
+                // all input updates into one layout/paint pass.
+                if let Some(window) = window.borrow().as_ref() {
+                    if !dirty.replace(true) {
+                        window.request_redraw();
+                    }
+                } else {
+                    render();
                 }
-            } else {
-                render();
-            }
+            })
         }
     });
 
@@ -1110,7 +1327,211 @@ fn build_window_spec(
         scale_factor,
         frame,
         shared_window,
+        theme_provider,
         focused,
         caret_visible,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::Cell;
+    use winit::event::DeviceId;
+
+    struct WindowEventHarness {
+        state: WindowState,
+    }
+
+    impl WindowEventHarness {
+        fn new(build_ui: impl Fn(Size) -> BoxedWidget + 'static) -> Self {
+            let spec = build_window_spec(
+                0,
+                PendingWindow {
+                    options: WindowOptions {
+                        width: 100,
+                        height: 100,
+                        ..WindowOptions::default()
+                    },
+                    clear_color: Color::rgba(0, 0, 0, 255),
+                    on_window_ready: Box::new(|_| {}),
+                    build_ui: Box::new(build_ui),
+                },
+                None,
+                false,
+            );
+            WindowEventHarness {
+                state: WindowState {
+                    viewport: spec.viewport,
+                    scale_factor: spec.scale_factor,
+                    frame: spec.frame,
+                    window: spec.shared_window,
+                    presenter: None,
+                    pointer_pos: Point::default(),
+                    modifiers: ModifiersState::default(),
+                    focused: spec.focused,
+                    caret_visible: spec.caret_visible,
+                    next_blink: Instant::now() + CARET_BLINK_INTERVAL,
+                    next_animation: Instant::now(),
+                    next_resize_render: Instant::now(),
+                    resize_pending: false,
+                    pending_viewport: None,
+                    current_cursor: CursorIcon::Default,
+                    hovered: None,
+                    dragging: None,
+                    repaint: spec.repaint,
+                    repaint_scene: spec.repaint_scene,
+                    repaint_light: spec.repaint_light,
+                    render: spec.render,
+                    dirty: spec.dirty,
+                    scene_dirty: spec.scene_dirty,
+                    _effect: spec._effect,
+                    t_run: Instant::now(),
+                    first_present_logged: false,
+                },
+            }
+        }
+
+        fn send(&mut self, event: WindowEvent) {
+            self.state.handle_window_event(event);
+        }
+
+        fn key(&mut self, input: KeyInput) {
+            self.state.handle_key_input(input);
+        }
+    }
+
+    struct InteractiveWidget {
+        clicks: Signal<usize>,
+        keys: Signal<String>,
+    }
+
+    struct ThemeInChildren;
+
+    impl creamui_core::Widget for ThemeInChildren {
+        fn style(&self) -> creamui_core::layout::Style {
+            creamui_core::layout::Style::default()
+        }
+
+        fn paint(&self, _: &mut dyn creamui_core::Painter, _: creamui_core::Rect) {}
+
+        fn children(&mut self) -> Vec<BoxedWidget> {
+            let _ = creamui_theme::use_theme();
+            Vec::new()
+        }
+    }
+
+    impl creamui_core::Widget for InteractiveWidget {
+        fn style(&self) -> creamui_core::layout::Style {
+            creamui_core::layout::Style {
+                size: creamui_core::layout::Size {
+                    width: creamui_core::layout::Dimension::Length(100.0),
+                    height: creamui_core::layout::Dimension::Length(100.0),
+                },
+                ..Default::default()
+            }
+        }
+
+        fn paint(&self, _: &mut dyn creamui_core::Painter, _: creamui_core::Rect) {}
+
+        fn focusable(&self) -> bool {
+            true
+        }
+
+        fn on_click(&self) -> Option<Rc<dyn Fn()>> {
+            let clicks = self.clicks.clone();
+            Some(Rc::new(move || clicks.update(|count| *count += 1)))
+        }
+
+        fn on_key(&self) -> Option<Rc<dyn Fn(KeyInput)>> {
+            let keys = self.keys.clone();
+            Some(Rc::new(move |input| {
+                if let Key::Char(character) = input.key {
+                    keys.update(|text| text.push(character));
+                }
+            }))
+        }
+    }
+
+    fn window_size() -> Size {
+        Size {
+            width: 100.0,
+            height: 100.0,
+        }
+    }
+
+    #[test]
+    fn build_ui_with_recovery_passes_through_without_a_registered_handler() {
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = None);
+        let build: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::new(|_size| Box::new(BlankWidget));
+        let _widget = build_ui_with_recovery(&build, window_size());
+    }
+
+    #[test]
+    fn build_ui_with_recovery_catches_a_panic_and_calls_the_handler() {
+        install_panic_dispatch();
+        let called = Rc::new(Cell::new(false));
+        let handler_called = called.clone();
+        PANIC_HANDLER.with(|cell| {
+            *cell.borrow_mut() = Some(Rc::new(move |details: &PanicDetails| {
+                handler_called.set(true);
+                assert_eq!(details.message, "boom");
+            }));
+        });
+
+        let build: Rc<dyn Fn(Size) -> BoxedWidget> = Rc::new(|_size| panic!("boom"));
+        let _widget = build_ui_with_recovery(&build, window_size());
+
+        assert!(called.get(), "on_panic handler must run for a caught panic");
+        PANIC_HANDLER.with(|cell| *cell.borrow_mut() = None);
+    }
+
+    #[test]
+    fn app_builder_accepts_a_one_shot_window_ready_callback() {
+        let message = String::from("ready");
+        let _app = AppBuilder::new().window(
+            WindowOptions::default(),
+            Color::rgba(0, 0, 0, 255),
+            move |_| drop(message),
+            |_| Box::new(BlankWidget),
+        );
+    }
+
+    #[test]
+    fn headless_harness_delivers_clicks_and_keys() {
+        let clicks = Signal::new(0);
+        let keys = Signal::new(String::new());
+        let mut harness = WindowEventHarness::new({
+            let clicks = clicks.clone();
+            let keys = keys.clone();
+            move |_| {
+                Box::new(InteractiveWidget {
+                    clicks: clicks.clone(),
+                    keys: keys.clone(),
+                })
+            }
+        });
+
+        harness.send(WindowEvent::CursorMoved {
+            device_id: DeviceId::dummy(),
+            position: winit::dpi::PhysicalPosition::new(20.0, 20.0),
+        });
+        harness.send(WindowEvent::MouseInput {
+            device_id: DeviceId::dummy(),
+            state: ElementState::Pressed,
+            button: MouseButton::Left,
+        });
+        harness.key(KeyInput {
+            key: Key::Char('x'),
+            modifiers: Modifiers::default(),
+        });
+
+        assert_eq!(clicks.get(), 1);
+        assert_eq!(keys.get(), "x");
+    }
+
+    #[test]
+    fn frame_scope_is_available_to_lazy_children() {
+        let _harness = WindowEventHarness::new(|_| Box::new(ThemeInChildren));
     }
 }

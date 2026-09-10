@@ -15,6 +15,7 @@ pub struct RawTextInput {
     pub border_width: f32,
     pub corner_radius: f32,
     pub font_size: f32,
+    pub family: Option<String>,
     pub cursor: usize,
     pub selection: TextSelection,
     pub selection_background: Option<Color>,
@@ -22,6 +23,7 @@ pub struct RawTextInput {
     pub on_change: Rc<dyn Fn(String)>,
     pub on_cursor_change: Rc<dyn Fn(usize)>,
     pub on_selection_change: Rc<dyn Fn(TextSelection)>,
+    pub on_submit: Rc<dyn Fn()>,
     pub clipboard_enabled: bool,
     keyboard_selection: Rc<Cell<TextSelection>>,
     drag_anchor: Rc<Cell<usize>>,
@@ -41,6 +43,7 @@ pub struct RawTextArea {
     pub border_width: f32,
     pub corner_radius: f32,
     pub font_size: f32,
+    pub family: Option<String>,
     pub cursor: usize,
     pub alternating_line_background: Option<Color>,
     pub active_line_background: Option<Color>,
@@ -82,6 +85,7 @@ impl RawTextArea {
             border_width: 1.0,
             corner_radius: 0.0,
             font_size,
+            family: None,
             cursor,
             alternating_line_background: None,
             active_line_background: None,
@@ -178,6 +182,11 @@ impl RawTextArea {
         self
     }
 
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.family = Some(family.into());
+        self
+    }
+
     pub fn background(mut self, color: Color) -> Self {
         self.background = Some(color);
         self
@@ -214,10 +223,12 @@ impl RawTextArea {
     fn horizontal_scroll(&self, visible_width: f32) -> f32 {
         let cursor = self.cursor.min(self.value.len());
         let line_start = self.value[..cursor].rfind('\n').map_or(0, |i| i + 1);
-        let (cursor_x, _) = crate::text_metrics::measure(
+        let (cursor_x, _) = crate::text_metrics::measure_family(
             &self.value[line_start..cursor],
             self.font_size,
             crate::text_metrics::unbounded_width(),
+            self.family.as_deref(),
+            false,
         );
         (cursor_x - visible_width + 4.0).max(0.0)
     }
@@ -266,15 +277,19 @@ impl RawTextArea {
                     if let Some(background) = self.selection_background {
                         let prefix = &line[..start - source_offset];
                         let selected_text = &line[start - source_offset..end - source_offset];
-                        let (x, _) = crate::text_metrics::measure(
+                        let (x, _) = crate::text_metrics::measure_family(
                             prefix,
                             self.font_size,
                             crate::text_metrics::unbounded_width(),
+                            self.family.as_deref(),
+                            false,
                         );
-                        let (width, _) = crate::text_metrics::measure(
+                        let (width, _) = crate::text_metrics::measure_family(
                             selected_text,
                             self.font_size,
                             crate::text_metrics::unbounded_width(),
+                            self.family.as_deref(),
+                            false,
                         );
                         painter.fill_rect(
                             Rect {
@@ -286,7 +301,7 @@ impl RawTextArea {
                             2.0,
                         );
                     }
-                    painter.fill_text_selected(
+                    painter.fill_text_selected_font(
                         unbounded_line_rect,
                         line,
                         color,
@@ -294,18 +309,22 @@ impl RawTextArea {
                         start - source_offset..end - source_offset,
                         self.font_size,
                         TextAlign::Start,
+                        self.family.as_deref(),
                     );
                     source_offset = line_end + 1;
                     continue;
                 }
                 source_offset = line_end + 1;
             }
-            painter.fill_text(
+            painter.fill_text_font(
                 unbounded_line_rect,
                 line,
                 color,
                 self.font_size,
                 TextAlign::Start,
+                self.family.as_deref(),
+                false,
+                false,
             );
         }
     }
@@ -321,14 +340,27 @@ impl RawTextArea {
         // rect's very top). Sizing the rect to the block's own height
         // makes that centering a no-op.
         let block_rect = Rect {
-            height: crate::text_metrics::content_height(text, self.font_size, text_rect.width)
-                .max(crate::text_metrics::row_height(self.font_size)),
+            height: crate::text_metrics::content_height_family(
+                text,
+                self.font_size,
+                text_rect.width,
+                self.family.as_deref(),
+            )
+            .max(crate::text_metrics::row_height_family(
+                self.font_size,
+                self.family.as_deref(),
+            )),
             ..text_rect
         };
         let selected = self.selection.range();
         if !self.value.is_empty() && !selected.is_empty() {
             if let Some(background) = self.selection_background {
-                for glyph in crate::text_metrics::layout(text, self.font_size, text_rect.width) {
+                for glyph in crate::text_metrics::layout_family(
+                    text,
+                    self.font_size,
+                    text_rect.width,
+                    self.family.as_deref(),
+                ) {
                     if selected.contains(&glyph.byte_offset) {
                         painter.fill_rect(
                             Rect {
@@ -343,7 +375,7 @@ impl RawTextArea {
                     }
                 }
             }
-            painter.fill_text_selected(
+            painter.fill_text_selected_font(
                 block_rect,
                 text,
                 color,
@@ -351,9 +383,19 @@ impl RawTextArea {
                 selected,
                 self.font_size,
                 TextAlign::Start,
+                self.family.as_deref(),
             );
         } else {
-            painter.fill_text(block_rect, text, color, self.font_size, TextAlign::Start);
+            painter.fill_text_font(
+                block_rect,
+                text,
+                color,
+                self.font_size,
+                TextAlign::Start,
+                self.family.as_deref(),
+                false,
+                false,
+            );
         }
     }
 }
@@ -413,17 +455,25 @@ impl Widget for RawTextArea {
         // Caret proportions match `RawTextInput`'s: a slim bar sized and
         // vertically centered to the glyphs, not a full-height block.
         let (caret_x, caret_y, row_height) = if self.wrap {
-            let glyphs = crate::text_metrics::layout(&self.value, self.font_size, text_rect.width);
-            let fallback = crate::text_metrics::row_height(self.font_size);
+            let glyphs = crate::text_metrics::layout_family(
+                &self.value,
+                self.font_size,
+                text_rect.width,
+                self.family.as_deref(),
+            );
+            let fallback =
+                crate::text_metrics::row_height_family(self.font_size, self.family.as_deref());
             let (x, y, row_height) = crate::text_metrics::caret_xy(&glyphs, cursor, fallback);
             (text_rect.x + x, text_rect.y + y, row_height)
         } else {
             let before_cursor = &self.value[..cursor];
             let line = before_cursor.rsplit('\n').next().unwrap_or("");
-            let (width, _) = crate::text_metrics::measure(
+            let (width, _) = crate::text_metrics::measure_family(
                 line,
                 self.font_size,
                 crate::text_metrics::unbounded_width(),
+                self.family.as_deref(),
+                false,
             );
             let lines = (before_cursor.matches('\n').count()) as f32;
             let line_height = self.font_size * 1.4;
@@ -645,6 +695,7 @@ impl Widget for RawTextArea {
     fn on_drag_start(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
         let value = self.value.clone();
         let font_size = self.font_size;
+        let family = self.family.clone();
         let wrap = self.wrap;
         let on_cursor_change = self.on_cursor_change.clone();
         let on_selection_change = self.on_selection_change.clone();
@@ -652,7 +703,14 @@ impl Widget for RawTextArea {
         let drag_focus = self.drag_focus.clone();
         let keyboard_selection = self.keyboard_selection.clone();
         Some(Rc::new(move |point, rect: Rect| {
-            let cursor = cursor_at_point(&value, font_size, point, wrap, rect.width - 24.0);
+            let cursor = cursor_at_point(
+                &value,
+                font_size,
+                family.as_deref(),
+                point,
+                wrap,
+                rect.width - 24.0,
+            );
             drag_anchor.set(cursor);
             drag_focus.set(cursor);
             keyboard_selection.set(TextSelection {
@@ -672,6 +730,7 @@ impl Widget for RawTextArea {
     fn on_drag(&self) -> Option<Rc<dyn Fn(Point, Rect)>> {
         let value = self.value.clone();
         let font_size = self.font_size;
+        let family = self.family.clone();
         let wrap = self.wrap;
         let on_cursor_change = self.on_cursor_change.clone();
         let on_selection_change = self.on_selection_change.clone();
@@ -679,7 +738,14 @@ impl Widget for RawTextArea {
         let drag_focus = self.drag_focus.clone();
         let keyboard_selection = self.keyboard_selection.clone();
         Some(Rc::new(move |point, rect: Rect| {
-            let cursor = cursor_at_point(&value, font_size, point, wrap, rect.width - 24.0);
+            let cursor = cursor_at_point(
+                &value,
+                font_size,
+                family.as_deref(),
+                point,
+                wrap,
+                rect.width - 24.0,
+            );
             if cursor != drag_focus.get() {
                 drag_focus.set(cursor);
                 keyboard_selection.set(TextSelection {
@@ -701,17 +767,19 @@ impl Widget for RawTextArea {
 fn cursor_at_point(
     value: &str,
     font_size: f32,
+    family: Option<&str>,
     point: Point,
     wrap: bool,
     visible_width: f32,
 ) -> usize {
     if wrap {
-        return crate::text_metrics::byte_offset_at_point(
+        return crate::text_metrics::byte_offset_at_point_family(
             value,
             font_size,
             visible_width,
             point.x - 12.0,
             point.y - 12.0,
+            family,
         );
     }
     let line = ((point.y - 12.0) / (font_size * 1.4)).floor().max(0.0) as usize;
@@ -722,7 +790,13 @@ fn cursor_at_point(
         .take(line)
         .map(|line| line.len() + 1)
         .sum::<usize>();
-    start + crate::text_metrics::byte_offset_at_x(lines[line], font_size, (point.x - 12.0).max(0.0))
+    start
+        + crate::text_metrics::byte_offset_at_x_family(
+            lines[line],
+            font_size,
+            (point.x - 12.0).max(0.0),
+            family,
+        )
 }
 
 impl RawTextInput {
@@ -746,6 +820,7 @@ impl RawTextInput {
             border_width: 1.0,
             corner_radius: 0.0,
             font_size,
+            family: None,
             cursor,
             selection: TextSelection {
                 anchor: cursor,
@@ -756,6 +831,7 @@ impl RawTextInput {
             on_change: Rc::new(on_change),
             on_cursor_change: Rc::new(|_| {}),
             on_selection_change: Rc::new(|_| {}),
+            on_submit: Rc::new(|| {}),
             clipboard_enabled: true,
             keyboard_selection: Rc::new(Cell::new(TextSelection {
                 anchor: cursor,
@@ -784,6 +860,11 @@ impl RawTextInput {
     pub fn placeholder(mut self, text: impl Into<String>, color: Color) -> Self {
         self.placeholder = text.into();
         self.placeholder_color = color;
+        self
+    }
+
+    pub fn font_family(mut self, family: impl Into<String>) -> Self {
+        self.family = Some(family.into());
         self
     }
 
@@ -828,13 +909,22 @@ impl RawTextInput {
         self
     }
 
+    /// Called on Enter. Single-line input has no use for a literal newline,
+    /// so this is the hook for "submit on Enter" instead.
+    pub fn on_submit(mut self, on_submit: impl Fn() + 'static) -> Self {
+        self.on_submit = Rc::new(on_submit);
+        self
+    }
+
     /// How far to shift the value left so its end (editing is append-only)
     /// stays inside `visible_width` instead of running off the edge.
     fn horizontal_scroll(&self, visible_width: f32) -> f32 {
-        let (text_width, _) = crate::text_metrics::measure(
+        let (text_width, _) = crate::text_metrics::measure_family(
             &self.value,
             self.font_size,
             crate::text_metrics::unbounded_width(),
+            self.family.as_deref(),
+            false,
         );
         (text_width - visible_width + 4.0).max(0.0)
     }
@@ -868,27 +958,34 @@ impl Widget for RawTextInput {
         painter.push_clip(text_rect);
         if self.value.is_empty() {
             if !self.placeholder.is_empty() {
-                painter.fill_text(
+                painter.fill_text_font(
                     unbounded,
                     &self.placeholder,
                     self.placeholder_color,
                     self.font_size,
                     TextAlign::Start,
+                    self.family.as_deref(),
+                    false,
+                    false,
                 );
             }
         } else {
             let selected = self.selection.range();
             if !selected.is_empty() {
                 if let Some(background) = self.selection_background {
-                    let (before, _) = crate::text_metrics::measure(
+                    let (before, _) = crate::text_metrics::measure_family(
                         &self.value[..selected.start],
                         self.font_size,
                         crate::text_metrics::unbounded_width(),
+                        self.family.as_deref(),
+                        false,
                     );
-                    let (width, _) = crate::text_metrics::measure(
+                    let (width, _) = crate::text_metrics::measure_family(
                         &self.value[selected.clone()],
                         self.font_size,
                         crate::text_metrics::unbounded_width(),
+                        self.family.as_deref(),
+                        false,
                     );
                     painter.fill_rect(
                         Rect {
@@ -902,7 +999,7 @@ impl Widget for RawTextInput {
                     );
                 }
             }
-            painter.fill_text_selected(
+            painter.fill_text_selected_font(
                 unbounded,
                 &self.value,
                 self.text_color,
@@ -910,6 +1007,7 @@ impl Widget for RawTextInput {
                 selected,
                 self.font_size,
                 TextAlign::Start,
+                self.family.as_deref(),
             );
         }
         painter.pop_clip();
@@ -930,10 +1028,12 @@ impl Widget for RawTextInput {
         let padding = 8.0;
         let visible_width = (rect.width - padding * 2.0).max(0.0);
         let cursor = self.cursor.min(self.value.len());
-        let (text_width, _) = crate::text_metrics::measure(
+        let (text_width, _) = crate::text_metrics::measure_family(
             &self.value[..cursor],
             self.font_size,
             crate::text_metrics::unbounded_width(),
+            self.family.as_deref(),
+            false,
         );
         let text_width = if self.value.is_empty() {
             0.0
@@ -959,7 +1059,12 @@ impl Widget for RawTextInput {
         let selection = self.keyboard_selection.clone();
         let on_selection_change = self.on_selection_change.clone();
         let clipboard_enabled = self.clipboard_enabled;
+        let on_submit = self.on_submit.clone();
         Some(Rc::new(move |input: KeyInput| {
+            if matches!(input.key, Key::Enter) {
+                on_submit();
+                return;
+            }
             let selected = selection.get();
             if clipboard_enabled && input.modifiers.ctrl {
                 match input.key {

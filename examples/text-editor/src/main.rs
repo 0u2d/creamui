@@ -11,7 +11,7 @@ use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_reactive::Signal;
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{fixed, row};
 
 /// App-level semantic tokens. Numeric layout decisions live here rather than
@@ -28,8 +28,7 @@ struct EditorTokens {
 }
 
 impl EditorTokens {
-    fn dark() -> Self {
-        let theme = Theme::dark();
+    fn from_theme(theme: Theme) -> Self {
         Self {
             active_line: theme.surface_hover,
             theme,
@@ -41,12 +40,14 @@ impl EditorTokens {
     }
 
     fn menu_colors(self) -> creamui_widgets::MenuColors {
-        creamui_widgets::MenuColors::dark(&self.theme)
+        creamui_widgets::MenuColors::dark()
     }
 }
 
+/// Only callable during `build_ui` (uses `use_theme()`) — see `main`'s
+/// `Theme::dark()` for the one call site before the window exists.
 fn tokens() -> EditorTokens {
-    EditorTokens::dark()
+    EditorTokens::from_theme(use_theme())
 }
 
 fn size(width: f32, height: f32) -> Style {
@@ -68,25 +69,15 @@ fn ToolbarMenu(label: String, id: i32, active: Signal<i32>) -> BoxedWidget {
     };
     // Top-level menus are deliberately text-only. A menu bar is navigation,
     // not a row of contained buttons; the popup supplies the active affordance.
-    Box::new(
-        creamui_widgets::RawButton::new(
-            size(
-                tokens.menu_trigger_width,
-                tokens.menu_height - tokens.theme.spacing_small,
-            ),
-            move || {
-                click_active.set(if click_active.get() == id { 0 } else { id });
-            },
-        )
-        .child(Box::new(
-            creamui_widgets::RawText::new(label, text_color, 13.0)
-                .align(TextAlign::Start)
-                .layout_style(size(
-                    tokens.menu_trigger_width,
-                    tokens.menu_height - tokens.theme.spacing_small,
-                )),
-        )),
-    )
+    let trigger_style = size(
+        tokens.menu_trigger_width,
+        tokens.menu_height - tokens.theme.spacing_small,
+    );
+    Box::new(jsx! {
+        <RawButton style={trigger_style.clone()} on_click={move || { click_active.set(if click_active.get() == id { 0 } else { id }); }}>
+            <RawText color={text_color} font_size={13.0} align={TextAlign::Start} style={trigger_style}>{label}</RawText>
+        </RawButton>
+    })
 }
 
 #[component]
@@ -273,7 +264,6 @@ fn LineNumbers(value: String) -> BoxedWidget {
 }
 
 fn main() {
-    let editor_tokens = tokens();
     let document = Signal::new("# A small thought\n\nCreamUI makes desktop interfaces feel calm.\n\nStart writing here — this is a real multiline editor.\nThe line count, word count, and character count react to each change.\n\n## Notes\n\n- Press Return for a new line\n- Backspace edits normally\n- The UI tree is declarative JSX".to_owned());
     let saved = Signal::new(false);
     let cursor = Signal::new(document.get().len());
@@ -288,9 +278,10 @@ fn main() {
             title: "CreamUI — Text Editor".into(),
             width: 980,
             height: 680,
+            theme: Theme::dark(),
             ..Default::default()
         },
-        editor_tokens.theme.surface,
+        Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
             let tokens = tokens();
@@ -305,7 +296,6 @@ fn main() {
             let selection_for_change = selection.clone();
             let open_document_value = document.clone();
             let open_document_status = status_message.clone();
-            let editor_theme = tokens.theme;
             let root = Style {
                 size: creamui_core::layout::Size {
                     width: Dimension::Length(viewport.width),
@@ -351,7 +341,7 @@ fn main() {
                     <EditorToolbar menus={vec!["File".into()]} title={"Untitled.md".into()} active={active_menu.clone()} children={Vec::<BoxedWidget>::new()} />
                     <RawView style={editor_row}>
                         <LineNumbers value={value.clone()} />
-                        <TextArea theme={&editor_theme} style={area} value={value.clone()} cursor={cursor.get()} on_cursor_change={move |next| cursor_for_change.set(next)} selection={selection.get()} on_selection_change={move |next| selection_for_change.set(next)} on_ctrl_o={move || open_document(open_document_value.clone(), open_document_status.clone())} on_change={move |next| { saved_for_change.set(false); on_change.set(next) }} placeholder={"Start writing…"} corner_radius={0.0} border_width={0.0} active_line_background={tokens.active_line} />
+                        <TextArea style={area} value={value.clone()} cursor={cursor.get()} on_cursor_change={move |next| cursor_for_change.set(next)} selection={selection.get()} on_selection_change={move |next| selection_for_change.set(next)} on_ctrl_o={move || open_document(open_document_value.clone(), open_document_status.clone())} on_change={move |next| { saved_for_change.set(false); on_change.set(next) }} placeholder={"Start writing…"} corner_radius={0.0} border_width={0.0} active_line_background={tokens.active_line} />
                     </RawView>
                     <RawView style={status} background={tokens.theme.surface}>
                         <RawText color={tokens.theme.accent} font_size={12.0} style={Style { flex_grow: 1.0, ..Default::default()}}>{status_text}</RawText>

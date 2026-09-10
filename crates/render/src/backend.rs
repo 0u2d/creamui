@@ -20,6 +20,7 @@ pub enum RenderBackend {
 }
 
 impl RenderBackend {
+    #[cfg(not(target_arch = "wasm32"))]
     fn from_env_str(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
             "gpu" => Some(RenderBackend::Gpu),
@@ -33,6 +34,7 @@ impl RenderBackend {
     /// which wins over `requested` if set to a recognized value. An
     /// unrecognized value is ignored (with a warning) rather than treated as
     /// fatal.
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn resolve(requested: Self) -> Self {
         let Ok(raw) = std::env::var("CUI_OVERRIDE_RENDER_BACKEND") else {
             return requested;

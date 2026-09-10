@@ -1,7 +1,7 @@
 //! A complete application that depends only on the `creamui` facade crate.
 
 use creamui::core::layout::{AlignItems, Dimension, FlexDirection, JustifyContent, Style};
-use creamui::{jsx, run, BoxedWidget, Signal, Size, Theme, WindowOptions};
+use creamui::{jsx, run, use_theme, BoxedWidget, Signal, Size, Theme, WindowOptions};
 
 fn main() {
     let clicks = Signal::new(0_u32);
@@ -10,12 +10,13 @@ fn main() {
             title: "CreamUI — Facade".into(),
             width: 480,
             height: 320,
+            theme: Theme::default(),
             ..Default::default()
         },
         Theme::default().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
-            let theme = Theme::default();
+            let theme = use_theme();
             let increment = clicks.clone();
             let style = Style {
                 size: creamui::core::layout::Size {
@@ -29,8 +30,8 @@ fn main() {
             };
             Box::new(jsx! {
                 <RawView style={style} background={theme.surface}>
-                    <Text theme={&theme} font_size={28.0}>"Hello, CreamUI!"</Text>
-                    <Button theme={&theme} on_click={move || increment.update(|n| *n += 1)}>
+                    <Text font_size={28.0}>"Hello, CreamUI!"</Text>
+                    <Button on_click={move || increment.update(|n| *n += 1)}>
                         {format!("Clicked {} times", clicks.get())}
                     </Button>
                 </RawView>

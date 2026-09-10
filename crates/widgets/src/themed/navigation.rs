@@ -28,7 +28,8 @@ pub struct TabColors {
 
 impl TabColors {
     /// Colours and geometry for a horizontal tab group.
-    pub fn dark(theme: &Theme) -> Self {
+    pub fn dark() -> Self {
+        let theme = use_theme();
         Self {
             background: theme.surface,
             inactive_background: Some(theme.surface_hover),
@@ -52,7 +53,8 @@ impl TabColors {
 
     /// Colours and geometry for a vertical sidebar. Kept separate because a
     /// theme may intentionally give navigation a different silhouette.
-    pub fn sidebar(theme: &Theme) -> Self {
+    pub fn sidebar() -> Self {
+        let theme = use_theme();
         Self {
             // Navigation remains integrated with the app canvas; the
             // encapsulated content card is the elevated material.

@@ -153,18 +153,18 @@ fn loads_dynamically_and_builds_a_widget_tree() {
         let version_str = CStr::from_ptr(version()).to_str().unwrap();
         assert_eq!(version_str, env!("CARGO_PKG_VERSION"));
 
-        let view_new: Symbol<unsafe extern "C" fn() -> *mut c_void> =
-            lib.get(b"creamui_view_new").unwrap();
+        let block_new: Symbol<unsafe extern "C" fn() -> *mut c_void> =
+            lib.get(b"creamui_block_new").unwrap();
         let set_background: Symbol<unsafe extern "C" fn(*mut c_void, CColor)> =
-            lib.get(b"creamui_view_set_background").unwrap();
+            lib.get(b"creamui_block_set_background").unwrap();
         let text_new: Symbol<unsafe extern "C" fn(*const c_char, CColor, f32) -> *mut c_void> =
             lib.get(b"creamui_text_new").unwrap();
         let add_child: Symbol<unsafe extern "C" fn(*mut c_void, *mut c_void)> =
-            lib.get(b"creamui_view_add_child").unwrap();
+            lib.get(b"creamui_block_add_child").unwrap();
         let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> =
             lib.get(b"creamui_widget_free").unwrap();
 
-        let root = view_new();
+        let root = block_new();
         assert!(!root.is_null());
         set_background(
             root,
@@ -305,13 +305,13 @@ fn themed_text_and_button_use_the_caller_supplied_theme() {
 }
 
 #[test]
-fn view_new_styled_accepts_full_layout_control() {
+fn block_new_styled_accepts_layout_properties() {
     let path = cdylib_path();
     let lib = unsafe { Library::new(&path) }.unwrap();
 
     unsafe {
-        let view_new_styled: Symbol<unsafe extern "C" fn(CStyle) -> *mut c_void> =
-            lib.get(b"creamui_view_new_styled").unwrap();
+        let block_new_styled: Symbol<unsafe extern "C" fn(CStyle) -> *mut c_void> =
+            lib.get(b"creamui_block_new_styled").unwrap();
         let widget_free: Symbol<unsafe extern "C" fn(*mut c_void)> =
             lib.get(b"creamui_widget_free").unwrap();
 
@@ -329,9 +329,9 @@ fn view_new_styled_accepts_full_layout_control() {
         style.gap_row = 4.0;
         style.flex_grow = 1.0;
 
-        let view = view_new_styled(style);
-        assert!(!view.is_null());
-        widget_free(view);
+        let block = block_new_styled(style);
+        assert!(!block.is_null());
+        widget_free(block);
     }
 }
 

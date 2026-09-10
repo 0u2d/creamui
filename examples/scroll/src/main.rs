@@ -21,9 +21,9 @@ use creamui_core::layout::{AlignItems, Dimension, Style};
 use creamui_core::{BoxedWidget, Size, TextAlign};
 use creamui_macros::{component, jsx};
 use creamui_render::{run, WindowOptions};
-use creamui_theme::{Color, Theme};
+use creamui_theme::{use_theme, Color, Theme};
 use creamui_widgets::layout::{column, padding, row};
-use creamui_widgets::{RawScrollView, RawText, RawView, ScrollController, ScrollView, View};
+use creamui_widgets::{Card, RawScrollView, ScrollController, ScrollView};
 
 /// A row of numbered list items, tall enough in aggregate to overflow every
 /// list in this example.
@@ -60,15 +60,13 @@ fn rows(theme: &Theme, text_color: Color) -> Vec<BoxedWidget> {
             } else {
                 theme.surface
             };
-            Box::new(
-                RawView::new(row_style(theme))
-                    .background(background)
-                    .child(Box::new(
-                        RawText::new(format!("Item {:02}", i + 1), text_color, 13.0)
-                            .align(TextAlign::Start)
-                            .layout_style(text_style.clone()),
-                    )),
-            ) as BoxedWidget
+            Box::new(jsx! {
+                <RawView style={row_style(theme)} background={background}>
+                    <RawText color={text_color} font_size={13.0} align={TextAlign::Start} style={text_style.clone()}>
+                        {format!("Item {:02}", i + 1)}
+                    </RawText>
+                </RawView>
+            }) as BoxedWidget
         })
         .collect()
 }
@@ -88,7 +86,8 @@ fn list_style() -> Style {
 /// square before the label, so the eye can tell the three demos apart at a
 /// glance without reading the text.
 #[component]
-fn Card(theme: Theme, chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
+fn Card(chip: Color, label: String, list: BoxedWidget) -> BoxedWidget {
+    let theme = use_theme();
     let outer_style = Style {
         flex_grow: 1.0,
         size: creamui_core::layout::Size {
@@ -123,22 +122,22 @@ fn Card(theme: Theme, chip: Color, label: String, list: BoxedWidget) -> BoxedWid
         },
         theme.spacing_large,
     );
-    let header = Box::new(jsx! {
+    let header: BoxedWidget = Box::new(jsx! {
         <RawView style={header_style}>
             <RawView style={chip_style} background={chip} corner_radius={2.0} />
-            <Text theme={&theme} align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
+            <Text align={TextAlign::Start} color={theme.text_disabled} style={Style { size: creamui_core::layout::Size { width: Dimension::Auto, height: Dimension::Length(16.0) }, ..Default::default() }}>{label}</Text>
         </RawView>
     });
-    let card = View::new(&theme, card_style).child(list);
-    Box::new(
-        RawView::new(outer_style)
-            .child(header)
-            .child(Box::new(card)),
-    )
+    let card: BoxedWidget = Box::new(Card::new(card_style).child(list));
+    Box::new(jsx! {
+        <RawView style={outer_style}>
+            {header}
+            {card}
+        </RawView>
+    })
 }
 
 fn main() {
-    let theme = Theme::dark();
     let themed_scroll = ScrollController::default();
     let custom_scroll = ScrollController::default();
     let wheel_only_scroll = ScrollController::default();
@@ -148,11 +147,13 @@ fn main() {
             title: "CreamUI — Scroll".into(),
             width: 900,
             height: 460,
+            theme: Theme::dark(),
             ..Default::default()
         },
-        theme.surface,
+        Theme::dark().surface,
         |_| {},
         move |viewport: Size| -> BoxedWidget {
+            let theme = use_theme();
             let root_style = padding(
                 Style {
                     size: creamui_core::layout::Size {
@@ -166,7 +167,7 @@ fn main() {
             );
 
             let themed_list = Box::new(
-                ScrollView::controlled(&theme, list_style(), themed_scroll.clone())
+                ScrollView::controlled(list_style(), themed_scroll.clone())
                     .with_children(rows(&theme, theme.text_primary)),
             ) as BoxedWidget;
 
@@ -191,9 +192,9 @@ fn main() {
 
             Box::new(jsx! {
                 <RawView style={root_style} background={theme.surface}>
-                    <Card theme={theme} chip={theme.accent} label={"THEMED — ScrollView".to_owned()} list={themed_list} />
-                    <Card theme={theme} chip={NEON} label={"CUSTOM — RawScrollView".to_owned()} list={custom_list} />
-                    <Card theme={theme} chip={theme.text_disabled} label={"WHEEL ONLY — scrollbar(false)".to_owned()} list={wheel_only_list} />
+                    <Card chip={theme.accent} label={"THEMED — ScrollView".to_owned()} list={themed_list} />
+                    <Card chip={NEON} label={"CUSTOM — RawScrollView".to_owned()} list={custom_list} />
+                    <Card chip={theme.text_disabled} label={"WHEEL ONLY — scrollbar(false)".to_owned()} list={wheel_only_list} />
                 </RawView>
             })
         },

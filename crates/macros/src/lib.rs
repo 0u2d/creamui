@@ -218,10 +218,13 @@ impl Element {
     fn is_native_intrinsic(&self) -> bool {
         matches!(
             self.tag.to_string().as_str(),
-            "RawView"
+            "Block"
+                | "RawView"
+                | "Flex"
+                | "Grid"
+                | "GridItem"
                 | "RawText"
                 | "RawButton"
-                | "View"
                 | "ScrollView"
                 | "Text"
                 | "Heading"
@@ -327,6 +330,295 @@ impl Element {
         let widgets = widgets_path();
         let image = image_path();
         match self.tag.to_string().as_str() {
+            "Block" => {
+                self.reject_unknown_props(&[
+                    "style",
+                    "size",
+                    "padding",
+                    "padding_xy",
+                    "margin",
+                    "fill",
+                    "grow",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = if let Some(style) = self.prop("style")? {
+                    quote!(#widgets::layout::Block::with_style(#style))
+                } else {
+                    quote!(#widgets::layout::Block::new())
+                };
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(margin) = self.prop("margin")? {
+                    output = quote!(#output.margin(#margin));
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "Flex" => {
+                self.reject_unknown_props(&[
+                    "direction",
+                    "gap",
+                    "gap_x",
+                    "gap_y",
+                    "align",
+                    "justify",
+                    "align_content",
+                    "wrap",
+                    "padding",
+                    "padding_xy",
+                    "size",
+                    "full_width",
+                    "full_height",
+                    "fill",
+                    "grow",
+                    "shrink",
+                    "basis",
+                    "align_self",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = quote!(#widgets::layout::Flex::row());
+                if let Some(direction) = self.prop("direction")? {
+                    output = quote!(#output.direction(#direction));
+                }
+                if let Some(gap) = self.prop("gap")? {
+                    output = quote!(#output.gap(#gap));
+                }
+                if let Some(gap) = self.prop("gap_x")? {
+                    output = quote!(#output.gap_x(#gap));
+                }
+                if let Some(gap) = self.prop("gap_y")? {
+                    output = quote!(#output.gap_y(#gap));
+                }
+                if let Some(align) = self.prop("align")? {
+                    output = quote!(#output.align(#align));
+                }
+                if let Some(justify) = self.prop("justify")? {
+                    output = quote!(#output.justify(#justify));
+                }
+                if let Some(align_content) = self.prop("align_content")? {
+                    output = quote!(#output.align_content(#align_content));
+                }
+                if let Some(wrap) = self.prop("wrap")? {
+                    output = quote!(#output.wrap(#wrap));
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(full_width) = self.prop("full_width")? {
+                    output = quote!(if #full_width { #output.full_width() } else { #output });
+                }
+                if let Some(full_height) = self.prop("full_height")? {
+                    output = quote!(if #full_height { #output.full_height() } else { #output });
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(shrink) = self.prop("shrink")? {
+                    output = quote!(#output.shrink(#shrink));
+                }
+                if let Some(basis) = self.prop("basis")? {
+                    output = quote!(#output.basis(#basis));
+                }
+                if let Some(align_self) = self.prop("align_self")? {
+                    output = quote!(#output.align_self(#align_self));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "Grid" => {
+                self.reject_unknown_props(&[
+                    "columns",
+                    "rows",
+                    "template_columns",
+                    "template_rows",
+                    "gap",
+                    "gap_x",
+                    "gap_y",
+                    "justify",
+                    "align_content",
+                    "flow",
+                    "padding",
+                    "padding_xy",
+                    "size",
+                    "fill",
+                    "grow",
+                    "background",
+                    "corner_radius",
+                    "children",
+                ])?;
+                let mut output = quote!(#widgets::layout::Grid::new());
+                if let Some(columns) = self.prop("columns")? {
+                    output = quote!(#output.columns(#columns));
+                }
+                if let Some(rows) = self.prop("rows")? {
+                    output = quote!(#output.rows(#rows));
+                }
+                if let Some(tracks) = self.prop("template_columns")? {
+                    output = quote!(#output.template_columns(#tracks));
+                }
+                if let Some(tracks) = self.prop("template_rows")? {
+                    output = quote!(#output.template_rows(#tracks));
+                }
+                if let Some(gap) = self.prop("gap")? {
+                    output = quote!(#output.gap(#gap));
+                }
+                if let Some(gap) = self.prop("gap_x")? {
+                    output = quote!(#output.gap_x(#gap));
+                }
+                if let Some(gap) = self.prop("gap_y")? {
+                    output = quote!(#output.gap_y(#gap));
+                }
+                if let Some(justify) = self.prop("justify")? {
+                    output = quote!(#output.justify(#justify));
+                }
+                if let Some(align_content) = self.prop("align_content")? {
+                    output = quote!(#output.align_content(#align_content));
+                }
+                if let Some(flow) = self.prop("flow")? {
+                    output = quote!(#output.flow(#flow));
+                }
+                if let Some(padding) = self.prop("padding")? {
+                    output = quote!(#output.padding(#padding));
+                }
+                if let Some(padding_xy) = self.prop("padding_xy")? {
+                    output = quote!({
+                        let (horizontal, vertical) = #padding_xy;
+                        #output.padding_xy(horizontal, vertical)
+                    });
+                }
+                if let Some(size) = self.prop("size")? {
+                    output = quote!({
+                        let (width, height) = #size;
+                        #output.size(width, height)
+                    });
+                }
+                if let Some(fill) = self.prop("fill")? {
+                    output = quote!(if #fill { #output.fill() } else { #output });
+                }
+                if let Some(grow) = self.prop("grow")? {
+                    output = quote!(#output.grow(#grow));
+                }
+                if let Some(background) = self.prop("background")? {
+                    output = quote!(#output.background(#background));
+                }
+                if let Some(radius) = self.prop("corner_radius")? {
+                    output = quote!(#output.corner_radius(#radius));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
+            "GridItem" => {
+                self.reject_unknown_props(&[
+                    "column",
+                    "row",
+                    "column_span",
+                    "row_span",
+                    "children",
+                ])?;
+                let column = self.prop("column")?;
+                let row = self.prop("row")?;
+                let mut output = quote!(#widgets::layout::GridItem::new());
+                match (column, row) {
+                    (Some(column), Some(row)) => output = quote!(#output.at(#column, #row)),
+                    (Some(column), None) => output = quote!(#output.column(#column)),
+                    (None, Some(row)) => output = quote!(#output.row(#row)),
+                    (None, None) => {}
+                }
+                if let Some(span) = self.prop("column_span")? {
+                    output = quote!(#output.column_span(#span));
+                }
+                if let Some(span) = self.prop("row_span")? {
+                    output = quote!(#output.row_span(#span));
+                }
+                if let Some(children) = self.prop("children")? {
+                    if !self.children.is_empty() {
+                        return Err(Error::new_spanned(
+                            &self.tag,
+                            "`children` cannot be combined with nested JSX children",
+                        ));
+                    }
+                    Ok(quote!(#output.with_children(#children)))
+                } else {
+                    self.container_children(output)
+                }
+            }
             "RawView" => {
                 self.reject_unknown_props(&["style", "background", "corner_radius", "children"])?;
                 let style = self.required_prop("style")?;
@@ -385,36 +677,30 @@ impl Element {
                 }
                 self.container_children(output)
             }
-            "View" => {
-                self.reject_unknown_props(&["theme", "style"])?;
-                let theme = self.required_prop("theme")?;
-                let style = self.required_prop("style")?;
-                self.container_children(quote!(#widgets::themed::View::new(#theme, #style)))
-            }
             "ScrollView" => {
-                self.reject_unknown_props(&["theme", "style", "scroll_y", "on_scroll"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["style", "scroll_y", "on_scroll"])?;
                 let style = self.required_prop("style")?;
                 let scroll_y = self.required_prop("scroll_y")?;
                 let on_scroll = self.required_prop("on_scroll")?;
-                self.container_children(quote!(#widgets::themed::ScrollView::new(#theme, #style, #scroll_y, #on_scroll)))
+                self.container_children(
+                    quote!(#widgets::themed::ScrollView::new(#style, #scroll_y, #on_scroll)),
+                )
             }
             "Text" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "font_size",
+                    "font_family",
                     "size",
                     "secondary",
                     "align",
                     "color",
                     "style",
                 ])?;
-                let theme = self.required_prop("theme")?;
                 let text = self.text_child()?;
                 let mut output = if let Some(secondary) = self.prop("secondary")? {
-                    quote!(if #secondary { #widgets::themed::Text::secondary(#theme, #text) } else { #widgets::themed::Text::new(#theme, #text) })
+                    quote!(if #secondary { #widgets::themed::Text::secondary(#text) } else { #widgets::themed::Text::new(#text) })
                 } else {
-                    quote!(#widgets::themed::Text::new(#theme, #text))
+                    quote!(#widgets::themed::Text::new(#text))
                 };
                 if let Some(font_size) = self.prop("font_size")? {
                     output = quote!(#output.font_size(#font_size));
@@ -428,19 +714,21 @@ impl Element {
                 if let Some(color) = self.prop("color")? {
                     output = quote!(#output.color(#color));
                 }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
+                }
                 if let Some(style) = self.prop("style")? {
                     output = quote!(#output.style(#style));
                 }
                 Ok(output)
             }
             "Heading" => {
-                self.reject_unknown_props(&["theme", "size", "align", "color", "style"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["size", "align", "color", "style", "font_family"])?;
                 let text = self.text_child()?;
                 let mut output = if let Some(size) = self.prop("size")? {
-                    quote!(#widgets::themed::Heading::sized(#theme, #size, #text))
+                    quote!(#widgets::themed::Heading::sized(#size, #text))
                 } else {
-                    quote!(#widgets::themed::Heading::new(#theme, #text))
+                    quote!(#widgets::themed::Heading::new(#text))
                 };
                 if let Some(align) = self.prop("align")? {
                     output = quote!(#output.align(#align));
@@ -448,20 +736,22 @@ impl Element {
                 if let Some(color) = self.prop("color")? {
                     output = quote!(#output.color(#color));
                 }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
+                }
                 if let Some(style) = self.prop("style")? {
                     output = quote!(#output.style(#style));
                 }
                 Ok(output)
             }
             "Button" => {
-                self.reject_unknown_props(&["theme", "on_click", "style", "disabled"])?;
-                let theme = self.required_prop("theme")?;
+                self.reject_unknown_props(&["on_click", "style", "disabled"])?;
                 let on_click = self.required_prop("on_click")?;
                 let label = self.text_child()?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(#widgets::themed::Button::with_style(#theme, #style, #label, #on_click))
+                    quote!(#widgets::themed::Button::with_style(#style, #label, #on_click))
                 } else {
-                    quote!(#widgets::themed::Button::new(#theme, #label, #on_click))
+                    quote!(#widgets::themed::Button::new(#label, #on_click))
                 };
                 if let Some(disabled) = self.prop("disabled")? {
                     output = quote!(#output.disabled(#disabled));
@@ -469,27 +759,26 @@ impl Element {
                 Ok(output)
             }
             "Checkbox" => {
-                self.reject_unknown_props(&["theme", "checked", "on_click"])?;
+                self.reject_unknown_props(&["checked", "on_click"])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
                         &self.tag,
                         "`Checkbox` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let checked = self.required_prop("checked")?;
                 let on_click = self.required_prop("on_click")?;
-                Ok(quote!(#widgets::themed::Checkbox::new(#theme, #checked, #on_click)))
+                Ok(quote!(#widgets::themed::Checkbox::new(#checked, #on_click)))
             }
             "TextInput" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
                     "style",
                     "placeholder",
                     "clipboard_enabled",
+                    "font_family",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -497,33 +786,34 @@ impl Element {
                         "`TextInput` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let style = self.prop("style")?;
                 let mut output = match (self.prop("controller")?, self.prop("value")?, self.prop("on_change")?) {
                     (Some(controller), None, None) => if let Some(style) = &style {
-                        quote!(#widgets::themed::TextInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextInput::controlled_with_style(#style, #controller))
                     } else {
-                        quote!(#widgets::themed::TextInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextInput::controlled(#controller))
                     },
                     (None, Some(value), Some(on_change)) => if let Some(style) = &style {
-                        quote!(#widgets::themed::TextInput::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::with_style(#style, #value, #on_change))
                     } else {
-                        quote!(#widgets::themed::TextInput::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextInput::new(#value, #on_change))
                     },
                     (None, None, None) => return Err(Error::new_spanned(&self.tag, "`TextInput` requires either a `controller` prop or both `value` and `on_change`")),
                     _ => return Err(Error::new_spanned(&self.tag, "`TextInput`'s `controller` prop cannot be combined with `value`/`on_change`")),
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
-                    output = quote!(#output.placeholder(#theme, #placeholder));
+                    output = quote!(#output.placeholder(#placeholder));
                 }
                 if let Some(enabled) = self.prop("clipboard_enabled")? {
                     output = quote!(#output.clipboard_enabled(#enabled));
+                }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
                 }
                 Ok(output)
             }
             "TextArea" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
@@ -544,6 +834,7 @@ impl Element {
                     "on_ctrl_o",
                     "clipboard_enabled",
                     "wrap",
+                    "font_family",
                 ])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
@@ -551,7 +842,6 @@ impl Element {
                         "`TextArea` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let style = self.prop("style")?;
                 let controller = self.prop("controller")?;
                 if let Some(controller) = &controller {
@@ -571,21 +861,21 @@ impl Element {
                 }
                 let mut output = if let Some(controller) = &controller {
                     if let Some(style) = &style {
-                        quote!(#widgets::themed::TextArea::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TextArea::controlled_with_style(#style, #controller))
                     } else {
-                        quote!(#widgets::themed::TextArea::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TextArea::controlled(#controller))
                     }
                 } else {
                     let value = self.required_prop("value")?;
                     let on_change = self.required_prop("on_change")?;
                     if let Some(style) = &style {
-                        quote!(#widgets::themed::TextArea::with_style(#theme, #style, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::with_style(#style, #value, #on_change))
                     } else {
-                        quote!(#widgets::themed::TextArea::new(#theme, #value, #on_change))
+                        quote!(#widgets::themed::TextArea::new(#value, #on_change))
                     }
                 };
                 if let Some(placeholder) = self.prop("placeholder")? {
-                    output = quote!(#output.placeholder(#theme, #placeholder));
+                    output = quote!(#output.placeholder(#placeholder));
                 }
                 if let Some(color) = self.prop("alternating_line_background")? {
                     output = quote!(#output.alternating_line_background(#color));
@@ -638,30 +928,29 @@ impl Element {
                 if let Some(wrap) = self.prop("wrap")? {
                     output = quote!(#output.wrap(#wrap));
                 }
+                if let Some(font_family) = self.prop("font_family")? {
+                    output = quote!(#output.font_family(#font_family));
+                }
                 Ok(output)
             }
             "Slider" => {
-                self.reject_unknown_props(&["theme", "value", "on_change", "style"])?;
+                self.reject_unknown_props(&["value", "on_change", "style"])?;
                 if !self.children.is_empty() {
                     return Err(Error::new_spanned(
                         &self.tag,
                         "`Slider` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
                 if let Some(style) = self.prop("style")? {
-                    Ok(
-                        quote!(#widgets::themed::Slider::with_style(#theme, #style, #value, #on_change)),
-                    )
+                    Ok(quote!(#widgets::themed::Slider::with_style(#style, #value, #on_change)))
                 } else {
-                    Ok(quote!(#widgets::themed::Slider::new(#theme, #value, #on_change)))
+                    Ok(quote!(#widgets::themed::Slider::new(#value, #on_change)))
                 }
             }
             "ColorPicker" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "value",
                     "on_change",
@@ -675,14 +964,13 @@ impl Element {
                         "`ColorPicker` cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let controller = self.required_prop("controller")?;
                 let value = self.required_prop("value")?;
                 let on_change = self.required_prop("on_change")?;
                 let mut output = if let Some(style) = self.prop("style")? {
-                    quote!(#widgets::themed::ColorPicker::controlled_with_style(#theme, #style, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled_with_style(#style, #value, #controller, #on_change))
                 } else {
-                    quote!(#widgets::themed::ColorPicker::controlled(#theme, #value, #controller, #on_change))
+                    quote!(#widgets::themed::ColorPicker::controlled(#value, #controller, #on_change))
                 };
                 if let Some(width) = self.prop("popup_width")? {
                     output = quote!(#output.popup_width(#width));
@@ -716,7 +1004,6 @@ impl Element {
             }
             "DateTimePicker" | "DateInput" | "TimeInput" => {
                 self.reject_unknown_props(&[
-                    "theme",
                     "controller",
                     "style",
                     "show_date",
@@ -731,7 +1018,6 @@ impl Element {
                         "picker inputs cannot have children",
                     ));
                 }
-                let theme = self.required_prop("theme")?;
                 let controller = self.required_prop("controller")?;
                 let style = self.prop("style")?;
                 let tag = self.tag.to_string();
@@ -742,22 +1028,22 @@ impl Element {
                 }
                 let constructor = match (tag.as_str(), style) {
                     ("DateTimePicker", Some(style)) => {
-                        quote!(#widgets::themed::DateTimePicker::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled_with_style(#style, #controller))
                     }
                     ("DateTimePicker", None) => {
-                        quote!(#widgets::themed::DateTimePicker::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateTimePicker::controlled(#controller))
                     }
                     ("DateInput", Some(style)) => {
-                        quote!(#widgets::themed::DateInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::DateInput::controlled_with_style(#style, #controller))
                     }
                     ("DateInput", None) => {
-                        quote!(#widgets::themed::DateInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::DateInput::controlled(#controller))
                     }
                     ("TimeInput", Some(style)) => {
-                        quote!(#widgets::themed::TimeInput::controlled_with_style(#theme, #style, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled_with_style(#style, #controller))
                     }
                     _ => {
-                        quote!(#widgets::themed::TimeInput::controlled(#theme, #controller))
+                        quote!(#widgets::themed::TimeInput::controlled(#controller))
                     }
                 };
                 let mut output = constructor;
@@ -868,11 +1154,11 @@ impl Element {
     fn expand_dynamic(&self) -> Result<TokenStream2> {
         let dynamic = dynamic_path();
         match self.tag.to_string().as_str() {
-            "RawView" | "View" => {
+            "Block" => {
                 self.reject_unknown_props(&["ctx", "style", "background", "corner_radius"])?;
                 let ctx = self.required_prop("ctx")?;
                 let style = self.required_prop("style")?;
-                let mut output = quote!(#dynamic::view_styled(#ctx, #style));
+                let mut output = quote!(#dynamic::block_styled(#ctx, #style));
                 if let Some(background) = self.prop("background")? {
                     output = quote!(#output.background(#background));
                 }

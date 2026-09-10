@@ -8,9 +8,12 @@ use creamui_core::{
     BoxedWidget, CursorIcon, Key, KeyInput, Painter, Point, Rect, TextAlign, Widget,
 };
 use creamui_theme::Color;
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
+#[cfg(not(target_arch = "wasm32"))]
+use std::cell::RefCell;
 use std::rc::Rc;
 
+#[cfg(not(target_arch = "wasm32"))]
 thread_local! {
     // On X11/Wayland the clipboard owner must remain alive after the write;
     // creating and dropping `arboard::Clipboard` inside a key callback makes
@@ -26,6 +29,7 @@ fn activate_on_key(click: Rc<dyn Fn()>) -> Rc<dyn Fn(KeyInput)> {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_write(text: String) {
     SYSTEM_CLIPBOARD.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -38,6 +42,7 @@ fn clipboard_write(text: String) {
     });
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn clipboard_read() -> Option<String> {
     SYSTEM_CLIPBOARD.with(|slot| {
         let mut slot = slot.borrow_mut();
@@ -49,6 +54,76 @@ fn clipboard_read() -> Option<String> {
     })
 }
 
+// The browser clipboard API is asynchronous and requires a user gesture.
+// Keep text editing functional on WebAssembly while deliberately making the
+// synchronous Ctrl+C/Ctrl+V hooks no-ops; an embedding can provide a web
+// clipboard bridge later without changing the widget API.
+#[cfg(target_arch = "wasm32")]
+fn clipboard_write(_: String) {}
+
+#[cfg(target_arch = "wasm32")]
+fn clipboard_read() -> Option<String> {
+    None
+}
+
+/// Draws an underline and/or strikethrough rule under/through a run of text
+/// painted with [`Painter::fill_text_font`], shared by [`RawText`] and
+/// [`RawLink`] so both decorate exactly the same way. `rect`, `font_size`,
+/// `bold` and `align` must match the values the text itself was painted
+/// with — the rule's width and horizontal position are derived from
+/// [`crate::text_metrics::measure_family`] using them, not from re-measuring
+/// glyphs the painter already laid out.
+fn draw_text_decorations(
+    painter: &mut dyn Painter,
+    rect: Rect,
+    text: &str,
+    font_size: f32,
+    family: Option<&str>,
+    bold: bool,
+    align: TextAlign,
+    color: Color,
+    underline: bool,
+    strikethrough: bool,
+) {
+    if !underline && !strikethrough {
+        return;
+    }
+    let (width, _) = crate::text_metrics::measure_family(text, font_size, rect.width, family, bold);
+    let x = match align {
+        TextAlign::Start => rect.x,
+        TextAlign::Center => rect.x + (rect.width - width) / 2.0,
+        TextAlign::End => rect.x + rect.width - width,
+    };
+    let center_y = rect.y + rect.height / 2.0;
+    let thickness = (font_size * 0.06).max(1.0);
+    if underline {
+        let y = center_y + font_size * 0.32;
+        painter.fill_rect(
+            Rect {
+                x,
+                y: y - thickness / 2.0,
+                width,
+                height: thickness,
+            },
+            color,
+            0.0,
+        );
+    }
+    if strikethrough {
+        let y = center_y - font_size * 0.02;
+        painter.fill_rect(
+            Rect {
+                x,
+                y: y - thickness / 2.0,
+                width,
+                height: thickness,
+            },
+            color,
+            0.0,
+        );
+    }
+}
+
 mod button;
 mod controls;
 mod dataview;
@@ -58,6 +133,7 @@ mod pickers;
 mod scroll;
 mod spinner;
 mod text_input;
+mod typography;
 
 pub use button::*;
 pub use controls::*;
@@ -68,3 +144,4 @@ pub use pickers::*;
 pub use scroll::*;
 pub use spinner::*;
 pub use text_input::*;
+pub use typography::*;
